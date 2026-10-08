@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Field, inputClass } from "@/components/ui";
+import { Field, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveInventoryAction } from "../actions";
 
@@ -23,7 +23,7 @@ export function InventoryForm({ sheetUrl }: { sheetUrl: string }) {
       </Field>
       <div className="flex items-center gap-3">
         <SubmitButton pendingText="Sincronizando…">Guardar y sincronizar</SubmitButton>
-        {message && <span className="text-sm text-slate-600">{message}</span>}
+        {message && <FormMessage tone="neutral">{message}</FormMessage>}
       </div>
     </form>
   );

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft, Bot, BotOff, CircleX, MessageCircle, RotateCcw, Send, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CHANNEL_LABEL } from "@/lib/labels";
-import { Button, Card, inputClass, TagPill } from "@/components/ui";
+import { Avatar, Badge, Button, Card, EmptyState, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import {
   addTagAction,
@@ -68,43 +69,76 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const isOpen = lead.status === "OPEN";
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-      <Card className="flex h-[calc(100vh-8rem)] flex-col">
-        <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
-          <Link href="/funnel" className="text-sm text-slate-500 hover:text-slate-800">
-            ← Funnel
-          </Link>
-          <h1 className="font-semibold">{lead.contact.name}</h1>
-          <span className="text-xs text-slate-500">{lead.contact.phone ?? CHANNEL_LABEL[lead.contact.channel]}</span>
-          <span
-            className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${
-              lead.aiEnabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
-            }`}
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <Card className="flex h-[calc(100dvh-9rem)] min-h-[32rem] flex-col overflow-hidden lg:h-[calc(100dvh-4rem)]">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
+          <Link
+            href="/funnel"
+            aria-label="Volver al funnel"
+            className="flex size-10 items-center justify-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900"
           >
-            {lead.aiEnabled ? "IA respondiendo" : "IA pausada"}
-          </span>
+            <ArrowLeft aria-hidden className="size-5" />
+          </Link>
+          <Avatar name={lead.contact.name} size="lg" />
+          <div className="min-w-0">
+            <h1 className="truncate font-semibold text-slate-900">{lead.contact.name}</h1>
+            <p className="text-xs text-slate-600">
+              {lead.contact.phone ?? CHANNEL_LABEL[lead.contact.channel]} · {lead.stage.name}
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {lead.status === "WON" && (
+              <Badge tone="success">
+                <Trophy aria-hidden />
+                Ganado
+              </Badge>
+            )}
+            {lead.status === "LOST" && (
+              <Badge tone="danger">
+                <CircleX aria-hidden />
+                Perdido
+              </Badge>
+            )}
+            {lead.aiEnabled ? (
+              <Badge tone="success">
+                <Bot aria-hidden />
+                IA respondiendo
+              </Badge>
+            ) : (
+              <Badge>
+                <BotOff aria-hidden />
+                IA pausada
+              </Badge>
+            )}
+          </div>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
+        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6" aria-live="polite">
           {lead.messages.length === 0 && (
-            <p className="text-center text-sm text-slate-400">Aún no hay mensajes.</p>
+            <EmptyState icon={<MessageCircle />} title="Aún no hay mensajes">
+              Cuando el cliente escriba, la conversación aparecerá aquí.
+            </EmptyState>
           )}
           {lead.messages.map((m) => {
             const fromContact = m.author === "CONTACT";
+            const author = fromContact ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo");
             return (
               <div key={m.id} className={`flex ${fromContact ? "justify-start" : "justify-end"}`}>
                 <div
-                  className={`max-w-[75%] rounded-lg px-3 py-2 text-sm shadow-sm ${
+                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-xs sm:max-w-[70%] ${
                     fromContact
-                      ? "bg-white text-slate-800"
+                      ? "rounded-bl-md border border-slate-200 bg-white text-slate-800"
                       : m.author === "AI"
-                        ? "bg-brand-600 text-white"
-                        : "bg-emerald-600 text-white"
+                        ? "rounded-br-md bg-brand-600 text-white"
+                        : "rounded-br-md bg-emerald-700 text-white"
                   }`}
                 >
+                  <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${fromContact ? "text-slate-600" : "text-white/85"}`}>
+                    {m.author === "AI" && <Bot aria-hidden className="size-3.5" />}
+                    {author}
+                  </p>
                   <p className="whitespace-pre-wrap">{m.body}</p>
-                  <p className={`mt-1 text-[10px] ${fromContact ? "text-slate-400" : "text-white/70"}`}>
-                    {fromContact ? lead.contact.name : m.author === "AI" ? "Asistente IA" : m.user?.name} ·{" "}
+                  <p className={`mt-1 text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>
                     {time(m.createdAt)}
                   </p>
                 </div>
@@ -114,21 +148,26 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <ScrollToBottom dep={lead.messages.length} />
         </div>
 
-        <div className="space-y-3 border-t border-slate-200 p-4">
+        <div className="space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4">
           {lead.contact.channel === "SIMULATOR" && <ContactComposer leadId={lead.id} />}
           <form action={sendAsUserAction.bind(null, lead.id)} className="flex gap-2">
-            <input name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
-            <SubmitButton pendingText="Enviando…">Enviar</SubmitButton>
+            <label htmlFor="reply" className="sr-only">
+              Responder como ejecutivo
+            </label>
+            <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
+            <SubmitButton pendingText="Enviando…">
+              <Send aria-hidden />
+              <span className="hidden sm:inline">Enviar</span>
+            </SubmitButton>
           </form>
         </div>
       </Card>
 
       <aside className="space-y-4">
-        <Card className="space-y-4 p-4">
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Etapa</h2>
+        <Card className="divide-y divide-slate-100">
+          <Section title="Etapa">
             <form action={moveStageAction.bind(null, lead.id)} className="flex gap-2">
-              <select key={lead.stageId} name="stageId" defaultValue={lead.stageId} className={inputClass}>
+              <select key={lead.stageId} name="stageId" aria-label="Etapa" defaultValue={lead.stageId} className={inputClass}>
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -137,13 +176,18 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </select>
               <SubmitButton variant="secondary">Mover</SubmitButton>
             </form>
-          </div>
+          </Section>
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Ejecutivo</h2>
+          <Section title="Ejecutivo">
             {user.role === "ADMIN" ? (
               <form action={setAssigneeAction.bind(null, lead.id)} className="flex gap-2">
-                <select key={lead.assigneeId ?? "none"} name="assigneeId" defaultValue={lead.assigneeId ?? ""} className={inputClass}>
+                <select
+                  key={lead.assigneeId ?? "none"}
+                  name="assigneeId"
+                  aria-label="Ejecutivo"
+                  defaultValue={lead.assigneeId ?? ""}
+                  className={inputClass}
+                >
                   <option value="">Sin asignar</option>
                   {executives.map((e) => (
                     <option key={e.id} value={e.id}>
@@ -154,33 +198,35 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                 <SubmitButton variant="secondary">Asignar</SubmitButton>
               </form>
             ) : (
-              <p className="text-sm">{lead.assignee?.name ?? "Sin asignar"}</p>
+              <p className="flex items-center gap-2 text-sm text-slate-800">
+                {lead.assignee && <Avatar name={lead.assignee.name} size="sm" />}
+                {lead.assignee?.name ?? "Sin asignar"}
+              </p>
             )}
-          </div>
+          </Section>
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Asistente IA</h2>
+          <Section title="Asistente IA">
             <form action={toggleAiAction.bind(null, lead.id, !lead.aiEnabled)}>
               <SubmitButton variant="secondary" className="w-full" disabled={!isOpen}>
-                {lead.aiEnabled ? "Pausar IA (tomar conversación)" : "Reactivar IA"}
+                {lead.aiEnabled ? <BotOff aria-hidden /> : <Bot aria-hidden />}
+                {lead.aiEnabled ? "Pausar IA y tomar la conversación" : "Reactivar IA"}
               </SubmitButton>
             </form>
-          </div>
+          </Section>
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Etiquetas</h2>
-            <div className="mb-2 flex flex-wrap gap-1">
-              {lead.contact.tags.length === 0 && <span className="text-xs text-slate-400">Sin etiquetas</span>}
+          <Section title="Etiquetas">
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {lead.contact.tags.length === 0 && <span className="text-sm text-slate-500">Sin etiquetas</span>}
               {lead.contact.tags.map((ct) => (
                 <form key={ct.tagId} action={removeTagAction.bind(null, lead.id, ct.tagId)} className="inline">
-                  <button title="Quitar" className="group">
-                    <TagPill label={`${ct.tag.category}: ${ct.tag.name} ×`} color={ct.tag.color} />
+                  <button aria-label={`Quitar etiqueta ${ct.tag.category}: ${ct.tag.name}`} className="group rounded-full">
+                    <TagPill label={`${ct.tag.category}: ${ct.tag.name}`} color={ct.tag.color} removable />
                   </button>
                 </form>
               ))}
             </div>
             <form action={addTagAction.bind(null, lead.id)} className="flex gap-2">
-              <select name="tagId" className={inputClass} defaultValue="">
+              <select name="tagId" aria-label="Agregar etiqueta" className={inputClass} defaultValue="">
                 <option value="" disabled>
                   Agregar etiqueta…
                 </option>
@@ -192,43 +238,46 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                     </option>
                   ))}
               </select>
-              <SubmitButton variant="secondary">+</SubmitButton>
+              <SubmitButton variant="secondary">Agregar</SubmitButton>
             </form>
-          </div>
+          </Section>
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Resultado</h2>
+          <Section title="Resultado">
             {isOpen ? (
               <CloseLeadForm leadId={lead.id} />
             ) : (
-              <div className="space-y-2">
-                <p className={`text-sm font-medium ${lead.status === "WON" ? "text-emerald-700" : "text-rose-700"}`}>
+              <div className="space-y-3">
+                <p className={`flex items-center gap-2 text-sm font-semibold ${lead.status === "WON" ? "text-emerald-700" : "text-rose-700"}`}>
+                  {lead.status === "WON" ? <Trophy aria-hidden className="size-4" /> : <CircleX aria-hidden className="size-4" />}
                   {lead.status === "WON"
                     ? `Ganado${lead.amount ? ` · $${lead.amount.toLocaleString("es-CL")}` : ""}`
                     : `Perdido · ${lead.lostReason}`}
                 </p>
                 <form action={reopenLeadAction.bind(null, lead.id)}>
-                  <Button variant="ghost" className="w-full">
+                  <Button variant="secondary" className="w-full">
+                    <RotateCcw aria-hidden />
                     Reabrir
                   </Button>
                 </form>
               </div>
             )}
-          </div>
+          </Section>
         </Card>
 
         <Card className="p-4">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700">Historial</h2>
-          <ol className="max-h-80 space-y-3 overflow-y-auto text-xs">
-            {lead.events.map((e) => (
-              <li key={e.id} className="border-l-2 border-slate-200 pl-3">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-600">Historial</h2>
+          <ol className="max-h-96 overflow-y-auto text-xs">
+            {lead.events.map((e, i) => (
+              <li key={e.id} className="relative pb-4 pl-5 last:pb-0">
+                {i < lead.events.length - 1 && <span aria-hidden className="absolute bottom-0 left-[5px] top-3 w-px bg-slate-200" />}
+                <span aria-hidden className="absolute left-0 top-1 size-[11px] rounded-full border-2 border-brand-500 bg-white" />
                 <div className="flex justify-between gap-2">
-                  <span className="font-medium text-slate-800">
+                  <span className="font-medium text-slate-900">
                     {EVENT_LABEL[e.type] ?? e.type} {describe(e.data as Record<string, unknown>)}
                   </span>
-                  <span className="shrink-0 text-slate-400">{time(e.createdAt)}</span>
+                  <time className="shrink-0 tabular-nums text-slate-500">{time(e.createdAt)}</time>
                 </div>
-                <div className="text-slate-500">
+                <div className="mt-0.5 text-slate-600">
                   {e.actor === "USER" ? e.user?.name : ACTOR_LABEL[e.actor]}
                   {e.reason && ` · ${e.reason}`}
                 </div>
@@ -238,5 +287,14 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         </Card>
       </aside>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="p-4">
+      <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-slate-600">{title}</h2>
+      {children}
+    </section>
   );
 }
