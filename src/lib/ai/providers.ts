@@ -22,6 +22,10 @@ export type Step = {
   toolCalls: ToolCall[];
   /** El turno sigue en el servidor (pause_turn): hay que volver a llamar sin agregar nada. */
   paused?: boolean;
+  /** Para el monitor de actividad: modelo que respondió, razonamiento visible y tokens. */
+  model?: string;
+  reasoning?: string;
+  usage?: { input: number; output: number };
 };
 
 export interface Provider {
@@ -71,7 +75,17 @@ export function anthropicProvider(config: AiConfig, client?: AnthropicClient): P
         tools: AGENT_TOOLS,
         messages: messages as unknown as Beta.BetaMessageParam[],
       });
-      if (response.stop_reason === "refusal") return { text: "", toolCalls: [] };
+      const usage = response.usage
+        ? {
+            input:
+              (response.usage.input_tokens ?? 0) +
+              (response.usage.cache_read_input_tokens ?? 0) +
+              (response.usage.cache_creation_input_tokens ?? 0),
+            output: response.usage.output_tokens ?? 0,
+          }
+        : undefined;
+      const meta = { model: response.model, usage };
+      if (response.stop_reason === "refusal") return { text: "", toolCalls: [], ...meta };
       const toolCalls =
         response.stop_reason === "tool_use"
           ? response.content
@@ -87,6 +101,13 @@ export function anthropicProvider(config: AiConfig, client?: AnthropicClient): P
           .trim(),
         toolCalls,
         paused: response.stop_reason === "pause_turn",
+        reasoning:
+          response.content
+            .filter((b): b is Beta.BetaThinkingBlock => b.type === "thinking")
+            .map((b) => b.thinking)
+            .join("\n")
+            .trim() || undefined,
+        ...meta,
       };
     },
   };
@@ -102,10 +123,13 @@ type ChatMessage = {
   refusal?: string | null;
   tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
   reasoning_details?: unknown;
+  reasoning?: string | null;
 };
 
 export type ChatResponse = {
+  model?: string;
   choices?: { finish_reason: string | null; message: ChatMessage }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; code?: number | string };
 };
 
@@ -166,7 +190,13 @@ export function openRouterProvider(config: AiConfig, client: ChatClient = openRo
       const choice = response.choices?.[0];
       if (!choice) throw new Error("OpenRouter no devolvió respuesta");
       const m = choice.message;
-      if (choice.finish_reason === "content_filter" || m.refusal) return { text: "", toolCalls: [] };
+      const meta = {
+        model: response.model,
+        usage: response.usage
+          ? { input: response.usage.prompt_tokens ?? 0, output: response.usage.completion_tokens ?? 0 }
+          : undefined,
+      };
+      if (choice.finish_reason === "content_filter" || m.refusal) return { text: "", toolCalls: [], ...meta };
       // Se guarda el mensaje completo, incluido reasoning_details, para preservar el razonamiento.
       const message: TranscriptMessage = { role: "assistant", content: m.content ?? "" };
       if (m.tool_calls?.length) message.tool_calls = m.tool_calls;
@@ -179,6 +209,8 @@ export function openRouterProvider(config: AiConfig, client: ChatClient = openRo
           name: c.function.name,
           input: parseArguments(c.function.arguments),
         })),
+        reasoning: m.reasoning?.trim() || undefined,
+        ...meta,
       };
     },
   };

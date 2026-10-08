@@ -5,6 +5,7 @@ import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
+import { loadRunView } from "@/lib/ai/trace";
 import {
   addTag,
   closeLead,
@@ -111,4 +112,10 @@ export async function reopenLeadAction(leadId: string) {
   const { by } = await authorize(leadId);
   await reopenLead(leadId, by);
   done(leadId);
+}
+
+/** Monitor de actividad: cómo la IA construyó uno de sus mensajes. */
+export async function getAgentRunAction(leadId: string, messageId: string) {
+  await authorize(leadId);
+  return loadRunView(leadId, messageId);
 }

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL")
   // Conexión directa (sin pooler) para migraciones. En local puede ser igual a DATABASE_URL.
   directUrl = env("DIRECT_URL")
@@ -137,6 +137,7 @@ model Lead {
   messages   Message[]
   events     LeadEvent[]
   transcript AgentTranscript?
+  agentRuns  AgentRun[]
 
   @@index([stageId])
   @@index([assigneeId])
@@ -150,10 +151,39 @@ model Message {
   body      String
   createdAt DateTime      @default(now())
 
-  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user User? @relation(fields: [userId], references: [id])
+  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id])
+  agentRun AgentRun?
 
   @@index([leadId, createdAt])
+}
+
+/// Monitor de actividad: cómo la IA construyó una respuesta (contexto, pasos del modelo y
+/// herramientas usadas). Uno por turno; se guarda junto al mensaje que envió.
+model AgentRun {
+  id         String   @id @default(cuid())
+  leadId     String
+  messageId  String   @unique
+  provider   String
+  /// Modelo configurado; el que respondió de verdad va en cada paso de `steps`.
+  model      String
+  effort     String
+  /// Etapa del lead al empezar el turno.
+  stageName  String
+  system     String
+  /// Lo que recibió la IA como turno del usuario (<crm_state> y mensajes pendientes).
+  context    String
+  /// Línea de tiempo del turno: llamadas al modelo, herramientas y errores (ver src/lib/ai/trace.ts).
+  steps      Json     @default("[]")
+  /// "reply" (respuesta normal) o "fallback" (respuesta de respaldo).
+  outcome    String
+  startedAt  DateTime
+  durationMs Int
+
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
 }
 
 /// Historial de la conversación con Claude tal como se envía a la API (incluye

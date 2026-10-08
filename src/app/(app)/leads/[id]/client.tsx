@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useOptimistic, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
+import { Activity, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { closeLeadAction, sendAsContactAction, sendAsUserAction } from "./actions";
+import { ActivityPanel } from "./activity-panel";
 
 export type ChatMessage = {
   id: string;
@@ -43,6 +44,8 @@ export function LeadChat({
   simulator: boolean;
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
+  const [inspected, setInspected] = useState<ChatMessage | null>(null);
+  const closeInspector = useCallback(() => setInspected(null), []);
   const pending = (author: ChatMessage["author"], body: string): ChatMessage => ({
     id: `pending-${Date.now()}`,
     author,
@@ -61,7 +64,7 @@ export function LeadChat({
           </EmptyState>
         )}
         {shown.map((m) => (
-          <Bubble key={m.id} message={m} />
+          <Bubble key={m.id} message={m} onInspect={m.author === "AI" && !m.pending ? () => setInspected(m) : undefined} />
         ))}
         <ScrollToBottom dep={shown.length} />
       </div>
@@ -82,16 +85,25 @@ export function LeadChat({
           }}
         />
       </div>
+
+      <ActivityPanel leadId={leadId} message={inspected} onClose={closeInspector} />
     </>
   );
 }
 
-function Bubble({ message: m }: { message: ChatMessage }) {
+/** Burbuja del chat. Las de la IA se pueden abrir en el monitor de actividad. */
+function Bubble({ message: m, onInspect }: { message: ChatMessage; onInspect?: () => void }) {
   const fromContact = m.author === "CONTACT";
+  const Wrapper = onInspect ? "button" : "div";
   return (
     <div className={`flex ${fromContact ? "justify-start" : "justify-end"}`}>
-      <div
-        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-xs sm:max-w-[70%] ${
+      <Wrapper
+        {...(onInspect
+          ? { type: "button" as const, onClick: onInspect, title: "Ver cómo la IA construyó este mensaje" }
+          : {})}
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-left text-sm leading-relaxed shadow-xs sm:max-w-[70%] ${
+          onInspect ? "cursor-pointer transition-colors hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600" : ""
+        } ${
           fromContact
             ? "rounded-bl-md border border-slate-200 bg-white text-slate-800"
             : m.author === "AI"
@@ -99,13 +111,19 @@ function Bubble({ message: m }: { message: ChatMessage }) {
               : "rounded-br-md bg-emerald-700 text-white"
         } ${m.pending ? "opacity-70" : ""}`}
       >
-        <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${fromContact ? "text-slate-600" : "text-white/85"}`}>
+        <span className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${fromContact ? "text-slate-600" : "text-white/85"}`}>
           {m.author === "AI" && <Bot aria-hidden className="size-3.5" />}
           {m.authorName}
-        </p>
-        <p className="whitespace-pre-wrap">{m.body}</p>
-        <p className={`mt-1 text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>{m.time}</p>
-      </div>
+          {onInspect && (
+            <>
+              <Activity aria-hidden className="ml-auto size-3.5 pl-0.5" />
+              <span className="sr-only">(ver actividad)</span>
+            </>
+          )}
+        </span>
+        <span className="block whitespace-pre-wrap">{m.body}</span>
+        <span className={`mt-1 block text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>{m.time}</span>
+      </Wrapper>
     </div>
   );
 }
