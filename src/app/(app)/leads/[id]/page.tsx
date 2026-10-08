@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { Avatar, Badge, Button, Card, EmptyState, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { LinkPending } from "@/components/link-pending";
 import {
   addTagAction,
   moveStageAction,
@@ -75,9 +76,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <Link
             href="/funnel"
             aria-label="Volver al funnel"
-            className="flex size-10 items-center justify-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900"
+            className="relative flex size-10 items-center justify-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900"
           >
             <ArrowLeft aria-hidden className="size-5" />
+            <LinkPending className="mx-1.5" />
           </Link>
           <Avatar name={lead.contact.name} size="lg" />
           <div className="min-w-0">

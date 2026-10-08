@@ -143,3 +143,36 @@ export function FormMessage({ tone = "danger", children }: { tone?: "danger" | "
     </p>
   );
 }
+
+/** Bloque gris con brillo animado que ocupa el lugar del contenido mientras carga. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={`animate-shimmer rounded-lg bg-[linear-gradient(90deg,var(--color-slate-200)_25%,var(--color-slate-100)_50%,var(--color-slate-200)_75%)] bg-[length:200%_100%] ${className}`}
+    />
+  );
+}
+
+/** Contenedor de una pantalla de carga: lo anuncia a lectores de pantalla y aparece con un fundido. */
+export function LoadingScreen({ label = "Cargando…", children }: { label?: string; children: ReactNode }) {
+  return (
+    <div role="status" aria-live="polite" aria-busy="true" className="animate-fade-in">
+      <span className="sr-only">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Esqueleto del encabezado de página (título, descripción y acción). */
+export function PageHeaderSkeleton({ action = true }: { action?: boolean }) {
+  return (
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="space-y-2.5">
+        <Skeleton className="h-7 w-56" />
+        <Skeleton className="h-4 w-80 max-w-[70vw]" />
+      </div>
+      {action && <Skeleton className="h-10 w-44" />}
+    </div>
+  );
+}
