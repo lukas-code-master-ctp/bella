@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import type { AssignStrategy, Role, RuleTrigger } from "@prisma/client";
 import { hashPassword, requireAdmin } from "@/lib/auth";
+import type { AiConfig, AiEffort, AiProvider } from "@/lib/ai/config";
+import { listOpenRouterModels } from "@/lib/ai/models";
 import { db } from "@/lib/db";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
@@ -19,6 +21,23 @@ export async function saveAssistantAction(form: FormData) {
     instructions: str(form, "instructions"),
   });
   revalidatePath("/settings");
+}
+
+export async function saveAiAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  const provider = str(form, "provider") as AiProvider;
+  const model = str(form, "model");
+  if (provider !== "openrouter" && provider !== "anthropic") return "Proveedor inválido.";
+  if (!model) return "Elige un modelo.";
+  if (provider === "openrouter") {
+    const models = await listOpenRouterModels();
+    if (models && !models.some((m) => m.id === model)) {
+      return `"${model}" no está entre los modelos de OpenRouter que aceptan herramientas.`;
+    }
+  }
+  await setSetting<AiConfig>("ai", { provider, model, effort: (str(form, "effort") as AiEffort) || "medium" });
+  revalidatePath("/settings");
+  return "Guardado.";
 }
 
 // Etapas

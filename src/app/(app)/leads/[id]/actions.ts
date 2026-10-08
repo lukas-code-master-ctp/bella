@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
 import {
   addTag,
@@ -35,9 +36,10 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
   if (!body) return null;
   await db.message.create({ data: { leadId, author: "CONTACT", body } });
   if (lead.aiEnabled && lead.status === "OPEN") {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const missing = missingKeyMessage((await getAiConfig()).provider);
+    if (missing) {
       done(leadId);
-      return "Falta configurar ANTHROPIC_API_KEY en el servidor: la IA no puede responder.";
+      return missing;
     }
     await runAgent(leadId);
   }

@@ -28,7 +28,7 @@ Requisitos: Node 22 y Postgres 16.
 
 ```bash
 npm install
-cp .env.example .env          # completa DATABASE_URL, DIRECT_URL, SESSION_SECRET y ANTHROPIC_API_KEY
+cp .env.example .env          # completa DATABASE_URL, DIRECT_URL, SESSION_SECRET y OPENROUTER_API_KEY
 npx prisma migrate deploy     # crea las tablas
 SEED_ADMIN_PASSWORD=una-clave npm run db:seed   # admin@bella.local + etapas de ejemplo
 npm run dev
@@ -59,7 +59,8 @@ etiquetas de ejemplo si no existen, así que no hay que correr nada a mano.
    estas variables de entorno:
    - `DATABASE_URL` y `DIRECT_URL` (del paso 1)
    - `SESSION_SECRET`: un texto largo al azar (`openssl rand -base64 32`)
-   - `ANTHROPIC_API_KEY`: clave de https://console.anthropic.com
+   - `OPENROUTER_API_KEY`: clave de https://openrouter.ai/keys (o `ANTHROPIC_API_KEY` para usar
+     la API de Anthropic directo)
    - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
 3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
 
@@ -75,8 +76,8 @@ características, precio y stock.
 - Next.js 15 (App Router, server actions) + TypeScript + Tailwind.
 - Postgres con Prisma (`prisma/schema.prisma`).
 - `src/lib/domain/`: reglas de negocio (mover etapa, etiquetar, cerrar, asignar).
-- `src/lib/ai/`: la asistente. `agent.ts` corre el ciclo con la API de Claude y guarda el historial
-  completo de cada conversación sin editarlo (solo se agrega al final). `tools.ts` define lo que la
-  asistente puede hacer en el CRM.
-- El modelo se configura con `AI_MODEL` (por defecto `claude-opus-5-5`) y el esfuerzo con
-  `AI_EFFORT` (por defecto `medium`).
+- `src/lib/ai/`: la asistente. `agent.ts` corre el ciclo y guarda el historial completo de cada
+  conversación sin editarlo (solo se agrega al final). `providers.ts` traduce a cada API
+  (OpenRouter u Anthropic directo). `tools.ts` define lo que la asistente puede hacer en el CRM.
+- El proveedor, el modelo y el esfuerzo se eligen en Configuración → Asistente IA. Con OpenRouter
+  se listan solo los modelos que aceptan herramientas.
