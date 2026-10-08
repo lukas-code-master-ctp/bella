@@ -28,7 +28,7 @@ Requisitos: Node 22 y Postgres 16.
 
 ```bash
 npm install
-cp .env.example .env          # completa DATABASE_URL, SESSION_SECRET y ANTHROPIC_API_KEY
+cp .env.example .env          # completa DATABASE_URL, DIRECT_URL, SESSION_SECRET y ANTHROPIC_API_KEY
 npx prisma migrate deploy     # crea las tablas
 SEED_ADMIN_PASSWORD=una-clave npm run db:seed   # admin@bella.local + etapas de ejemplo
 npm run dev
@@ -46,12 +46,22 @@ Las pruebas usan una base Postgres aparte (`TEST_DATABASE_URL`, por defecto
 npm test
 ```
 
-## Desplegar (recomendado: Vercel + Supabase)
+## Desplegar (Vercel + Supabase)
 
-1. Crea un proyecto en Supabase y copia la *connection string* de Postgres.
-2. Importa este repositorio en Vercel y define las variables `DATABASE_URL`, `SESSION_SECRET`
-   y `ANTHROPIC_API_KEY`.
-3. Corre `npx prisma migrate deploy` y el seed una vez contra la base de producción.
+Cada build de Vercel aplica las migraciones pendientes y crea el admin, las etapas y las
+etiquetas de ejemplo si no existen, así que no hay que correr nada a mano.
+
+1. **Supabase:** crea un proyecto (región São Paulo es la más cercana a Chile). En
+   *Connect → ORMs → Prisma* copia las dos URLs:
+   - `DATABASE_URL`: la del *Transaction pooler* (puerto 6543), con `?pgbouncer=true` al final.
+   - `DIRECT_URL`: la del *Session pooler* (puerto 5432).
+2. **Vercel:** *Add New → Project*, importa este repositorio y, antes de desplegar, agrega
+   estas variables de entorno:
+   - `DATABASE_URL` y `DIRECT_URL` (del paso 1)
+   - `SESSION_SECRET`: un texto largo al azar (`openssl rand -base64 32`)
+   - `ANTHROPIC_API_KEY`: clave de https://console.anthropic.com
+   - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
+3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
 
 ## Inventario desde Google Sheets
 
