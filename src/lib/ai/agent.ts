@@ -1,25 +1,15 @@
-import Anthropic from "@anthropic-ai/sdk";
 import type { Message } from "@prisma/client";
 import { db } from "../db";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
-import { AGENT_TOOLS, executeTool } from "./tools";
-
-import type * as Beta from "@anthropic-ai/sdk/resources/beta/messages/messages";
-type MessageParam = Beta.BetaMessageParam;
+import { getAiConfig } from "./config";
+import { providerFor, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
+import { executeTool } from "./tools";
 
 const MAX_STEPS = 10;
 
 /** Respuesta al cliente cuando el modelo no puede continuar (rechazo o error). */
 export const FALLBACK_REPLY =
   "Gracias por tu mensaje. Un ejecutivo de nuestro equipo te responderá en breve.";
-
-export type AgentClient = Pick<Anthropic, "beta">;
-
-let defaultClient: Anthropic | null = null;
-function getClient(): AgentClient {
-  defaultClient ??= new Anthropic();
-  return defaultClient;
-}
 
 export function buildSystemPrompt(s: AssistantSettings): string {
   return [
@@ -71,20 +61,16 @@ async function buildCrmState(leadId: string) {
   ].join("\n");
 }
 
-function formatPending(messages: (Message & { user: { name: string } | null })[]) {
+function formatPending(messages: (Message & { user: { name: string } | null })[], assistantName: string) {
   return messages
     .map((m) =>
-      m.author === "CONTACT" ? `Cliente: ${m.body}` : `Ejecutivo (${m.user?.name ?? "equipo"}): ${m.body}`,
+      m.author === "CONTACT"
+        ? `Cliente: ${m.body}`
+        : m.author === "AI"
+          ? `${assistantName} (tú): ${m.body}`
+          : `Ejecutivo (${m.user?.name ?? "equipo"}): ${m.body}`,
     )
     .join("\n");
-}
-
-function finalText(content: Beta.BetaContentBlock[]): string {
-  return content
-    .filter((b): b is Beta.BetaTextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
 }
 
 const running = new Map<string, Promise<void>>();
@@ -93,85 +79,70 @@ const running = new Map<string, Promise<void>>();
  * Hace que la IA responda los mensajes pendientes de un lead. Si ya hay una ejecución
  * en curso para el mismo lead, espera a que termine y vuelve a revisar.
  */
-export async function runAgent(leadId: string, client: AgentClient = getClient()): Promise<void> {
+export async function runAgent(leadId: string, clients: ProviderClients = {}): Promise<void> {
   while (running.has(leadId)) await running.get(leadId);
-  const run = runAgentOnce(leadId, client).finally(() => running.delete(leadId));
+  const run = runAgentOnce(leadId, clients).finally(() => running.delete(leadId));
   running.set(leadId, run);
   return run;
 }
 
-async function runAgentOnce(leadId: string, client: AgentClient): Promise<void> {
+async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<void> {
   const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { transcript: true } });
   if (!lead.aiEnabled || lead.status !== "OPEN") return;
 
+  const [settings, config] = await Promise.all([getAssistantSettings(), getAiConfig()]);
+  const provider = providerFor(config, clients);
+
   const transcript =
     lead.transcript ??
-    (await db.agentTranscript.create({ data: { leadId, syncedUntil: new Date(0) } }));
+    (await db.agentTranscript.create({ data: { leadId, format: provider.format, syncedUntil: new Date(0) } }));
+  // Si se cambió de proveedor, su historial no sirve: se parte uno nuevo en el formato del
+  // proveedor actual, con toda la conversación visible (incluidas las respuestas de la IA).
+  const switched = transcript.format !== provider.format;
 
   const pending = await db.message.findMany({
-    where: { leadId, author: { in: ["CONTACT", "USER"] }, createdAt: { gt: transcript.syncedUntil } },
+    where: switched
+      ? { leadId }
+      : { leadId, author: { in: ["CONTACT", "USER"] }, createdAt: { gt: transcript.syncedUntil } },
     include: { user: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
-  if (!pending.some((m) => m.author === "CONTACT")) return;
+  if (!pending.some((m) => m.author === "CONTACT" && m.createdAt > transcript.syncedUntil)) return;
 
-  const settings = await getAssistantSettings();
-  const history = transcript.messages as unknown as MessageParam[];
-  const messages: MessageParam[] = [
+  const history = switched ? [] : (transcript.messages as unknown as TranscriptMessage[]);
+  const messages: TranscriptMessage[] = [
     ...history,
-    {
-      role: "user",
-      content: [{ type: "text", text: `${await buildCrmState(leadId)}\n\n${formatPending(pending)}` }],
-    },
+    provider.userTurn(`${await buildCrmState(leadId)}\n\n${formatPending(pending, settings.assistantName)}`),
   ];
+  const system = buildSystemPrompt(settings);
 
   let reply = "";
   let handedOff = false;
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
-      const response = await client.beta.messages.create({
-        model: process.env.AI_MODEL || "claude-opus-5-5",
-        max_tokens: 16000,
-        betas: ["server-side-fallback-2026-07-01", "thinking-binding-controls-2026-08-01"],
-        fallbacks: "default",
-        // Si cambian las instrucciones de la empresa, se descarta el razonamiento previo en vez de fallar.
-        thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
-        output_config: {
-          effort: (process.env.AI_EFFORT as "low" | "medium" | "high" | undefined) || "medium",
-        },
-        cache_control: { type: "ephemeral" },
-        system: buildSystemPrompt(settings),
-        tools: AGENT_TOOLS,
-        messages,
-      });
-      if (response.stop_reason === "refusal") {
-        // No guardamos el turno rechazado: se cierra con la respuesta de respaldo más abajo.
+      const result = await provider.step(system, messages);
+      if (!result.message) {
+        // Rechazo: no guardamos el turno rechazado; se cierra con la respuesta de respaldo más abajo.
         reply = FALLBACK_REPLY;
         handedOff = true;
         break;
       }
-      messages.push({ role: "assistant", content: response.content as Beta.BetaContentBlockParam[] });
-
-      if (response.stop_reason === "pause_turn") continue;
-      if (response.stop_reason !== "tool_use") {
-        reply = finalText(response.content);
+      messages.push(result.message);
+      if (result.paused) continue;
+      if (!result.toolCalls.length) {
+        reply = result.text;
         break;
       }
 
-      const results: Beta.BetaToolResultBlockParam[] = [];
-      for (const block of response.content) {
-        if (block.type !== "tool_use") continue;
-        const outcome = await executeTool(leadId, block.name, block.input as Record<string, unknown>).catch(
-          (err: unknown) => ({ isError: true, content: `Error: ${err instanceof Error ? err.message : String(err)}` }),
-        );
-        results.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: outcome.content,
-          ...(outcome.isError ? { is_error: true } : {}),
-        });
+      const results: ToolResult[] = [];
+      for (const call of result.toolCalls) {
+        const outcome = await executeTool(leadId, call.name, call.input).catch((err: unknown) => ({
+          isError: true,
+          content: `Error: ${err instanceof Error ? err.message : String(err)}`,
+        }));
+        results.push({ id: call.id, ...outcome });
       }
-      messages.push({ role: "user", content: results });
+      messages.push(...provider.toolResults(results));
     }
   } catch (err) {
     console.error(`[agent] lead ${leadId}:`, err);
@@ -181,18 +152,19 @@ async function runAgentOnce(leadId: string, client: AgentClient): Promise<void> 
 
   // Si el turno no terminó con una respuesta del asistente (rechazo, error o se agotaron
   // los pasos), lo cerramos con la respuesta de respaldo para que el historial siga válido.
-  if (messages[messages.length - 1].role === "user") {
+  if (messages[messages.length - 1].role !== "assistant") {
     if (!reply) {
       reply = FALLBACK_REPLY;
       handedOff = true;
     }
-    messages.push({ role: "assistant", content: [{ type: "text", text: reply }] });
+    messages.push(provider.assistantText(reply));
   }
 
   await db.$transaction(async (tx) => {
     await tx.agentTranscript.update({
       where: { leadId },
       data: {
+        format: provider.format,
         messages: messages as unknown as object,
         syncedUntil: pending[pending.length - 1].createdAt,
       },

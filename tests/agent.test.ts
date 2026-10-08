@@ -1,13 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createLead } from "@/lib/domain/leads";
-import { FALLBACK_REPLY, runAgent, type AgentClient } from "@/lib/ai/agent";
+import { setSetting } from "@/lib/settings";
+import { FALLBACK_REPLY, runAgent } from "@/lib/ai/agent";
+import type { AiConfig } from "@/lib/ai/config";
+import type { AnthropicClient, ChatClient, ChatResponse } from "@/lib/ai/providers";
 import { executive, seedFunnel } from "./factories";
 
 type Scripted = { stop_reason: string; content: object[] };
 
-/** Cliente falso que devuelve respuestas guionadas y registra las solicitudes. */
-function fakeClient(script: Scripted[]) {
+async function useProvider(provider: AiConfig["provider"], model = "modelo-x") {
+  await setSetting<AiConfig>("ai", { provider, model, effort: "medium" });
+}
+
+/** Cliente falso de Anthropic que devuelve respuestas guionadas y registra las solicitudes. */
+function fakeAnthropic(script: Scripted[]) {
   const requests: { messages: { role: string; content: unknown }[] }[] = [];
   const client = {
     beta: {
@@ -20,8 +27,8 @@ function fakeClient(script: Scripted[]) {
         },
       },
     },
-  } as unknown as AgentClient;
-  return { client, requests };
+  } as unknown as AnthropicClient;
+  return { client: { anthropic: client }, requests };
 }
 
 const toolUse = (id: string, name: string, input: object) => ({ type: "tool_use", id, name, input });
@@ -31,7 +38,9 @@ async function inbound(leadId: string, body: string) {
   await db.message.create({ data: { leadId, author: "CONTACT", body } });
 }
 
-describe("asistente IA", () => {
+describe("asistente IA (Anthropic)", () => {
+  beforeEach(() => useProvider("anthropic"));
+
   it("busca inventario, etiqueta, mueve de etapa y responde al cliente", async () => {
     await seedFunnel();
     await db.tag.create({ data: { category: "Producto", name: "Motos" } });
@@ -41,7 +50,7 @@ describe("asistente IA", () => {
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
     await inbound(lead.id, "Hola, ¿tienen la Honda CB190?");
 
-    const { client, requests } = fakeClient([
+    const { client, requests } = fakeAnthropic([
       { stop_reason: "tool_use", content: [toolUse("t1", "search_inventory", { query: "honda cb190" })] },
       {
         stop_reason: "tool_use",
@@ -77,11 +86,11 @@ describe("asistente IA", () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
     await inbound(lead.id, "Hola");
-    const first = fakeClient([{ stop_reason: "end_turn", content: [text("¡Hola! ¿En qué te ayudo?")] }]);
+    const first = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola! ¿En qué te ayudo?")] }]);
     await runAgent(lead.id, first.client);
 
     await inbound(lead.id, "Busco una moto");
-    const second = fakeClient([{ stop_reason: "end_turn", content: [text("¿Para ciudad o carretera?")] }]);
+    const second = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¿Para ciudad o carretera?")] }]);
     await runAgent(lead.id, second.client);
 
     const sent = second.requests[0].messages;
@@ -95,7 +104,7 @@ describe("asistente IA", () => {
     const ana = await executive("Ana");
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
     await inbound(lead.id, "Quiero hablar con una persona");
-    const { client } = fakeClient([
+    const { client } = fakeAnthropic([
       { stop_reason: "tool_use", content: [toolUse("t1", "handoff_to_human", { reason: "lo pidió" })] },
       { stop_reason: "end_turn", content: [text("Te contacto con un ejecutivo.")] },
     ]);
@@ -107,7 +116,7 @@ describe("asistente IA", () => {
 
     // Con la IA pausada, un nuevo mensaje no dispara otra respuesta.
     await inbound(lead.id, "¿Hola?");
-    const idle = fakeClient([]);
+    const idle = fakeAnthropic([]);
     await runAgent(lead.id, idle.client);
     expect(idle.requests).toHaveLength(0);
   });
@@ -116,7 +125,7 @@ describe("asistente IA", () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
     await inbound(lead.id, "Hola");
-    const { client } = fakeClient([{ stop_reason: "refusal", content: [] }]);
+    const { client } = fakeAnthropic([{ stop_reason: "refusal", content: [] }]);
     await runAgent(lead.id, client);
 
     const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true, transcript: true } });
@@ -130,7 +139,7 @@ describe("asistente IA", () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
     await inbound(lead.id, "Hola");
-    const { client, requests } = fakeClient([
+    const { client, requests } = fakeAnthropic([
       { stop_reason: "tool_use", content: [toolUse("t1", "move_stage", { stage: "Inexistente", reason: "x" })] },
       { stop_reason: "end_turn", content: [text("¡Hola!")] },
     ]);
@@ -138,5 +147,98 @@ describe("asistente IA", () => {
     const result = (requests[1].messages.at(-1)!.content as { is_error?: boolean; content: string }[])[0];
     expect(result.is_error).toBe(true);
     expect(result.content).toContain("Etapas válidas");
+  });
+});
+
+/** Cliente falso de OpenRouter (formato OpenAI chat completions). */
+function fakeOpenRouter(script: ChatResponse["choices"][]) {
+  const requests: { model: string; messages: { role: string; content?: unknown; tool_call_id?: string }[] }[] = [];
+  const client: ChatClient = {
+    complete: async (body) => {
+      requests.push(structuredClone(body) as (typeof requests)[number]);
+      const choices = script.shift();
+      if (!choices) throw new Error("Sin respuestas guionadas");
+      return { choices };
+    },
+  };
+  return { client: { openrouter: client }, requests };
+}
+
+const call = (id: string, name: string, args: object) => ({
+  id,
+  type: "function" as const,
+  function: { name, arguments: JSON.stringify(args) },
+});
+
+describe("asistente IA (OpenRouter)", () => {
+  beforeEach(() => useProvider("openrouter", "proveedor/modelo-elegido"));
+
+  it("usa el modelo configurado, ejecuta herramientas y responde", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola, busco una moto");
+    const reasoning = [{ type: "reasoning.text", text: "pensando" }];
+    const { client, requests } = fakeOpenRouter([
+      [
+        {
+          finish_reason: "tool_calls",
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [call("c1", "move_stage", { stage: "Calificado", reason: "busca moto" })],
+            reasoning_details: reasoning,
+          },
+        },
+      ],
+      [{ finish_reason: "stop", message: { role: "assistant", content: "¿Para ciudad o carretera?" } }],
+    ]);
+    await runAgent(lead.id, client);
+
+    expect(requests[0].model).toBe("proveedor/modelo-elegido");
+    expect(requests[0].messages[0].role).toBe("system");
+    expect(requests[0].messages[1].content).toContain("Cliente: Hola, busco una moto");
+    // El turno de herramientas vuelve con su razonamiento y el resultado como mensaje "tool".
+    expect(requests[1].messages.at(-2)).toMatchObject({ role: "assistant", reasoning_details: reasoning });
+    expect(requests[1].messages.at(-1)).toMatchObject({ role: "tool", tool_call_id: "c1" });
+
+    const updated = await db.lead.findUniqueOrThrow({
+      where: { id: lead.id },
+      include: { stage: true, messages: true, transcript: true },
+    });
+    expect(updated.stage.name).toBe("Calificado");
+    expect(updated.messages.at(-1)).toMatchObject({ author: "AI", body: "¿Para ciudad o carretera?" });
+    expect(updated.transcript?.format).toBe("openai");
+  });
+
+  it("un error de OpenRouter responde el mensaje de respaldo y pausa la IA", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola");
+    const { client } = fakeOpenRouter([]);
+    await runAgent(lead.id, client);
+    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true } });
+    expect(updated.aiEnabled).toBe(false);
+    expect(updated.messages.at(-1)?.body).toBe(FALLBACK_REPLY);
+  });
+
+  it("al cambiar de proveedor, parte un historial nuevo con toda la conversación", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await useProvider("anthropic");
+    await inbound(lead.id, "Hola");
+    await runAgent(lead.id, fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola! ¿Qué buscas?")] }]).client);
+
+    await useProvider("openrouter");
+    await inbound(lead.id, "Una moto");
+    const { client, requests } = fakeOpenRouter([
+      [{ finish_reason: "stop", message: { role: "assistant", content: "¿Para ciudad?" } }],
+    ]);
+    await runAgent(lead.id, client);
+
+    const sent = requests[0].messages;
+    expect(sent).toHaveLength(2);
+    expect(sent[1].content).toContain("Cliente: Hola\nBella (tú): ¡Hola! ¿Qué buscas?\nCliente: Una moto");
+    const transcript = await db.agentTranscript.findUniqueOrThrow({ where: { leadId: lead.id } });
+    expect(transcript.format).toBe("openai");
   });
 });
