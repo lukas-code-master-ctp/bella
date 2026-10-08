@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
-import type { InventorySettings } from "@/lib/inventory";
+import { INVENTORY_MAX_AGE_MS, type InventorySettings } from "@/lib/inventory";
 import { Card, PageHeader } from "@/components/ui";
 import { InventoryForm } from "./form";
 
@@ -17,7 +17,19 @@ export default async function InventoryPage() {
         <InventoryForm sheetUrl={settings.sheetUrl} />
         {settings.lastSyncAt && (
           <p className="mt-3 text-xs text-slate-600">
-            Última sincronización: {new Date(settings.lastSyncAt).toLocaleString("es-CL")} · {settings.lastSyncRows} filas
+            Última sincronización: {formatDate(settings.lastSyncAt)} · {settings.lastSyncRows} filas
+          </p>
+        )}
+        {settings.lastError && settings.lastAttemptAt && (
+          <p className="mt-1 text-xs text-rose-700">
+            Falló el intento del {formatDate(settings.lastAttemptAt)}: {settings.lastError} La asistente sigue usando
+            la última versión guardada.
+          </p>
+        )}
+        {settings.sheetUrl && (
+          <p className="mt-1 text-xs text-slate-600">
+            Se actualiza sola una vez al día y cada vez que la asistente consulta el inventario y la copia tiene más
+            de {INVENTORY_MAX_AGE_MS / 60_000} minutos.
           </p>
         )}
       </Card>
@@ -55,4 +67,8 @@ export default async function InventoryPage() {
       )}
     </>
   );
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString("es-CL", { timeZone: "America/Santiago" });
 }

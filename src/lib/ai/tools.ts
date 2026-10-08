@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { addTagTx, handoffToHumanTx, moveStageTx } from "../domain/leads";
-import { searchInventory } from "../inventory";
+import { searchInventory, syncInventoryIfStale } from "../inventory";
 import { searchKnowledge } from "../knowledge";
 import { normalize } from "../text";
 
@@ -92,6 +92,7 @@ export async function executeTool(
       };
     }
     case "search_inventory": {
+      await syncInventoryIfStale();
       const results = await searchInventory(str("query"));
       return {
         content: results.length
