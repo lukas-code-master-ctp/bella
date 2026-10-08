@@ -160,6 +160,8 @@ model Message {
 /// bloques de herramientas y de razonamiento). Solo se agrega al final, nunca se edita.
 model AgentTranscript {
   leadId      String   @id
+  /// Formato de API del historial ("anthropic" u "openai"); depende del proveedor configurado.
+  format      String   @default("anthropic")
   messages    Json     @default("[]")
   /// Último mensaje (Message.createdAt) ya incluido en el historial de la IA.
   syncedUntil DateTime @default(now())
