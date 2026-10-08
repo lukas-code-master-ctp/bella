@@ -2,19 +2,19 @@
 
 /*
  * Sistema de diseño de Bella (generado con ui-ux-pro-max: "CRM SaaS B2B profesional").
- * Azul de confianza como color principal, naranjo solo para acentos puntuales,
+ * Morado como color principal (pedido por Lukas), naranjo solo para acentos puntuales,
  * fondos slate claros y Plus Jakarta Sans. Contraste de texto AA (4.5:1) en todo.
  */
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #ede9fe;
+  --color-brand-200: #ddd6fe;
+  --color-brand-300: #c4b5fd;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-brand-700: #6d28d9;
+  --color-brand-800: #5b21b6;
+  --color-brand-900: #4c1d95;
   --color-accent-50: #fff7ed;
   --color-accent-600: #ea580c;
   --color-accent-700: #c2410c;
