@@ -98,7 +98,7 @@ describe("monitor de actividad", () => {
     expect(steps[0]).toMatchObject({
       model: "claude-servido",
       reasoning: "Debo revisar el inventario",
-      usage: { input: 150, output: 20 },
+      usage: { input: 150, output: 20, cached: 50 },
     });
     expect(steps[1]).toMatchObject({ input: { query: "cb190" } });
     expect((steps[1] as Extract<TraceStep, { type: "tool" }>).result).toContain("Honda CB190");

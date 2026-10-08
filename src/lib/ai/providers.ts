@@ -25,7 +25,8 @@ export type Step = {
   /** Para el monitor de actividad: modelo que respondió, razonamiento visible y tokens. */
   model?: string;
   reasoning?: string;
-  usage?: { input: number; output: number };
+  /** `cached`: tokens de entrada leídos de la caché de prompts (ya incluidos en `input`). */
+  usage?: { input: number; output: number; cached?: number };
 };
 
 export interface Provider {
@@ -82,6 +83,7 @@ export function anthropicProvider(config: AiConfig, client?: AnthropicClient): P
               (response.usage.cache_read_input_tokens ?? 0) +
               (response.usage.cache_creation_input_tokens ?? 0),
             output: response.usage.output_tokens ?? 0,
+            cached: response.usage.cache_read_input_tokens ?? 0,
           }
         : undefined;
       const meta = { model: response.model, usage };
@@ -129,7 +131,11 @@ type ChatMessage = {
 export type ChatResponse = {
   model?: string;
   choices?: { finish_reason: string | null; message: ChatMessage }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+  };
   error?: { message?: string; code?: number | string };
 };
 
@@ -168,6 +174,22 @@ function parseArguments(raw: string): Record<string, unknown> {
   }
 }
 
+const CACHE = { type: "ephemeral" } as const;
+
+/**
+ * Marca las instrucciones y el último mensaje para la caché de prompts. Los modelos de Anthropic y
+ * Gemini en OpenRouter solo cachean con estas marcas; los demás cachean solos y las ignoran. Las
+ * marcas van solo en la solicitud: el historial guardado no cambia.
+ */
+export function withCacheBreakpoints(system: string, messages: TranscriptMessage[]): TranscriptMessage[] {
+  const last = messages.at(-1);
+  const marked =
+    last && typeof last.content === "string" && last.content
+      ? [...messages.slice(0, -1), { ...last, content: [{ type: "text", text: last.content, cache_control: CACHE }] }]
+      : messages;
+  return [{ role: "system", content: [{ type: "text", text: system, cache_control: CACHE }] }, ...marked];
+}
+
 export function openRouterProvider(config: AiConfig, client: ChatClient = openRouterClient): Provider {
   return {
     format: "openai",
@@ -185,7 +207,7 @@ export function openRouterProvider(config: AiConfig, client: ChatClient = openRo
         max_tokens: 16000,
         reasoning: { effort: config.effort },
         tools: OPENAI_TOOLS,
-        messages: [{ role: "system", content: system }, ...messages],
+        messages: withCacheBreakpoints(system, messages),
       });
       const choice = response.choices?.[0];
       if (!choice) throw new Error("OpenRouter no devolvió respuesta");
@@ -193,7 +215,11 @@ export function openRouterProvider(config: AiConfig, client: ChatClient = openRo
       const meta = {
         model: response.model,
         usage: response.usage
-          ? { input: response.usage.prompt_tokens ?? 0, output: response.usage.completion_tokens ?? 0 }
+          ? {
+              input: response.usage.prompt_tokens ?? 0,
+              output: response.usage.completion_tokens ?? 0,
+              cached: response.usage.prompt_tokens_details?.cached_tokens ?? 0,
+            }
           : undefined,
       };
       if (choice.finish_reason === "content_filter" || m.refusal) return { text: "", toolCalls: [], ...meta };

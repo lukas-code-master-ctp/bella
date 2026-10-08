@@ -5,6 +5,7 @@ import { setSetting } from "@/lib/settings";
 import { FALLBACK_REPLY, runAgent } from "@/lib/ai/agent";
 import type { AiConfig } from "@/lib/ai/config";
 import type { AnthropicClient, ChatClient, ChatResponse } from "@/lib/ai/providers";
+import { KNOWLEDGE_INLINE_MAX_CHARS } from "@/lib/knowledge";
 import { executive, seedFunnel } from "./factories";
 
 type Scripted = { stop_reason: string; content: object[] };
@@ -184,6 +185,10 @@ function fakeOpenRouter(script: ChatResponse["choices"][]) {
   return { client: { openrouter: client }, requests };
 }
 
+/** Texto de un mensaje enviado a OpenRouter (el último va como bloque con marca de caché). */
+const textOf = (content: unknown) =>
+  typeof content === "string" ? content : (content as { text: string }[]).map((p) => p.text).join("");
+
 const call = (id: string, name: string, args: object) => ({
   id,
   type: "function" as const,
@@ -216,7 +221,7 @@ describe("asistente IA (OpenRouter)", () => {
 
     expect(requests[0].model).toBe("proveedor/modelo-elegido");
     expect(requests[0].messages[0].role).toBe("system");
-    expect(requests[0].messages[1].content).toContain("Cliente: Hola, busco una moto");
+    expect(textOf(requests[0].messages[1].content)).toContain("Cliente: Hola, busco una moto");
     // El turno de herramientas vuelve con su razonamiento y el resultado como mensaje "tool".
     expect(requests[1].messages.at(-2)).toMatchObject({ role: "assistant", reasoning_details: reasoning });
     expect(requests[1].messages.at(-1)).toMatchObject({ role: "tool", tool_call_id: "c1" });
@@ -257,8 +262,56 @@ describe("asistente IA (OpenRouter)", () => {
 
     const sent = requests[0].messages;
     expect(sent).toHaveLength(2);
-    expect(sent[1].content).toContain("Cliente: Hola\nBella (tú): ¡Hola! ¿Qué buscas?\nCliente: Una moto");
+    expect(textOf(sent[1].content)).toContain("Cliente: Hola\nBella (tú): ¡Hola! ¿Qué buscas?\nCliente: Una moto");
     const transcript = await db.agentTranscript.findUniqueOrThrow({ where: { leadId: lead.id } });
     expect(transcript.format).toBe("openai");
+  });
+});
+
+describe("caché y base de conocimiento", () => {
+  it("incluye la base de conocimiento completa en las instrucciones cuando es pequeña", async () => {
+    await useProvider("anthropic");
+    await seedFunnel();
+    await db.knowledgeDoc.create({ data: { title: "Horario", content: "Atendemos de 9 a 18 horas." } });
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    await inbound(lead.id, "¿A qué hora atienden?");
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("De 9 a 18.")] }]);
+    await runAgent(lead.id, client);
+
+    const system = (requests[0] as unknown as { system: string }).system;
+    expect(system).toContain('<documento titulo="Horario">\nAtendemos de 9 a 18 horas.');
+    expect(system).not.toContain("Consulta search_knowledge");
+  });
+
+  it("deja la base de conocimiento para search_knowledge cuando es grande", async () => {
+    await useProvider("anthropic");
+    await seedFunnel();
+    await db.knowledgeDoc.create({ data: { title: "Manual", content: "x".repeat(KNOWLEDGE_INLINE_MAX_CHARS + 1) } });
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola");
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(lead.id, client);
+
+    const system = (requests[0] as unknown as { system: string }).system;
+    expect(system).not.toContain("<base_de_conocimiento>");
+    expect(system).toContain("Consulta search_knowledge");
+  });
+
+  it("en OpenRouter marca las instrucciones y el último mensaje para la caché, sin tocar el historial", async () => {
+    await useProvider("openrouter", "anthropic/claude");
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola");
+    const { client, requests } = fakeOpenRouter([
+      [{ finish_reason: "stop", message: { role: "assistant", content: "¡Hola!" } }],
+    ]);
+    await runAgent(lead.id, client);
+
+    const [system, user] = requests[0].messages;
+    expect(system).toMatchObject({ role: "system", content: [{ type: "text", cache_control: { type: "ephemeral" } }] });
+    expect(user).toMatchObject({ role: "user", content: [{ type: "text", cache_control: { type: "ephemeral" } }] });
+    const transcript = await db.agentTranscript.findUniqueOrThrow({ where: { leadId: lead.id } });
+    const saved = transcript.messages as { role: string; content: unknown }[];
+    expect(typeof saved[0].content).toBe("string");
   });
 });
