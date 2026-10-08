@@ -41,6 +41,26 @@ async function inbound(leadId: string, body: string) {
 describe("asistente IA (Anthropic)", () => {
   beforeEach(() => useProvider("anthropic"));
 
+  it("guarda el nombre y el correo que da el cliente, y ve su teléfono", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "+56911112222", channel: "WHATSAPP", phone: "+56911112222" });
+    await inbound(lead.id, "Soy Ana Pérez, mi correo es Ana@Mail.cl");
+
+    const { client, requests } = fakeAnthropic([
+      {
+        stop_reason: "tool_use",
+        content: [toolUse("t1", "update_contact", { name: "Ana Pérez", email: "Ana@Mail.cl" })],
+      },
+      { stop_reason: "end_turn", content: [text("¡Gracias, Ana!")] },
+    ]);
+    await runAgent(lead.id, client);
+
+    const firstTurn = requests[0].messages[0].content as { text: string }[];
+    expect(firstTurn[0].text).toContain("Teléfono: +56911112222");
+    const contact = await db.contact.findFirstOrThrow();
+    expect([contact.name, contact.email]).toEqual(["Ana Pérez", "ana@mail.cl"]);
+  });
+
   it("busca inventario, etiqueta, mueve de etapa y responde al cliente", async () => {
     await seedFunnel();
     await db.tag.create({ data: { category: "Producto", name: "Motos" } });

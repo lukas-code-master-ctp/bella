@@ -51,6 +51,8 @@ async function buildCrmState(leadId: string) {
   return [
     "<crm_state>",
     `Contacto: ${lead.contact.name}`,
+    `Teléfono: ${lead.contact.phone ?? "sin registrar"}`,
+    `Correo: ${lead.contact.email ?? "sin registrar"}`,
     `Etapa actual: ${lead.stage.name}`,
     `Etapas del funnel (en orden): ${stages
       .map((s) => (s.requiresHuman ? `${s.name} [atención humana]` : s.name))

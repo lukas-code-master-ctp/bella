@@ -49,6 +49,44 @@ describe("presets de configuración", () => {
     expect(await getSetting("inventory", {})).toEqual(synced);
   });
 
+  it("arma el funnel reutilizando las etapas existentes y sin perder leads", async () => {
+    const nuevo = await db.stage.create({ data: { name: "Nuevo", position: 0 } });
+    const extra = await db.stage.create({ data: { name: "Otra", position: 1 } });
+    await applyPreset(db, {
+      ...preset,
+      stages: [
+        { name: "Inicial", color: "#000000", replaces: ["Nuevo"] },
+        { name: "Asistencia Humana", color: "#111111", requiresHuman: true },
+      ],
+      tags: [{ category: "Plazo", color: "#222222", names: ["Inmediato", "+6 meses"] }],
+      stageRules: [{ name: "Regla humana", stage: "Asistencia Humana", strategy: "LEAST_LOADED" }],
+    });
+
+    const stages = await db.stage.findMany({ orderBy: { position: "asc" } });
+    expect(stages.map((s) => [s.name, s.position, s.requiresHuman])).toEqual([
+      ["Inicial", 0, false],
+      ["Asistencia Humana", 1, true],
+      ["Otra", 2, false],
+    ]);
+    expect(stages[0].id).toBe(nuevo.id);
+    expect(stages[2].id).toBe(extra.id);
+    expect(await db.tag.count({ where: { category: "Plazo" } })).toBe(2);
+    const rule = await db.assignmentRule.findFirstOrThrow();
+    expect([rule.name, rule.trigger, rule.stageId]).toEqual(["Regla humana", "STAGE_ENTERED", stages[1].id]);
+  });
+
+  it("aplica el preset completo de Compra Tu Parcela sobre el funnel de ejemplo", async () => {
+    for (const [position, name] of ["Nuevo", "Calificado", "Interesado", "Atención humana"].entries()) {
+      await db.stage.create({ data: { name, position, requiresHuman: name === "Atención humana" } });
+    }
+    await applyPreset(db, COMPRA_TU_PARCELA);
+    const stages = await db.stage.findMany({ orderBy: { position: "asc" } });
+    expect(stages.map((s) => s.name)).toEqual(COMPRA_TU_PARCELA.stages!.map((s) => s.name));
+    const firstHuman = stages.find((s) => s.requiresHuman);
+    expect(firstHuman?.name).toBe("Asistencia Humana");
+    expect(await db.assignmentRule.count()).toBe(2);
+  });
+
   it("la configuración de Compra Tu Parcela trae a Valentina y su inventario", () => {
     expect(COMPRA_TU_PARCELA.assistant.assistantName).toBe("Valentina");
     expect(COMPRA_TU_PARCELA.assistant.instructions).toContain("REGLA PRIORITARIA");

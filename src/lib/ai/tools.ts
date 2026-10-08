@@ -54,6 +54,12 @@ export const AGENT_TOOLS: Tool[] = [
     },
   ),
   tool(
+    "update_contact",
+    "Guarda en el CRM el nombre o el correo del cliente en cuanto te los dé. Deja en blanco " +
+      "el campo que no cambia.",
+    { name: text("Nombre del cliente, o vacío"), email: text("Correo del cliente, o vacío") },
+  ),
+  tool(
     "handoff_to_human",
     "Deriva la conversación a un ejecutivo humano y te pausa. Úsala cuando el cliente pida hablar " +
       "con una persona, esté listo para comprar o cerrar, esté molesto, o pregunte algo que no " +
@@ -121,6 +127,25 @@ export async function executeTool(
       }
       const added = await db.$transaction((tx) => addTagTx(tx, leadId, tag.id, { actor: "AI" }, str("reason")));
       return { content: added ? `Etiqueta "${tag.category}: ${tag.name}" asignada.` : "El contacto ya tenía esa etiqueta." };
+    }
+    case "update_contact": {
+      const name = str("name");
+      const email = str("email").toLowerCase();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { isError: true, content: "Correo inválido: pídele al cliente que lo confirme." };
+      }
+      if (!name && !email) return { isError: true, content: "Indica el nombre o el correo." };
+      const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
+      await db.$transaction([
+        db.contact.update({
+          where: { id: lead.contactId },
+          data: { ...(name ? { name } : {}), ...(email ? { email } : {}) },
+        }),
+        db.leadEvent.create({
+          data: { leadId, type: "CONTACT_UPDATED", actor: "AI", data: { ...(name ? { name } : {}), ...(email ? { email } : {}) } },
+        }),
+      ]);
+      return { content: "Datos del contacto guardados." };
     }
     case "handoff_to_human": {
       const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason")));
