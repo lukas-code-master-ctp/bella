@@ -27,3 +27,24 @@ export async function listOpenRouterModels(): Promise<ModelOption[] | null> {
     return null;
   }
 }
+
+export type OpenRouterKeyInfo = { label: string; usage: number };
+
+/**
+ * Datos de la clave OPENROUTER_API_KEY que usa el servidor (nombre y gasto acumulado), para
+ * saber en qué cuenta de OpenRouter quedan los registros. Null si no hay clave o no responde.
+ */
+export async function getOpenRouterKeyInfo(): Promise<OpenRouterKeyInfo | null> {
+  if (!process.env.OPENROUTER_API_KEY) return null;
+  try {
+    const res = await fetch(`${OPENROUTER_URL}/key`, {
+      headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const { data } = (await res.json()) as { data?: { label?: string; usage?: number } };
+    return data ? { label: data.label ?? "(sin nombre)", usage: data.usage ?? 0 } : null;
+  } catch {
+    return null;
+  }
+}

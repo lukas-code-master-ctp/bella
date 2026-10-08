@@ -1,13 +1,18 @@
 import { getAssistantSettings } from "@/lib/settings";
 import { API_KEY_ENV, DEFAULT_MODEL, getAiConfig } from "@/lib/ai/config";
-import { listOpenRouterModels } from "@/lib/ai/models";
+import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
 import { Card, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAssistantAction } from "../actions";
 import { AiForm } from "./ai-form";
 
 export default async function AssistantSettingsPage() {
-  const [s, config, models] = await Promise.all([getAssistantSettings(), getAiConfig(), listOpenRouterModels()]);
+  const [s, config, models, keyInfo] = await Promise.all([
+    getAssistantSettings(),
+    getAiConfig(),
+    listOpenRouterModels(),
+    getOpenRouterKeyInfo(),
+  ]);
   const keys = {
     openrouter: Boolean(process.env[API_KEY_ENV.openrouter]),
     anthropic: Boolean(process.env[API_KEY_ENV.anthropic]),
@@ -36,7 +41,7 @@ export default async function AssistantSettingsPage() {
       </Card>
       <h2 className="mb-3 mt-8 text-base font-semibold text-slate-900">Modelo de IA</h2>
       <Card className="p-5">
-        <AiForm config={config} models={models} defaults={DEFAULT_MODEL} keys={keys} />
+        <AiForm config={config} models={models} defaults={DEFAULT_MODEL} keys={keys} keyInfo={keyInfo} />
       </Card>
     </>
   );
