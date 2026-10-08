@@ -1,10 +1,12 @@
 /**
- * Datos iniciales: un admin, etapas y etiquetas de ejemplo. Es idempotente:
- * solo crea lo que falta, y corre en cada build. El admin se crea solo si
- * SEED_ADMIN_PASSWORD está definida.
+ * Datos iniciales: un admin, etapas y etiquetas de ejemplo, y la configuración de la
+ * asistente de Compra Tu Parcela. Es idempotente: solo crea lo que falta, y corre en
+ * cada build. El admin se crea solo si SEED_ADMIN_PASSWORD está definida.
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import { applyPreset } from "../src/lib/domain/presets";
+import { COMPRA_TU_PARCELA } from "../src/lib/presets/compra-tu-parcela";
 
 const db = new PrismaClient();
 
@@ -42,6 +44,10 @@ async function main() {
       ],
     });
     console.log("Etiquetas de interés creadas.");
+  }
+
+  if (await applyPreset(db, COMPRA_TU_PARCELA)) {
+    console.log(`Configuración "${COMPRA_TU_PARCELA.id}" v${COMPRA_TU_PARCELA.version} cargada.`);
   }
 }
 

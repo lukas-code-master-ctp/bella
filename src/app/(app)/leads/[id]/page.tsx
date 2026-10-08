@@ -22,6 +22,7 @@ const EVENT_LABEL: Record<string, string> = {
   STAGE_CHANGED: "Cambio de etapa",
   TAG_ADDED: "Etiqueta agregada",
   TAG_REMOVED: "Etiqueta quitada",
+  CONTACT_UPDATED: "Datos del contacto",
   ASSIGNED: "Asignado",
   UNASSIGNED: "Sin asignar",
   HANDOFF: "Derivado a humano",
@@ -37,6 +38,7 @@ const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 function describe(data: Record<string, unknown>) {
   if (data.from && data.to) return `${data.from} → ${data.to}`;
   if (data.tag) return String(data.tag);
+  if (data.name || data.email) return [data.name, data.email].filter(Boolean).join(" · ");
   if (data.assigneeName) return String(data.assigneeName);
   if (typeof data.amount === "number") return `$${data.amount.toLocaleString("es-CL")}`;
   return "";

@@ -69,7 +69,7 @@ export async function syncInventory(fetchImpl: typeof fetch = fetch) {
 }
 
 /** Busca filas del inventario que coincidan con la consulta. */
-export async function searchInventory(query: string, limit = 10) {
+export async function searchInventory(query: string, limit = 20) {
   const items = await db.inventoryItem.findMany({ orderBy: { rowNumber: "asc" } });
   const q = tokens(query);
   if (q.length === 0) return items.slice(0, limit).map((i) => i.data);
