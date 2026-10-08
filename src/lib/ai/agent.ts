@@ -4,6 +4,7 @@ import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
 import { providerFor, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
+import type { TraceStep } from "./trace";
 
 const MAX_STEPS = 10;
 
@@ -89,7 +90,8 @@ export async function runAgent(leadId: string, clients: ProviderClients = {}): P
 }
 
 async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<void> {
-  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { transcript: true } });
+  const startedAt = new Date();
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { transcript: true, stage: true } });
   if (!lead.aiEnabled || lead.status !== "OPEN") return;
 
   const [settings, config] = await Promise.all([getAssistantSettings(), getAiConfig()]);
@@ -112,18 +114,28 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
   if (!pending.some((m) => m.author === "CONTACT" && m.createdAt > transcript.syncedUntil)) return;
 
   const history = switched ? [] : (transcript.messages as unknown as TranscriptMessage[]);
-  const messages: TranscriptMessage[] = [
-    ...history,
-    provider.userTurn(`${await buildCrmState(leadId)}\n\n${formatPending(pending, settings.assistantName)}`),
-  ];
+  const context = `${await buildCrmState(leadId)}\n\n${formatPending(pending, settings.assistantName)}`;
+  const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
   const system = buildSystemPrompt(settings);
 
+  // Línea de tiempo del turno para el monitor de actividad.
+  const trace: TraceStep[] = [];
   let reply = "";
   let handedOff = false;
   try {
     for (let step = 0; step < MAX_STEPS; step++) {
+      const stepStart = Date.now();
       const result = await provider.step(system, messages);
+      trace.push({
+        type: "model",
+        durationMs: Date.now() - stepStart,
+        ...(result.model ? { model: result.model } : {}),
+        ...(result.text ? { text: result.text } : {}),
+        ...(result.reasoning ? { reasoning: result.reasoning } : {}),
+        ...(result.usage ? { usage: result.usage } : {}),
+      });
       if (!result.message) {
+        trace.push({ type: "refusal" });
         // Rechazo: no guardamos el turno rechazado; se cierra con la respuesta de respaldo más abajo.
         reply = FALLBACK_REPLY;
         handedOff = true;
@@ -138,16 +150,26 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
 
       const results: ToolResult[] = [];
       for (const call of result.toolCalls) {
+        const toolStart = Date.now();
         const outcome = await executeTool(leadId, call.name, call.input).catch((err: unknown) => ({
           isError: true,
           content: `Error: ${err instanceof Error ? err.message : String(err)}`,
         }));
         results.push({ id: call.id, ...outcome });
+        trace.push({
+          type: "tool",
+          name: call.name,
+          input: call.input,
+          result: outcome.content,
+          ...(outcome.isError ? { isError: true } : {}),
+          durationMs: Date.now() - toolStart,
+        });
       }
       messages.push(...provider.toolResults(results));
     }
   } catch (err) {
     console.error(`[agent] lead ${leadId}:`, err);
+    trace.push({ type: "error", message: err instanceof Error ? err.message : String(err) });
     reply = FALLBACK_REPLY;
     handedOff = true;
   }
@@ -162,7 +184,7 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
     messages.push(provider.assistantText(reply));
   }
 
-  await db.$transaction(async (tx) => {
+  const sent = await db.$transaction(async (tx) => {
     await tx.agentTranscript.update({
       where: { leadId },
       data: {
@@ -171,7 +193,7 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
         syncedUntil: pending[pending.length - 1].createdAt,
       },
     });
-    if (reply) await tx.message.create({ data: { leadId, author: "AI", body: reply } });
+    const message = reply ? await tx.message.create({ data: { leadId, author: "AI", body: reply } }) : null;
     if (handedOff) {
       const current = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
       if (current.aiEnabled) {
@@ -181,5 +203,28 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
         });
       }
     }
+    return message;
   });
+
+  // Fuera de la transacción: si falla el registro del monitor, la respuesta igual queda guardada.
+  if (sent) {
+    await db.agentRun
+      .create({
+        data: {
+          leadId,
+          messageId: sent.id,
+          provider: config.provider,
+          model: config.model,
+          effort: config.effort,
+          stageName: lead.stage.name,
+          system,
+          context,
+          steps: trace as unknown as object,
+          outcome: handedOff ? "fallback" : "reply",
+          startedAt,
+          durationMs: Date.now() - startedAt.getTime(),
+        },
+      })
+      .catch((err) => console.error(`[agent] monitor de actividad, lead ${leadId}:`, err));
+  }
 }
