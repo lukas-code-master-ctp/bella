@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Field, inputClass } from "@/components/ui";
+import { Field, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createUserAction } from "../actions";
 
@@ -16,7 +16,7 @@ export function NewUserForm() {
         <input name="name" required className={inputClass} />
       </Field>
       <Field label="Correo">
-        <input name="email" type="email" required className={inputClass} />
+        <input name="email" type="email" required autoComplete="off" className={inputClass} />
       </Field>
       <Field label="Contraseña inicial" hint="Mínimo 8 caracteres">
         <input name="password" type="text" required minLength={8} className={inputClass} />
@@ -29,7 +29,7 @@ export function NewUserForm() {
       </Field>
       <div className="flex items-center gap-3 sm:col-span-2">
         <SubmitButton>Crear usuario</SubmitButton>
-        {error && <span className="text-sm text-rose-600">{error}</span>}
+        {error && <FormMessage>{error}</FormMessage>}
       </div>
     </form>
   );

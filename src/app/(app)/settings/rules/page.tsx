@@ -1,5 +1,6 @@
+import { Shuffle, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
-import { Button, Card, Field, inputClass, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, CardHeader, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createRuleAction, deleteRuleAction, toggleRuleAction } from "../actions";
 
@@ -16,19 +17,24 @@ export default async function RulesPage() {
 
   return (
     <>
-      <PageHeader title="Asignación automática" />
-      <p className="mb-4 text-sm text-slate-600">
-        Cuando un lead entra a una etapa o recibe una etiqueta, se aplica la primera regla activa que coincida
-        (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla
-        aplica, se asigna al ejecutivo con menos leads abiertos.
-      </p>
+      <PageHeader
+        title="Asignación automática"
+        description="Cuando un lead entra a una etapa o recibe una etiqueta, se aplica la primera regla activa que coincida (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla aplica, se asigna al ejecutivo con menos leads abiertos."
+      />
       <Card className="mb-6 divide-y divide-slate-100">
-        {rules.length === 0 && <p className="p-4 text-sm text-slate-500">Aún no hay reglas.</p>}
+        {rules.length === 0 && (
+          <EmptyState icon={<Shuffle />} title="Aún no hay reglas">
+            Crea la primera con el formulario de abajo.
+          </EmptyState>
+        )}
         {rules.map((r) => (
-          <div key={r.id} className={`flex flex-wrap items-center gap-3 p-3 text-sm ${r.active ? "" : "opacity-50"}`}>
-            <div className="flex-1">
-              <div className="font-medium">{r.name}</div>
-              <div className="text-slate-500">
+          <div key={r.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
+            <div className={`min-w-0 flex-1 ${r.active ? "" : "opacity-60"}`}>
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                {r.name}
+                {r.active ? <Badge tone="success">Activa</Badge> : <Badge>Inactiva</Badge>}
+              </div>
+              <div className="mt-0.5 text-slate-600">
                 {r.trigger === "STAGE_ENTERED" ? `Entra a etapa "${r.stage?.name}"` : `Recibe etiqueta "${r.tag?.category}: ${r.tag?.name}"`}
                 {" → "}
                 {r.strategy === "ROUND_ROBIN" ? "rotación" : "menor carga"} entre{" "}
@@ -40,14 +46,16 @@ export default async function RulesPage() {
               <Button variant="secondary">{r.active ? "Desactivar" : "Activar"}</Button>
             </form>
             <form action={deleteRuleAction.bind(null, r.id)}>
-              <Button variant="ghost">Borrar</Button>
+              <SubmitButton variant="ghost-danger" size="icon" aria-label={`Borrar regla ${r.name}`} title="Borrar regla" confirm={`¿Borrar la regla "${r.name}"?`} pendingText="">
+                <Trash2 aria-hidden />
+              </SubmitButton>
             </form>
           </div>
         ))}
       </Card>
 
       <Card className="p-5">
-        <h2 className="mb-4 font-medium">Nueva regla</h2>
+        <CardHeader title="Nueva regla" />
         <form action={createRuleAction} className="grid gap-4 sm:grid-cols-2">
           <Field label="Nombre">
             <input name="name" required placeholder="Ej. Motos a equipo motos" className={inputClass} />
@@ -89,8 +97,8 @@ export default async function RulesPage() {
                 <option value="LEAST_LOADED">Menor carga de leads abiertos</option>
               </select>
             </Field>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input type="checkbox" name="reassign" /> Reasignar aunque ya tenga ejecutivo
+            <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" name="reassign" className="size-4 rounded border-slate-300 accent-brand-600" /> Reasignar aunque ya tenga ejecutivo
             </label>
           </div>
           <div className="sm:col-span-2">
