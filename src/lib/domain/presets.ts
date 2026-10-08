@@ -4,8 +4,8 @@ import type { InventorySettings } from "../inventory";
 
 /**
  * Configuración predefinida para una empresa: instrucciones de la asistente, base de
- * conocimiento, inventario, funnel, etiquetas y reglas de asignación. Se aplica una sola vez por versión; para volver a cargarla
- * (por ejemplo tras cambiar sus textos) se sube `version`.
+ * conocimiento, inventario, funnel, etiquetas y reglas de asignación. Se aplica una sola vez
+ * por versión; para volver a cargarla (por ejemplo tras cambiar sus textos) se sube `version`.
  */
 export type Preset = {
   id: string;
@@ -69,15 +69,10 @@ export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boo
 
     if (preset.stages) await applyStages(tx, preset.stages);
 
-    for (const group of preset.tags ?? []) {
-      for (const name of group.names) {
-        await tx.tag.upsert({
-          where: { category_name: { category: group.category, name } },
-          create: { category: group.category, name, color: group.color },
-          update: {},
-        });
-      }
-    }
+    await tx.tag.createMany({
+      data: (preset.tags ?? []).flatMap((g) => g.names.map((name) => ({ category: g.category, name, color: g.color }))),
+      skipDuplicates: true,
+    });
 
     for (const rule of preset.stageRules ?? []) {
       const stage = await tx.stage.findUnique({ where: { name: rule.stage } });
@@ -89,7 +84,9 @@ export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boo
 
     await writeSetting(tx, presetKey(preset.id), { version: preset.version, appliedAt: new Date().toISOString() });
     return true;
-  });
+    // Son unas cien consultas en serie: contra la base remota (Supabase) superan de lejos el
+    // límite por defecto de 5 s de las transacciones interactivas de Prisma.
+  }, { maxWait: 20_000, timeout: 120_000 });
 }
 
 async function applyStages(tx: Prisma.TransactionClient, stages: NonNullable<Preset["stages"]>) {
