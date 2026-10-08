@@ -106,6 +106,10 @@ export function CloseLeadForm({ leadId }: { leadId: string }) {
 /** Mantiene el chat desplazado al último mensaje. */
 export function ScrollToBottom({ dep }: { dep: number }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => ref.current?.scrollIntoView({ block: "end" }), [dep]);
+  // Con llaves: en Chrome reciente scrollIntoView devuelve una Promise, y si el efecto la
+  // retorna, React la llama como función de limpieza al desmontar ("u is not a function").
+  useEffect(() => {
+    ref.current?.scrollIntoView({ block: "end" });
+  }, [dep]);
   return <div ref={ref} />;
 }
