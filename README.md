@@ -48,8 +48,9 @@ npm test
 
 ## Desplegar (Vercel + Supabase)
 
-Cada build de Vercel aplica las migraciones pendientes y crea el admin, las etapas y las
-etiquetas de ejemplo si no existen, así que no hay que correr nada a mano.
+Cada build de producción en Vercel aplica las migraciones pendientes y crea el admin, las etapas
+y las etiquetas de ejemplo si no existen, así que no hay que correr nada a mano. Los previews de
+los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal como está.
 
 1. **Supabase:** crea un proyecto (región São Paulo es la más cercana a Chile). En
    *Connect → ORMs → Prisma* copia las dos URLs:
