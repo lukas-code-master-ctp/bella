@@ -164,8 +164,15 @@ export function ActivityPanel({
 function RunDetail({ run, body, time }: { run: RunView; body: string; time: string }) {
   const served = run.steps.find((s): s is Extract<TraceStep, { type: "model" }> => s.type === "model" && !!s.model)?.model;
   const tokens = run.steps.reduce(
-    (acc, s) => (s.type === "model" && s.usage ? { input: acc.input + s.usage.input, output: acc.output + s.usage.output } : acc),
-    { input: 0, output: 0 },
+    (acc, s) =>
+      s.type === "model" && s.usage
+        ? {
+            input: acc.input + s.usage.input,
+            output: acc.output + s.usage.output,
+            cached: acc.cached + (s.usage.cached ?? 0),
+          }
+        : acc,
+    { input: 0, output: 0, cached: 0 },
   );
 
   return (
@@ -191,7 +198,8 @@ function RunDetail({ run, body, time }: { run: RunView; body: string; time: stri
             {tokens.input + tokens.output > 0 && (
               <span className="text-slate-500">
                 {" "}
-                · {num(tokens.input)} tokens de entrada, {num(tokens.output)} de salida
+                · {num(tokens.input)} tokens de entrada
+                {tokens.cached > 0 && ` (${num(tokens.cached)} en caché)`}, {num(tokens.output)} de salida
               </span>
             )}
           </Meta>

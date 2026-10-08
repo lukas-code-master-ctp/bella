@@ -14,7 +14,7 @@ export type TraceStep =
       durationMs?: number;
       text?: string;
       reasoning?: string;
-      usage?: { input: number; output: number };
+      usage?: { input: number; output: number; cached?: number };
     }
   | {
       type: "tool";

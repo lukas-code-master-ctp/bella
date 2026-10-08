@@ -1,5 +1,6 @@
 import type { Message } from "@prisma/client";
 import { db } from "../db";
+import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
 import { providerFor, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
@@ -12,8 +13,14 @@ const MAX_STEPS = 10;
 export const FALLBACK_REPLY =
   "Gracias por tu mensaje. Un ejecutivo de nuestro equipo te responderá en breve.";
 
-export function buildSystemPrompt(s: AssistantSettings): string {
-  return [
+type KnowledgeDoc = { title: string; content: string };
+
+/**
+ * Las instrucciones son iguales en todos los turnos (quedan en caché). Con `knowledge`, la base
+ * de conocimiento va completa al final; sin ella, la asistente la consulta con search_knowledge.
+ */
+export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[] | null = null): string {
+  const lines = [
     `Eres ${s.assistantName}, asistente de ventas de ${s.companyName}. Conversas por chat con ` +
       "personas interesadas (leads) para resolver sus dudas, entender qué necesitan y llevarlas " +
       "hacia la compra, trabajando junto al equipo de ejecutivos de venta.",
@@ -22,7 +29,10 @@ export function buildSystemPrompt(s: AssistantSettings): string {
     "- Cada mensaje del cliente llega con un bloque <crm_state> que muestra la etapa actual del " +
       "lead, las etapas del funnel, sus etiquetas y el catálogo de etiquetas. El cliente no ve ese " +
       "bloque; no lo menciones.",
-    "- Consulta search_knowledge antes de responder preguntas sobre la empresa, y search_inventory " +
+    (knowledge?.length
+      ? "- La base de conocimiento completa está al final, en <base_de_conocimiento>: úsala para " +
+        "responder sobre la empresa (no necesitas search_knowledge). Consulta search_inventory "
+      : "- Consulta search_knowledge antes de responder preguntas sobre la empresa, y search_inventory ") +
       "antes de mencionar cualquier producto, precio o stock. Si no encuentras el dato, dilo y " +
       "ofrece derivar a un ejecutivo; nunca lo inventes.",
     "- Mantén el CRM al día mientras conversas: mueve el lead de etapa cuando avance en el proceso " +
@@ -34,7 +44,16 @@ export function buildSystemPrompt(s: AssistantSettings): string {
     "",
     "Instrucciones de la empresa:",
     s.instructions,
-  ].join("\n");
+  ];
+  if (knowledge?.length) {
+    lines.push(
+      "",
+      "<base_de_conocimiento>",
+      ...knowledge.map((d) => `<documento titulo="${d.title}">\n${d.content}\n</documento>`),
+      "</base_de_conocimiento>",
+    );
+  }
+  return lines.join("\n");
 }
 
 async function buildCrmState(leadId: string) {
@@ -116,7 +135,7 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
   const history = switched ? [] : (transcript.messages as unknown as TranscriptMessage[]);
   const context = `${await buildCrmState(leadId)}\n\n${formatPending(pending, settings.assistantName)}`;
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
-  const system = buildSystemPrompt(settings);
+  const system = buildSystemPrompt(settings, await knowledgeForPrompt());
 
   // Línea de tiempo del turno para el monitor de actividad.
   const trace: TraceStep[] = [];
