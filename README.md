@@ -63,6 +63,8 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
    - `OPENROUTER_API_KEY`: clave de https://openrouter.ai/keys (o `ANTHROPIC_API_KEY` para usar
      la API de Anthropic directo)
    - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
+   - `CRON_SECRET`: un texto largo al azar; Vercel lo usa para llamar la sincronización diaria del
+     inventario (`vercel.json`)
 3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
 
 ## Inventario desde Google Sheets
@@ -71,6 +73,12 @@ En Configuración → Inventario pega el enlace de la planilla. Debe estar compa
 "Cualquier persona con el enlace: Lector"; se lee la pestaña del enlace y la primera fila son los
 nombres de columna. La asistente busca en todas las columnas, así que conviene incluir nombre,
 características, precio y stock.
+
+El inventario se actualiza solo: cuando la asistente lo consulta y la copia guardada tiene más de
+15 minutos, lo vuelve a leer de la planilla antes de responder; además, Vercel Cron lo sincroniza
+una vez al día (`/api/cron/inventory`, protegido con `CRON_SECRET`). En el plan Hobby de Vercel los
+cron solo pueden correr una vez al día; en Pro se puede subir la frecuencia en `vercel.json`. Si la
+planilla falla, la asistente sigue usando la última copia y el error aparece en Configuración.
 
 ## Cómo está construido
 
