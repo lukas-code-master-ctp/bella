@@ -1,6 +1,7 @@
 /**
  * Datos iniciales: un admin, etapas y etiquetas de ejemplo. Es idempotente:
- * solo crea lo que falta. La contraseña del admin se toma de SEED_ADMIN_PASSWORD.
+ * solo crea lo que falta, y corre en cada build. El admin se crea solo si
+ * SEED_ADMIN_PASSWORD está definida.
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -9,12 +10,16 @@ const db = new PrismaClient();
 
 async function main() {
   const email = (process.env.SEED_ADMIN_EMAIL ?? "admin@bella.local").toLowerCase();
-  const password = process.env.SEED_ADMIN_PASSWORD ?? "cambiar-esta-clave";
+  const password = process.env.SEED_ADMIN_PASSWORD;
   if (!(await db.user.findUnique({ where: { email } }))) {
-    await db.user.create({
-      data: { name: "Administrador", email, role: "ADMIN", passwordHash: await bcrypt.hash(password, 10) },
-    });
-    console.log(`Admin creado: ${email} / ${password}`);
+    if (!password) {
+      console.warn("SEED_ADMIN_PASSWORD no está definida: no se creó el usuario admin.");
+    } else {
+      await db.user.create({
+        data: { name: "Administrador", email, role: "ADMIN", passwordHash: await bcrypt.hash(password, 10) },
+      });
+      console.log(`Admin creado: ${email}`);
+    }
   }
 
   if ((await db.stage.count()) === 0) {

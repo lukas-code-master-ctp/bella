@@ -5,7 +5,7 @@ export const TEST_DATABASE_URL =
 
 export default function setup() {
   execSync("npx prisma migrate deploy", {
-    env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL },
+    env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL, DIRECT_URL: TEST_DATABASE_URL },
     stdio: "ignore",
   });
 }

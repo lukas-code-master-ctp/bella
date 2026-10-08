@@ -19,6 +19,7 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bella_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/bella_test
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bella_test
       SESSION_SECRET: ci-secret-ci-secret-ci-secret
     steps:
