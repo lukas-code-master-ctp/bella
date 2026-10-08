@@ -1,12 +1,114 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useOptimistic, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { CircleX, FlaskConical, LoaderCircle, Trophy } from "lucide-react";
-import { Button, FormMessage, inputClass } from "@/components/ui";
+import { Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
+import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { closeLeadAction, sendAsContactAction } from "./actions";
+import { closeLeadAction, sendAsContactAction, sendAsUserAction } from "./actions";
+
+export type ChatMessage = {
+  id: string;
+  author: "CONTACT" | "AI" | "USER";
+  authorName: string;
+  body: string;
+  /** Hora ya formateada en el servidor (evita diferencias de zona horaria al hidratar). */
+  time: string;
+  pending?: boolean;
+};
+
+/** Enter envía el formulario; Shift+Enter agrega una línea. */
+function submitOnEnter(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) {
+  if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+  e.preventDefault();
+  if (e.currentTarget.value.trim()) e.currentTarget.form?.requestSubmit();
+}
+
+/**
+ * Conversación del lead con los formularios para escribir. Los mensajes enviados aparecen al
+ * tiro (optimistas) y se reemplazan por los guardados cuando el servidor termina de responder.
+ */
+export function LeadChat({
+  leadId,
+  messages,
+  contactName,
+  userName,
+  simulator,
+}: {
+  leadId: string;
+  messages: ChatMessage[];
+  contactName: string;
+  userName: string;
+  simulator: boolean;
+}) {
+  const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
+  const pending = (author: ChatMessage["author"], body: string): ChatMessage => ({
+    id: `pending-${Date.now()}`,
+    author,
+    authorName: author === "CONTACT" ? contactName : userName,
+    body,
+    time: "Enviando…",
+    pending: true,
+  });
+
+  return (
+    <>
+      <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6" aria-live="polite">
+        {shown.length === 0 && (
+          <EmptyState icon={<MessageCircle />} title="Aún no hay mensajes">
+            Cuando el cliente escriba, la conversación aparecerá aquí.
+          </EmptyState>
+        )}
+        {shown.map((m) => (
+          <Bubble key={m.id} message={m} />
+        ))}
+        <ScrollToBottom dep={shown.length} />
+      </div>
+
+      <div className="space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4">
+        {simulator && (
+          <ContactComposer
+            leadId={leadId}
+            onSend={(body) => {
+              addPending(pending("CONTACT", body));
+            }}
+          />
+        )}
+        <UserComposer
+          leadId={leadId}
+          onSend={(body) => {
+            addPending(pending("USER", body));
+          }}
+        />
+      </div>
+    </>
+  );
+}
+
+function Bubble({ message: m }: { message: ChatMessage }) {
+  const fromContact = m.author === "CONTACT";
+  return (
+    <div className={`flex ${fromContact ? "justify-start" : "justify-end"}`}>
+      <div
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-xs sm:max-w-[70%] ${
+          fromContact
+            ? "rounded-bl-md border border-slate-200 bg-white text-slate-800"
+            : m.author === "AI"
+              ? "rounded-br-md bg-brand-600 text-white"
+              : "rounded-br-md bg-emerald-700 text-white"
+        } ${m.pending ? "opacity-70" : ""}`}
+      >
+        <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${fromContact ? "text-slate-600" : "text-white/85"}`}>
+          {m.author === "AI" && <Bot aria-hidden className="size-3.5" />}
+          {m.authorName}
+        </p>
+        <p className="whitespace-pre-wrap">{m.body}</p>
+        <p className={`mt-1 text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>{m.time}</p>
+      </div>
+    </div>
+  );
+}
 
 function ContactSubmit() {
   const { pending } = useFormStatus();
@@ -25,26 +127,28 @@ function ContactSubmit() {
   );
 }
 
-export function ContactComposer({ leadId }: { leadId: string }) {
+function ContactComposer({ leadId, onSend }: { leadId: string; onSend: (body: string) => void }) {
   const router = useRouter();
-  const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
-    try {
-      return await sendAsContactAction(leadId, prev, form);
-    } catch (err) {
-      // La respuesta de la IA puede tardar más que el límite del servidor (o caerse la red):
-      // en vez de romper la página, avisamos y traemos lo que alcanzó a guardarse.
-      console.error(err);
-      router.refresh();
-      return "La asistente no alcanzó a responder. Si no aparece su mensaje, vuelve a escribirle.";
-    }
-  }, null);
+  const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
       ref={formRef}
-      action={(fd) => {
-        action(fd);
+      action={async (fd) => {
+        const body = String(fd.get("body") ?? "").trim();
+        if (!body) return;
+        onSend(body);
         formRef.current?.reset();
+        setError(null);
+        try {
+          setError(await sendAsContactAction(leadId, null, fd));
+        } catch (err) {
+          // La respuesta de la IA puede tardar más que el límite del servidor (o caerse la red):
+          // en vez de romper la página, avisamos y traemos lo que alcanzó a guardarse.
+          console.error(err);
+          router.refresh();
+          setError("La asistente no alcanzó a responder. Si no aparece su mensaje, vuelve a escribirle.");
+        }
       }}
       className="space-y-2 rounded-xl border border-dashed border-brand-300 bg-brand-50/60 p-3"
     >
@@ -52,7 +156,15 @@ export function ContactComposer({ leadId }: { leadId: string }) {
         <FlaskConical aria-hidden className="size-3.5" />
         Simulador: escribe como si fueras el cliente
       </label>
-      <textarea id="as-contact" name="body" rows={2} required placeholder="Hola, quiero información sobre…" className={inputClass} />
+      <textarea
+        id="as-contact"
+        name="body"
+        rows={2}
+        required
+        placeholder="Hola, quiero información sobre…"
+        onKeyDown={submitOnEnter}
+        className={inputClass}
+      />
       <div className="flex flex-wrap items-center justify-end gap-3">
         {error && (
           <div className="mr-auto">
@@ -61,6 +173,32 @@ export function ContactComposer({ leadId }: { leadId: string }) {
         )}
         <ContactSubmit />
       </div>
+    </form>
+  );
+}
+
+function UserComposer({ leadId, onSend }: { leadId: string; onSend: (body: string) => void }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  return (
+    <form
+      ref={formRef}
+      action={async (fd) => {
+        const body = String(fd.get("body") ?? "").trim();
+        if (!body) return;
+        onSend(body);
+        formRef.current?.reset();
+        await sendAsUserAction(leadId, fd);
+      }}
+      className="flex gap-2"
+    >
+      <label htmlFor="reply" className="sr-only">
+        Responder como ejecutivo
+      </label>
+      <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
+      <SubmitButton pendingText="Enviando…">
+        <Send aria-hidden />
+        <span className="hidden sm:inline">Enviar</span>
+      </SubmitButton>
     </form>
   );
 }
@@ -104,7 +242,7 @@ export function CloseLeadForm({ leadId }: { leadId: string }) {
 }
 
 /** Mantiene el chat desplazado al último mensaje. */
-export function ScrollToBottom({ dep }: { dep: number }) {
+function ScrollToBottom({ dep }: { dep: number }) {
   const ref = useRef<HTMLDivElement>(null);
   // Con llaves: en Chrome reciente scrollIntoView devuelve una Promise, y si el efecto la
   // retorna, React la llama como función de limpieza al desmontar ("u is not a function").

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, MessageCircle, RotateCcw, Send, Trophy } from "lucide-react";
+import { ArrowLeft, Bot, BotOff, CircleX, RotateCcw, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CHANNEL_LABEL } from "@/lib/labels";
-import { Avatar, Badge, Button, Card, EmptyState, inputClass, TagPill } from "@/components/ui";
+import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
 import {
@@ -12,11 +12,10 @@ import {
   moveStageAction,
   removeTagAction,
   reopenLeadAction,
-  sendAsUserAction,
   setAssigneeAction,
   toggleAiAction,
 } from "./actions";
-import { CloseLeadForm, ContactComposer, ScrollToBottom } from "./client";
+import { CloseLeadForm, LeadChat } from "./client";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -117,54 +116,20 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6" aria-live="polite">
-          {lead.messages.length === 0 && (
-            <EmptyState icon={<MessageCircle />} title="Aún no hay mensajes">
-              Cuando el cliente escriba, la conversación aparecerá aquí.
-            </EmptyState>
-          )}
-          {lead.messages.map((m) => {
-            const fromContact = m.author === "CONTACT";
-            const author = fromContact ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo");
-            return (
-              <div key={m.id} className={`flex ${fromContact ? "justify-start" : "justify-end"}`}>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-xs sm:max-w-[70%] ${
-                    fromContact
-                      ? "rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                      : m.author === "AI"
-                        ? "rounded-br-md bg-brand-600 text-white"
-                        : "rounded-br-md bg-emerald-700 text-white"
-                  }`}
-                >
-                  <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${fromContact ? "text-slate-600" : "text-white/85"}`}>
-                    {m.author === "AI" && <Bot aria-hidden className="size-3.5" />}
-                    {author}
-                  </p>
-                  <p className="whitespace-pre-wrap">{m.body}</p>
-                  <p className={`mt-1 text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>
-                    {time(m.createdAt)}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-          <ScrollToBottom dep={lead.messages.length} />
-        </div>
-
-        <div className="space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4">
-          {lead.contact.channel === "SIMULATOR" && <ContactComposer leadId={lead.id} />}
-          <form action={sendAsUserAction.bind(null, lead.id)} className="flex gap-2">
-            <label htmlFor="reply" className="sr-only">
-              Responder como ejecutivo
-            </label>
-            <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
-            <SubmitButton pendingText="Enviando…">
-              <Send aria-hidden />
-              <span className="hidden sm:inline">Enviar</span>
-            </SubmitButton>
-          </form>
-        </div>
+        <LeadChat
+          leadId={lead.id}
+          contactName={lead.contact.name}
+          userName={user.name}
+          simulator={lead.contact.channel === "SIMULATOR"}
+          messages={lead.messages.map((m) => ({
+            id: m.id,
+            author: m.author,
+            authorName:
+              m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
+            body: m.body,
+            time: time(m.createdAt),
+          }))}
+        />
       </Card>
 
       <aside className="space-y-4">
