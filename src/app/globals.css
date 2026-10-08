@@ -19,6 +19,38 @@
   --color-accent-600: #ea580c;
   --color-accent-700: #c2410c;
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  /* Animaciones de carga: brillo que recorre los esqueletos y barra de progreso al navegar. */
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-progress: progress 1.1s ease-in-out infinite;
+  --animate-fade-in: fade-in 200ms ease-out both;
+
+  @keyframes shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  @keyframes progress {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 @layer base {

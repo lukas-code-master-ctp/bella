@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Avatar, Badge, Card, CardHeader, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { LinkPending } from "@/components/link-pending";
 import { createSimulatedLeadAction } from "./actions";
 
 export default async function SimulatorPage() {
@@ -51,7 +52,7 @@ export default async function SimulatorPage() {
                 <li key={l.id}>
                   <Link
                     href={`/leads/${l.id}`}
-                    className="flex min-h-14 items-center gap-3 px-5 py-2.5 text-sm transition-colors duration-150 hover:bg-slate-50"
+                    className="relative flex min-h-14 items-center gap-3 px-5 py-2.5 text-sm transition-colors duration-150 hover:bg-slate-50"
                   >
                     <Avatar name={l.contact.name} />
                     <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{l.contact.name}</span>
@@ -63,6 +64,7 @@ export default async function SimulatorPage() {
                       <Badge tone="danger">Perdido</Badge>
                     )}
                     <ChevronRight aria-hidden className="size-4 text-slate-400" />
+                    <LinkPending />
                   </Link>
                 </li>
               ))}

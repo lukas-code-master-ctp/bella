@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { Bot, BotOff, UserRound } from "lucide-react";
 import { Avatar, Badge, TagPill } from "@/components/ui";
+import { LinkPending } from "@/components/link-pending";
 import { moveLeadAction } from "./actions";
 
 export type BoardLead = {
@@ -93,7 +94,7 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                     setDragging(null);
                     setOver(null);
                   }}
-                  className={`group block cursor-grab rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity] duration-150 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
+                  className={`group relative block cursor-grab overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity] duration-150 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
                     dragging === lead.id ? "opacity-50" : ""
                   }`}
                 >
@@ -124,6 +125,7 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                     <span className="truncate">{lead.assignee ?? "Sin asignar"}</span>
                     <span className="ml-auto shrink-0 text-slate-500">{lead.channel}</span>
                   </div>
+                  <LinkPending />
                 </Link>
               ))}
             </div>
