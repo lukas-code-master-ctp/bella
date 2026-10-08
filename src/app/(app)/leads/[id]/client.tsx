@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { CircleX, FlaskConical, LoaderCircle, Trophy } from "lucide-react";
 import { Button, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -25,7 +26,18 @@ function ContactSubmit() {
 }
 
 export function ContactComposer({ leadId }: { leadId: string }) {
-  const [error, action] = useActionState(sendAsContactAction.bind(null, leadId), null);
+  const router = useRouter();
+  const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
+    try {
+      return await sendAsContactAction(leadId, prev, form);
+    } catch (err) {
+      // La respuesta de la IA puede tardar más que el límite del servidor (o caerse la red):
+      // en vez de romper la página, avisamos y traemos lo que alcanzó a guardarse.
+      console.error(err);
+      router.refresh();
+      return "La asistente no alcanzó a responder. Si no aparece su mensaje, vuelve a escribirle.";
+    }
+  }, null);
   const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
