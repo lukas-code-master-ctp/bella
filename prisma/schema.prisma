@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EXECUTIVE
+}
+
+enum Channel {
+  SIMULATOR
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum LeadStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum MessageAuthor {
+  CONTACT
+  AI
+  USER
+}
+
+enum Actor {
+  AI
+  USER
+  SYSTEM
+}
+
+enum RuleTrigger {
+  STAGE_ENTERED
+  TAG_ADDED
+}
+
+enum AssignStrategy {
+  ROUND_ROBIN
+  LEAST_LOADED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(EXECUTIVE)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  leads    Lead[]           @relation("Assignee")
+  messages Message[]
+  events   LeadEvent[]
+  rules    AssignmentRule[] @relation("RuleExecutives")
+}
+
+/// Etapa del funnel de ventas. `requiresHuman` marca la etapa de atención humana:
+/// al entrar, la IA se pausa y se asigna un ejecutivo.
+model Stage {
+  id            String  @id @default(cuid())
+  name          String  @unique
+  position      Int
+  requiresHuman Boolean @default(false)
+  color         String  @default("#64748b")
+
+  leads Lead[]
+  rules AssignmentRule[]
+}
+
+/// Etiqueta de contacto agrupada por categoría (ej. "Producto" / "Interés").
+model Tag {
+  id       String @id @default(cuid())
+  category String
+  name     String
+  color    String @default("#0ea5e9")
+
+  contacts ContactTag[]
+  rules    AssignmentRule[]
+
+  @@unique([category, name])
+}
+
+model Contact {
+  id         String   @id @default(cuid())
+  name       String
+  phone      String?
+  email      String?
+  channel    Channel
+  externalId String?
+  createdAt  DateTime @default(now())
+
+  tags  ContactTag[]
+  leads Lead[]
+
+  @@unique([channel, externalId])
+}
+
+model ContactTag {
+  contactId String
+  tagId     String
+  addedBy   Actor
+  createdAt DateTime @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+}
+
+/// Un lead (ticket) es una oportunidad de venta de un contacto que avanza por el funnel.
+model Lead {
+  id         String     @id @default(cuid())
+  contactId  String
+  stageId    String
+  status     LeadStatus @default(OPEN)
+  lostReason String?
+  amount     Int?
+  assigneeId String?
+  aiEnabled  Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  closedAt   DateTime?
+
+  contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage      Stage            @relation(fields: [stageId], references: [id])
+  assignee   User?            @relation("Assignee", fields: [assigneeId], references: [id])
+  messages   Message[]
+  events     LeadEvent[]
+  transcript AgentTranscript?
+
+  @@index([stageId])
+  @@index([assigneeId])
+}
+
+model Message {
+  id        String        @id @default(cuid())
+  leadId    String
+  author    MessageAuthor
+  userId    String?
+  body      String
+  createdAt DateTime      @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
+/// Historial de la conversación con Claude tal como se envía a la API (incluye
+/// bloques de herramientas y de razonamiento). Solo se agrega al final, nunca se edita.
+model AgentTranscript {
+  leadId      String   @id
+  messages    Json     @default("[]")
+  /// Último mensaje (Message.createdAt) ya incluido en el historial de la IA.
+  syncedUntil DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model LeadEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String
+  actor     Actor
+  userId    String?
+  reason    String?
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
+/// Regla de asignación automática: cuando ocurre el disparador, se asigna un ejecutivo
+/// de la lista (o de todos los ejecutivos activos si la lista está vacía).
+model AssignmentRule {
+  id                 String         @id @default(cuid())
+  name               String
+  priority           Int            @default(0)
+  active             Boolean        @default(true)
+  trigger            RuleTrigger
+  stageId            String?
+  tagId              String?
+  strategy           AssignStrategy @default(ROUND_ROBIN)
+  /// Si es true, reasigna aunque el lead ya tenga ejecutivo.
+  reassign           Boolean        @default(false)
+  lastAssignedUserId String?
+  createdAt          DateTime       @default(now())
+
+  stage      Stage? @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  tag        Tag?   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  executives User[] @relation("RuleExecutives")
+}
+
+model KnowledgeDoc {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  updatedAt DateTime @updatedAt
+}
+
+model InventoryItem {
+  id         String   @id @default(cuid())
+  rowNumber  Int
+  data       Json
+  searchText String
+  syncedAt   DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
