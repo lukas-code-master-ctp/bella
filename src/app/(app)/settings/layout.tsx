@@ -1,11 +1,13 @@
-import { BookOpen, Bot, Package, Shuffle, SquareKanban, Users } from "lucide-react";
+import { Archive, BookOpen, Bot, ClipboardList, Package, Shuffle, SquareKanban, Users } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 
 const TABS = [
   ["/settings/assistant", "Asistente", <Bot key="i" />],
   ["/settings/funnel", "Funnel y etiquetas", <SquareKanban key="i" />],
+  ["/settings/fields", "Campos del cliente", <ClipboardList key="i" />],
   ["/settings/rules", "Asignación", <Shuffle key="i" />],
+  ["/settings/auto-close", "Cierre automático", <Archive key="i" />],
   ["/settings/knowledge", "Base de conocimiento", <BookOpen key="i" />],
   ["/settings/inventory", "Inventario", <Package key="i" />],
   ["/settings/users", "Usuarios", <Users key="i" />],

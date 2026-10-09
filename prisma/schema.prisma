@@ -44,6 +44,14 @@ enum RuleTrigger {
   TAG_ADDED
 }
 
+/// Tipo de un campo del cliente: define cómo se valida y se muestra el valor.
+enum FieldType {
+  TEXT
+  NUMBER
+  OPTIONS
+  RUT
+}
+
 enum AssignStrategy {
   ROUND_ROBIN
   LEAST_LOADED
@@ -99,8 +107,9 @@ model Contact {
   externalId String?
   createdAt  DateTime @default(now())
 
-  tags  ContactTag[]
-  leads Lead[]
+  tags   ContactTag[]
+  leads  Lead[]
+  fields ContactFieldValue[]
 
   @@unique([channel, externalId])
 }
@@ -115,6 +124,35 @@ model ContactTag {
   tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([contactId, tagId])
+}
+
+/// Campo del cliente que define el admin (ej. RUT, presupuesto, región de interés). La IA lo
+/// completa con set_contact_field a medida que el cliente entrega el dato.
+model CustomField {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  type        FieldType @default(TEXT)
+  /// Valores permitidos cuando el tipo es OPTIONS.
+  options     String[]
+  /// Indicación para la IA: qué guardar y cuándo preguntarlo.
+  description String    @default("")
+  position    Int
+
+  values ContactFieldValue[]
+}
+
+/// Valor de un campo del cliente, ya validado y normalizado según el tipo del campo.
+model ContactFieldValue {
+  contactId String
+  fieldId   String
+  value     String
+  updatedBy Actor
+  updatedAt DateTime @updatedAt
+
+  contact Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  field   CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, fieldId])
 }
 
 /// Un lead (ticket) es una oportunidad de venta de un contacto que avanza por el funnel.

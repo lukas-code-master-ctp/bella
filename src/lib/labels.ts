@@ -1,4 +1,4 @@
-import type { Channel } from "@prisma/client";
+import type { Channel, FieldType } from "@prisma/client";
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   SIMULATOR: "Simulador",
@@ -13,3 +13,10 @@ export type ScoreLevel = "bajo" | "medio" | "alto";
 export function scoreLevel(score: number): ScoreLevel {
   return score >= 70 ? "alto" : score >= 40 ? "medio" : "bajo";
 }
+
+export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
+  TEXT: "Texto",
+  NUMBER: "Número",
+  OPTIONS: "Opciones",
+  RUT: "RUT",
+};

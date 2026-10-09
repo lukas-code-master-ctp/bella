@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { addTagTx, handoffToHumanTx, moveStageTx } from "../domain/leads";
+import { findField, setFieldValueTx } from "../domain/fields";
+import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
 import { searchInventory, syncInventoryIfStale } from "../inventory";
 import { searchKnowledge } from "../knowledge";
 import { normalize } from "../text";
@@ -58,6 +59,20 @@ export const AGENT_TOOLS: Tool[] = [
     "Guarda en el CRM el nombre o el correo del cliente en cuanto te los dé. Deja en blanco " +
       "el campo que no cambia.",
     { name: text("Nombre del cliente, o vacío"), email: text("Correo del cliente, o vacío") },
+  ),
+  tool(
+    "set_contact_field",
+    "Guarda un dato del cliente en uno de los campos del cliente del estado del CRM (por ejemplo " +
+      "RUT, presupuesto o región de interés) en cuanto el cliente lo entregue o lo corrija. Un " +
+      "campo por llamada; puedes hacer varias llamadas en el mismo turno. No inventes ni deduzcas " +
+      "datos que el cliente no dijo.",
+    {
+      field: text("Nombre exacto del campo"),
+      value: text(
+        "Valor tal como lo dijo el cliente. En campos de opciones, una de las opciones; en campos " +
+          "numéricos, un solo monto en pesos (si da un rango, el mayor)",
+      ),
+    },
   ),
   tool(
     "handoff_to_human",
@@ -147,6 +162,26 @@ export async function executeTool(
         }),
       ]);
       return { content: "Datos del contacto guardados." };
+    }
+    case "set_contact_field": {
+      const fields = await db.customField.findMany({ orderBy: { position: "asc" } });
+      const field = findField(fields, str("field"));
+      if (!field) {
+        return {
+          isError: true,
+          content: fields.length
+            ? `Campo desconocido. Campos válidos: ${fields.map((f) => f.name).join(", ")}`
+            : "No hay campos del cliente configurados.",
+        };
+      }
+      if (!str("value")) return { isError: true, content: "Indica el valor del campo." };
+      try {
+        const saved = await db.$transaction((tx) => setFieldValueTx(tx, leadId, field, str("value"), { actor: "AI" }));
+        return { content: saved === undefined ? `"${field.name}" ya tenía ese valor.` : `"${field.name}" guardado.` };
+      } catch (err) {
+        if (err instanceof DomainError) return { isError: true, content: err.message };
+        throw err;
+      }
     }
     case "handoff_to_human": {
       const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason")));

@@ -103,6 +103,30 @@ describe("asistente IA (Anthropic)", () => {
     ]);
   });
 
+  it("ve los campos del cliente en el estado del CRM y los completa", async () => {
+    await seedFunnel();
+    await db.customField.create({
+      data: { name: "Presupuesto", type: "NUMBER", position: 0, description: "Monto total en pesos" },
+    });
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Tengo unos 35 millones");
+
+    const { client, requests } = fakeAnthropic([
+      {
+        stop_reason: "tool_use",
+        content: [toolUse("t1", "set_contact_field", { field: "Presupuesto", value: "35 millones" })],
+      },
+      { stop_reason: "end_turn", content: [text("¡Perfecto!")] },
+    ]);
+    await runAgent(lead.id, client);
+
+    const firstTurn = requests[0].messages[0].content as { text: string }[];
+    expect(firstTurn[0].text).toContain("- Presupuesto = sin dato (número; Monto total en pesos)");
+    expect((await db.contactFieldValue.findFirstOrThrow()).value).toBe("35000000");
+    const run = await db.agentRun.findFirstOrThrow();
+    expect(run.steps).toContainEqual(expect.objectContaining({ type: "tool", name: "set_contact_field" }));
+  });
+
   it("solo agrega al historial: el segundo turno reenvía el primero intacto", async () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });

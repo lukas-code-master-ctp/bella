@@ -8,6 +8,7 @@ import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
+import { setContactFields } from "@/lib/domain/fields";
 import {
   addTag,
   closeLead,
@@ -101,6 +102,21 @@ export async function removeTagAction(leadId: string, tagId: string) {
   const { by } = await authorize(leadId);
   await removeTag(leadId, tagId, by);
   done(leadId);
+}
+
+/** Campos del cliente editados desde la ficha del lead. */
+export async function saveFieldsAction(leadId: string, _prev: string | null, form: FormData) {
+  const { by } = await authorize(leadId);
+  const values: Record<string, string> = {};
+  for (const [key, value] of form.entries()) if (!key.startsWith("$")) values[key] = String(value);
+  try {
+    await setContactFields(leadId, values, by);
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  done(leadId);
+  return "Guardado.";
 }
 
 export async function closeLeadAction(leadId: string, _prev: string | null, form: FormData) {

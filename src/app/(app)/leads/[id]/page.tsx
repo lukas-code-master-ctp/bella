@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, BotOff, CircleX, RotateCcw, Sparkles, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { displayFieldValue } from "@/lib/domain/fields";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -17,6 +18,7 @@ import {
   toggleAiAction,
 } from "./actions";
 import { CloseLeadForm, LeadChat, RefreshInsightsForm } from "./client";
+import { LeadFieldsForm } from "./fields-form";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -24,6 +26,7 @@ const EVENT_LABEL: Record<string, string> = {
   TAG_ADDED: "Etiqueta agregada",
   TAG_REMOVED: "Etiqueta quitada",
   CONTACT_UPDATED: "Datos del contacto",
+  FIELD_UPDATED: "Campo del cliente",
   ASSIGNED: "Asignado",
   UNASSIGNED: "Sin asignar",
   HANDOFF: "Derivado a humano",
@@ -37,6 +40,7 @@ const EVENT_LABEL: Record<string, string> = {
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 
 function describe(data: Record<string, unknown>) {
+  if (data.field) return `${data.field}: ${data.value ?? "borrado"}`;
   if (data.from && data.to) return `${data.from} → ${data.to}`;
   if (data.tag) return String(data.tag);
   if (data.name || data.email) return [data.name, data.email].filter(Boolean).join(" · ");
@@ -63,10 +67,14 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives] = await Promise.all([
+  const [stages, tags, executives, fields] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
+    db.customField.findMany({
+      orderBy: { position: "asc" },
+      include: { values: { where: { contactId: lead.contactId } } },
+    }),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
@@ -233,6 +241,33 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </select>
               <SubmitButton variant="secondary">Agregar</SubmitButton>
             </form>
+          </Section>
+
+          <Section title="Datos del cliente">
+            {fields.length ? (
+              <LeadFieldsForm
+                leadId={lead.id}
+                fields={fields.map((f) => ({
+                  id: f.id,
+                  name: f.name,
+                  options: f.type === "OPTIONS" ? f.options : null,
+                  value: f.values[0] ? displayFieldValue(f, f.values[0].value) : "",
+                  byAi: f.values[0]?.updatedBy === "AI",
+                }))}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">
+                Sin campos configurados.
+                {user.role === "ADMIN" && (
+                  <>
+                    {" "}
+                    <Link href="/settings/fields" className="font-medium text-brand-700 hover:underline">
+                      Crear campos
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
           </Section>
 
           <Section title="Resultado">
