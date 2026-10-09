@@ -10,6 +10,7 @@ import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { saveChannelSettings } from "@/lib/domain/channels";
+import { saveLegalSettings } from "@/lib/domain/privacy";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
 
@@ -208,6 +209,13 @@ export async function saveChannelsAction(form: FormData) {
     facebookAi: form.get("facebookAi") === "on",
   });
   revalidatePath("/settings/channels");
+}
+
+export async function saveLegalAction(form: FormData) {
+  await requireAdmin();
+  await saveLegalSettings({ legalName: str(form, "legalName"), contactEmail: str(form, "contactEmail") });
+  revalidatePath("/settings/channels");
+  revalidatePath("/privacidad");
 }
 
 // Cierre automático

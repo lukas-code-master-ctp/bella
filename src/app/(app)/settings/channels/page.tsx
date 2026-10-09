@@ -3,9 +3,10 @@ import { CircleCheck, CircleDashed } from "lucide-react";
 import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
 import { getChannelSettings } from "@/lib/domain/channels";
-import { Badge, Card, CardHeader, PageHeader } from "@/components/ui";
+import { getLegalSettings } from "@/lib/domain/privacy";
+import { Badge, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { saveChannelsAction } from "../actions";
+import { saveChannelsAction, saveLegalAction } from "../actions";
 
 const ENV_HELP: Record<string, string> = {
   WHATSAPP_TOKEN: "Token permanente de un usuario del sistema (Business Manager → Usuarios del sistema).",
@@ -51,11 +52,12 @@ function Webhook({ url, where, fields }: { url: string; where: string; fields: s
 }
 
 export default async function ChannelsSettingsPage() {
-  const s = await getChannelSettings();
+  const [s, legal] = await Promise.all([getChannelSettings(), getLegalSettings()]);
   const waMissing = missingWhatsAppEnv();
   const metaMissing = missingMessengerEnv();
   const h = await headers();
-  const base = `https://${h.get("x-forwarded-host") ?? h.get("host")}/api/webhooks`;
+  const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
+  const base = `${origin}/api/webhooks`;
 
   return (
     <>
@@ -90,6 +92,37 @@ export default async function ChannelsSettingsPage() {
             de la app los permisos pages_messaging, instagram_manage_messages, instagram_manage_comments y
             pages_manage_engagement. Los comentarios se responden en la pestaña Comentarios.
           </p>
+        </Card>
+
+        <Card className="p-5">
+          <CardHeader
+            title="Revisión de la app de Meta"
+            description="Meta pide una política de privacidad pública y una forma de eliminar los datos antes de aprobar Instagram y Messenger. Bella las publica con estos datos."
+          />
+          <dl className="space-y-3 text-sm">
+            {[
+              ["Política de privacidad (Configuración de la app → Básica)", `${origin}/privacidad`],
+              ["URL de devolución de llamada de eliminación de datos", `${base}/meta/data-deletion`],
+            ].map(([label, url]) => (
+              <div key={url} className="rounded-lg bg-slate-50 p-3">
+                <dt className="font-medium text-slate-800">{label}</dt>
+                <dd>
+                  <code className="mt-1 block break-all font-mono text-[13px] text-brand-700">{url}</code>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <form action={saveLegalAction} className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field label="Empresa responsable de los datos" hint="Razón social o nombre comercial.">
+              <input name="legalName" required defaultValue={legal.legalName} className={inputClass} />
+            </Field>
+            <Field label="Correo para temas de privacidad" hint="Aparece en la política para pedir acceso o borrado.">
+              <input name="contactEmail" type="email" required defaultValue={legal.contactEmail} className={inputClass} />
+            </Field>
+            <div>
+              <SubmitButton>Guardar</SubmitButton>
+            </div>
+          </form>
         </Card>
 
         <Card className="p-5">
