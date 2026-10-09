@@ -1,5 +1,8 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Los include se cargan con JOIN en una sola consulta (por defecto con esta opción) en vez de
+  // una consulta por relación: la ficha del lead pasa de 11 idas y vueltas a la base a 1.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {

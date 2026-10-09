@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
@@ -24,13 +25,14 @@ export async function logout() {
   jar.delete(SESSION_COOKIE);
 }
 
-export async function currentUser(): Promise<User | null> {
+// `cache`: el layout y la página piden el usuario en el mismo render; así se consulta una sola vez.
+export const currentUser = cache(async function currentUser(): Promise<User | null> {
   const jar = await cookies();
   const userId = await verifySession(jar.get(SESSION_COOKIE)?.value);
   if (!userId) return null;
   const user = await db.user.findUnique({ where: { id: userId } });
   return user?.active ? user : null;
-}
+});
 
 export async function requireUser(): Promise<User> {
   const user = await currentUser();
