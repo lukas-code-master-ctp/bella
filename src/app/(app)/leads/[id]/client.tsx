@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, BellRing, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Mic, RefreshCw, Send, Trophy, X } from "lucide-react";
+import { Activity, BellRing, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
+import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 
 export type ChatMessage = {
   id: string;
@@ -20,9 +21,6 @@ export type ChatMessage = {
   time: string;
   pending?: boolean;
 };
-
-/** Igual que AUDIO_MAX_BYTES en el servidor (src/lib/media.ts, que no se puede importar aquí). */
-const AUDIO_MAX_MB = 4;
 
 /** Enter envía el formulario; Shift+Enter agrega una línea. */
 function submitOnEnter(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) {
@@ -88,8 +86,9 @@ export function LeadChat({
         )}
         <UserComposer
           leadId={leadId}
-          onSend={(body) => {
-            addPending(pending("USER", body));
+          onSend={(body, audioUrl) => {
+            if (audioUrl) addPending(pending("USER", "", { url: audioUrl, transcript: null }));
+            if (body) addPending(pending("USER", body));
           }}
         />
       </div>
@@ -137,7 +136,7 @@ function Bubble({ message: m, onInspect }: { message: ChatMessage; onInspect?: (
   );
 }
 
-/** Nota de voz del cliente: reproductor y lo que la IA entendió. */
+/** Nota de voz (del cliente o del ejecutivo): reproductor y su transcripción. */
 function VoiceNote({ audio, pending }: { audio: NonNullable<ChatMessage["audio"]>; pending?: boolean }) {
   return (
     <span className="block space-y-1.5">
@@ -161,8 +160,9 @@ function VoiceNote({ audio, pending }: { audio: NonNullable<ChatMessage["audio"]
   );
 }
 
-function ContactSubmit() {
-  const { pending } = useFormStatus();
+function ContactSubmit({ busy }: { busy: boolean }) {
+  const { pending: submitting } = useFormStatus();
+  const pending = submitting || busy;
   return (
     <>
       {pending && (
@@ -187,44 +187,40 @@ function ContactComposer({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [audioName, setAudioName] = useState<string | null>(null);
+  const [sendingAudio, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const clearAudio = () => {
-    if (fileRef.current) fileRef.current.value = "";
-    setAudioName(null);
+
+  const send = async (fd: FormData) => {
+    const body = String(fd.get("body") ?? "").trim();
+    const audio = fd.get("audio");
+    const hasAudio = audio instanceof File && audio.size > 0;
+    if (!body && !hasAudio) return;
+    onSend(body, hasAudio ? URL.createObjectURL(audio) : null);
+    formRef.current?.reset();
+    setError(null);
+    try {
+      setError(await sendAsContactAction(leadId, null, fd));
+    } catch (err) {
+      // La respuesta de la IA puede tardar más que el límite del servidor (o caerse la red):
+      // en vez de romper la página, avisamos y traemos lo que alcanzó a guardarse.
+      console.error(err);
+      router.refresh();
+      setError("La asistente no alcanzó a responder. Si no aparece su mensaje, vuelve a escribirle.");
+    }
   };
+
+  // La nota de voz se manda apenas se termina de grabar, junto con el texto que haya escrito.
+  const recorder = useVoiceRecorder((file) => {
+    const fd = formRef.current ? new FormData(formRef.current) : new FormData();
+    fd.set("audio", file);
+    startTransition(() => send(fd));
+  });
+
   return (
-    <form
-      ref={formRef}
-      action={async (fd) => {
-        const body = String(fd.get("body") ?? "").trim();
-        const audio = fd.get("audio");
-        const hasAudio = audio instanceof File && audio.size > 0;
-        if (!body && !hasAudio) return;
-        if (hasAudio && audio.size > AUDIO_MAX_MB * 1024 * 1024) {
-          setError(`El audio pesa más de ${AUDIO_MAX_MB} MB.`);
-          return;
-        }
-        onSend(body, hasAudio ? URL.createObjectURL(audio) : null);
-        formRef.current?.reset();
-        setAudioName(null);
-        setError(null);
-        try {
-          setError(await sendAsContactAction(leadId, null, fd));
-        } catch (err) {
-          // La respuesta de la IA puede tardar más que el límite del servidor (o caerse la red):
-          // en vez de romper la página, avisamos y traemos lo que alcanzó a guardarse.
-          console.error(err);
-          router.refresh();
-          setError("La asistente no alcanzó a responder. Si no aparece su mensaje, vuelve a escribirle.");
-        }
-      }}
-      className="space-y-2 rounded-xl border border-dashed border-brand-300 bg-brand-50/60 p-3"
-    >
+    <form ref={formRef} action={send} className="space-y-2 rounded-xl border border-dashed border-brand-300 bg-brand-50/60 p-3">
       <label htmlFor="as-contact" className="flex items-center gap-1.5 text-xs font-semibold text-brand-800">
         <FlaskConical aria-hidden className="size-3.5" />
-        Simulador: escribe o manda una nota de voz como si fueras el cliente
+        Simulador: escribe o graba una nota de voz como si fueras el cliente
       </label>
       <textarea
         id="as-contact"
@@ -234,60 +230,78 @@ function ContactComposer({
         onKeyDown={submitOnEnter}
         className={inputClass}
       />
-      <input
-        ref={fileRef}
-        id="as-contact-audio"
-        type="file"
-        name="audio"
-        accept="audio/*,.ogg,.opus,.m4a"
-        hidden
-        onChange={(e) => setAudioName(e.currentTarget.files?.[0]?.name ?? null)}
-      />
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        {audioName ? (
-          <span className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-xs">
-            <Mic aria-hidden className="size-3.5 shrink-0 text-brand-700" />
-            <span className="truncate">{audioName}</span>
-            <button type="button" onClick={clearAudio} aria-label="Quitar audio" className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900">
-              <X aria-hidden className="size-3.5" />
-            </button>
+      {recorder.recording ? (
+        <RecordingBar recorder={recorder} />
+      ) : (
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <span className="mr-auto">
+            <MicButton recorder={recorder} disabled={sendingAudio} label="Grabar nota de voz como cliente" />
           </span>
-        ) : (
-          <Button type="button" variant="ghost" size="sm" className="mr-auto" onClick={() => fileRef.current?.click()}>
-            <Mic aria-hidden />
-            Adjuntar nota de voz
-          </Button>
-        )}
-        <ContactSubmit />
-      </div>
-      {error && <FormMessage>{error}</FormMessage>}
+          <ContactSubmit busy={sendingAudio} />
+        </div>
+      )}
+      {(error ?? recorder.error) && <FormMessage>{error ?? recorder.error}</FormMessage>}
     </form>
   );
 }
 
-function UserComposer({ leadId, onSend }: { leadId: string; onSend: (body: string) => void }) {
+function UserComposer({
+  leadId,
+  onSend,
+}: {
+  leadId: string;
+  onSend: (body: string, audioUrl: string | null) => void;
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [sendingAudio, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+
+  const send = async (fd: FormData) => {
+    const body = String(fd.get("body") ?? "").trim();
+    const audio = fd.get("audio");
+    const hasAudio = audio instanceof File && audio.size > 0;
+    if (!body && !hasAudio) return;
+    onSend(body, hasAudio ? URL.createObjectURL(audio) : null);
+    if (!hasAudio) formRef.current?.reset();
+    setError(null);
+    try {
+      setError(await sendAsUserAction(leadId, fd));
+    } catch (err) {
+      console.error(err);
+      router.refresh();
+      setError("No se pudo enviar. Revisa tu conexión e intenta de nuevo.");
+    }
+  };
+
+  // Como en WhatsApp, la nota de voz se manda sola apenas se termina de grabar.
+  const recorder = useVoiceRecorder((file) => {
+    const fd = new FormData();
+    fd.set("audio", file);
+    startTransition(() => send(fd));
+  });
+
   return (
-    <form
-      ref={formRef}
-      action={async (fd) => {
-        const body = String(fd.get("body") ?? "").trim();
-        if (!body) return;
-        onSend(body);
-        formRef.current?.reset();
-        await sendAsUserAction(leadId, fd);
-      }}
-      className="flex gap-2"
-    >
-      <label htmlFor="reply" className="sr-only">
-        Responder como ejecutivo
-      </label>
-      <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
-      <SubmitButton pendingText="Enviando…">
-        <Send aria-hidden />
-        <span className="hidden sm:inline">Enviar</span>
-      </SubmitButton>
-    </form>
+    <div className="space-y-2">
+      <form ref={formRef} action={send} className="flex gap-2">
+        {recorder.recording ? (
+          <RecordingBar recorder={recorder} />
+        ) : (
+          <>
+            <label htmlFor="reply" className="sr-only">
+              Responder como ejecutivo
+            </label>
+            <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
+            <MicButton recorder={recorder} disabled={sendingAudio} label="Grabar nota de voz" />
+            <SubmitButton pendingText="Enviando…">
+              <Send aria-hidden />
+              <span className="hidden sm:inline">Enviar</span>
+            </SubmitButton>
+          </>
+        )}
+      </form>
+      {(error ?? recorder.error) && <FormMessage>{error ?? recorder.error}</FormMessage>}
+    </div>
   );
 }
 

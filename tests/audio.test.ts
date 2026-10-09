@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createLead, DomainError } from "@/lib/domain/leads";
-import { receiveContactAudio } from "@/lib/domain/messages";
+import { receiveContactAudio, sendUserAudio } from "@/lib/domain/messages";
 import { setSetting } from "@/lib/settings";
 import { runAgent } from "@/lib/ai/agent";
 import type { AiConfig } from "@/lib/ai/config";
@@ -86,6 +86,32 @@ describe("notas de voz del cliente", () => {
       receiveContactAudio(lead.id, { ...voiceNote(), mimeType: "application/pdf", fileName: "a.pdf" }, deps),
     ).rejects.toThrow(DomainError);
     expect(await db.message.count()).toBe(0);
+  });
+});
+
+describe("notas de voz del ejecutivo", () => {
+  beforeEach(() => setSetting<AiConfig>("ai", { provider: "openrouter", model: "modelo-x", effort: "medium" }));
+
+  it("guarda la nota de voz grabada con su autor y la IA la lee transcrita", async () => {
+    await seedFunnel();
+    const user = await db.user.create({ data: { email: "eje@test.cl", name: "Tiare", passwordHash: "x" } });
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    const file = { bytes: new Uint8Array([1, 2]), mimeType: "audio/mp4", fileName: "nota-de-voz.m4a" };
+    await sendUserAudio(lead.id, user.id, file, { store, transcribe: async () => "Te llamo a las cinco" });
+
+    const saved = await db.message.findFirstOrThrow({ where: { leadId: lead.id } });
+    expect(saved).toMatchObject({
+      author: "USER",
+      userId: user.id,
+      body: "",
+      mediaUrl: `https://blob.test/leads/${lead.id}/nota-de-voz.m4a`,
+      transcript: "Te llamo a las cinco",
+    });
+
+    await receiveContactAudio(lead.id, voiceNote(), { store, transcribe: async () => "Perfecto, gracias" });
+    const agent = fakeChat("¡Quedamos atentos!");
+    await runAgent(lead.id, { openrouter: agent.client });
+    expect(JSON.stringify(agent.requests[0].messages)).toContain("Ejecutivo (Tiare), nota de voz: Te llamo a las cinco");
   });
 });
 

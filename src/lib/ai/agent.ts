@@ -126,6 +126,14 @@ function contactText(m: Message) {
     : `Cliente: [envió una nota de voz que no se pudo transcribir; pídele que la escriba]${caption}`;
 }
 
+/** Mensaje de un ejecutivo tal como lo ve la IA (también puede ser una nota de voz). */
+function userText(m: Message & { user: { name: string } | null }) {
+  const who = `Ejecutivo (${m.user?.name ?? "equipo"})`;
+  if (!m.mediaUrl) return `${who}: ${m.body}`;
+  const caption = m.body ? `\n${m.body}` : "";
+  return `${who}, nota de voz: ${m.transcript ?? "[no se pudo transcribir]"}${caption}`;
+}
+
 function formatPending(messages: (Message & { user: { name: string } | null })[], assistantName: string) {
   return messages
     .map((m) =>
@@ -133,7 +141,7 @@ function formatPending(messages: (Message & { user: { name: string } | null })[]
         ? contactText(m)
         : m.author === "AI"
           ? `${assistantName} (tú): ${m.body}`
-          : `Ejecutivo (${m.user?.name ?? "equipo"}): ${m.body}`,
+          : userText(m),
     )
     .join("\n");
 }
