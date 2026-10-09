@@ -55,6 +55,18 @@ export async function aiChannels(): Promise<Channel[]> {
   return ["SIMULATOR", ...(Object.keys(AI_KEY) as (keyof typeof AI_KEY)[]).filter((c) => s[AI_KEY[c]])];
 }
 
+/** Leads abiertos por canal de origen del contacto (para la página de Canales). */
+export async function openLeadsByChannel(): Promise<Record<Channel, number>> {
+  const counts: Record<Channel, number> = { SIMULATOR: 0, WHATSAPP: 0, INSTAGRAM: 0, FACEBOOK: 0 };
+  const rows = await db.contact.groupBy({
+    by: ["channel"],
+    where: { leads: { some: { status: "OPEN" } } },
+    _count: { _all: true },
+  });
+  for (const r of rows) counts[r.channel] = r._count._all;
+  return counts;
+}
+
 // --- Entrantes ---------------------------------------------------------------------------
 
 export type InboundDeps = { api?: WhatsAppApi; messenger?: MessengerApi; media?: MediaDeps; ads?: AdsApi };
