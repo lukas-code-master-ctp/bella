@@ -6,6 +6,7 @@ import { hashPassword, requireAdmin } from "@/lib/auth";
 import type { AiConfig, AiEffort, AiProvider } from "@/lib/ai/config";
 import { listOpenRouterModels } from "@/lib/ai/models";
 import { db } from "@/lib/db";
+import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
 
@@ -183,6 +184,20 @@ export async function saveInventoryAction(_prev: string | null, form: FormData):
     revalidatePath("/settings/inventory");
     return e instanceof Error ? e.message : "No se pudo sincronizar.";
   }
+}
+
+// Cierre automático
+
+export async function saveAutoCloseAction(form: FormData) {
+  await requireAdmin();
+  const days = Math.round(Number(form.get("days")));
+  await setSetting<AutoCloseSettings>("autoClose", {
+    enabled: form.get("enabled") === "on",
+    days: Number.isFinite(days) ? Math.min(Math.max(days, 1), 365) : 7,
+    reason: str(form, "reason") || "Sin respuesta del cliente",
+    lostStageIds: form.getAll("lostStageIds").map(String),
+  });
+  revalidatePath("/settings/auto-close");
 }
 
 // Usuarios
