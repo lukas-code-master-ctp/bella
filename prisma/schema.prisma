@@ -427,3 +427,16 @@ model SocialComment {
 
   @@index([doneAt, createdAt])
 }
+
+/// Pedido de una persona (vía Meta) para borrar sus datos. El código se le muestra para que
+/// pueda consultar el estado en /eliminacion-de-datos.
+model DataDeletionRequest {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  /// Id de la persona en Meta (app-scoped) que pidió el borrado.
+  externalUserId String
+  /// Contactos y comentarios borrados.
+  contacts       Int      @default(0)
+  comments       Int      @default(0)
+  createdAt      DateTime @default(now())
+}

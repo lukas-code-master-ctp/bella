@@ -142,6 +142,16 @@ Hasta que Meta apruebe `pages_messaging`, `instagram_manage_messages`, `instagra
 y `pages_manage_engagement` en la revisión de la app, solo funciona con personas que tengan un rol
 en la app.
 
+## Revisión de la app de Meta
+
+Bella publica lo que Meta pide para revisar la app: la política de privacidad en `/privacidad` y
+las instrucciones de borrado en `/eliminacion-de-datos` (ambas públicas). En la app de Meta,
+Configuración → Básica, pega la URL de la política y, como "URL de devolución de llamada de
+eliminación de datos", `https://<tu-dominio>/api/webhooks/meta/data-deletion`: cuando alguien pide
+borrar sus datos, Bella elimina sus contactos de Instagram o Facebook (con leads y conversaciones)
+y sus comentarios, y le entrega un código para consultar el estado. La empresa responsable y el
+correo de contacto se editan en Configuración → Canales.
+
 ## Cómo está construido
 
 - Next.js 15 (App Router, server actions) + TypeScript + Tailwind.
