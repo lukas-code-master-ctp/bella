@@ -11,6 +11,7 @@ import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/d
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
 import { saveChannelSettings } from "@/lib/domain/channels";
+import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { saveLegalSettings } from "@/lib/domain/privacy";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
@@ -310,4 +311,24 @@ export async function saveAttributionAction(form: FormData) {
     defaultText: str(form, "defaultText") || DEFAULT_ATTRIBUTION.defaultText,
   });
   revalidatePath("/settings/attribution");
+}
+
+// Píxel de Meta (API de Conversiones)
+
+export async function savePixelAction(form: FormData) {
+  await requireAdmin();
+  await savePixelSettings({
+    enabled: form.get("enabled") === "on",
+    datasetId: str(form, "datasetId"),
+    qualifiedStageId: str(form, "qualifiedStageId"),
+    testEventCode: str(form, "testEventCode"),
+  });
+  revalidatePath("/settings/pixel");
+}
+
+export async function retryConversionsAction() {
+  await requireAdmin();
+  await db.conversionEvent.updateMany({ where: { status: "FAILED" }, data: { attempts: 0 } });
+  await deliverPendingConversions();
+  revalidatePath("/settings/pixel");
 }

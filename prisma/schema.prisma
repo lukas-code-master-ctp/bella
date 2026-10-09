@@ -206,6 +206,7 @@ model Lead {
   tasks         Task[]
   notifications Notification[]
   source        LeadSource?
+  conversions   ConversionEvent[]
 
   @@index([stageId])
   @@index([assigneeId])
@@ -490,4 +491,26 @@ model SourceLink {
   leadId      String?
 
   @@index([createdAt])
+}
+
+/// Evento para la API de Conversiones de Meta (ver src/lib/domain/conversions.ts): el lead llegó a
+/// la etapa de "lead calificado" o se ganó. Uno por lead y tipo; se reintenta si Meta falla.
+model ConversionEvent {
+  id        String    @id @default(cuid())
+  leadId    String
+  /// QUALIFIED (lead calificado) o PURCHASE (venta ganada).
+  kind      String
+  /// Monto de la venta (CLP), si se conoce.
+  value     Int?
+  /// PENDING, SENT, FAILED (se reintenta) o SKIPPED (no hay datos para que Meta reconozca al cliente).
+  status    String    @default("PENDING")
+  error     String?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, kind])
+  @@index([status, createdAt])
 }
