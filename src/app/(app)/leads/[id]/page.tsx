@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, RotateCcw, Sparkles, Trophy } from "lucide-react";
+import { ArrowLeft, Bot, BotOff, CircleX, ListTodo, RotateCcw, Sparkles, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
 import { CHANNEL_LABEL } from "@/lib/labels";
+import { startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -20,6 +21,8 @@ import {
 } from "./actions";
 import { CloseLeadForm, LeadChat, RefreshInsightsForm } from "./client";
 import { LeadFieldsForm } from "./fields-form";
+import { TaskForm } from "../../tasks/task-form";
+import { TaskItem } from "../../tasks/task-item";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -36,6 +39,10 @@ const EVENT_LABEL: Record<string, string> = {
   WON: "Ganado",
   LOST: "Perdido",
   REOPENED: "Reabierto",
+  TASK_CREATED: "Tarea creada:",
+  TASK_DONE: "Tarea cumplida:",
+  TASK_REOPENED: "Tarea pendiente otra vez:",
+  TASK_DELETED: "Tarea eliminada:",
 };
 
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
@@ -45,6 +52,7 @@ function describe(data: Record<string, unknown>) {
   if (data.from && data.to) return `${data.from} → ${data.to}`;
   if (data.tag) return String(data.tag);
   if (data.name || data.email) return [data.name, data.email].filter(Boolean).join(" · ");
+  if (data.title) return String(data.title);
   if (data.assigneeName) return String(data.assigneeName);
   if (typeof data.amount === "number") return `$${data.amount.toLocaleString("es-CL")}`;
   return "";
@@ -64,6 +72,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       assignee: true,
       messages: { include: { user: true }, orderBy: { createdAt: "asc" } },
       events: { include: { user: true }, orderBy: { createdAt: "desc" } },
+      tasks: { include: { assignee: true }, orderBy: [{ completedAt: { sort: "desc", nulls: "first" } }, { dueAt: "asc" }] },
     },
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
@@ -80,6 +89,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
+  const now = new Date();
+  // Mañana a las 10:00 (Chile) como vencimiento sugerido.
+  const defaultDue = toLocalInput(new Date(startOfLocalDay(now, 1).getTime() + 10 * 3_600_000));
+  const pendingTasks = lead.tasks.filter((t) => !t.completedAt);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -293,6 +306,34 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </div>
             )}
           </Section>
+        </Card>
+
+        <Card className="p-4">
+          <h2 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <ListTodo aria-hidden className="size-4" />
+            Tareas
+            {pendingTasks.length > 0 && <span className="normal-case tracking-normal text-slate-500">· {pendingTasks.length} pendientes</span>}
+          </h2>
+          {lead.tasks.length === 0 ? (
+            <p className="mb-3 text-sm text-slate-500">Sin tareas.</p>
+          ) : (
+            <ul className="mb-3 max-h-80 divide-y divide-slate-100 overflow-y-auto">
+              {lead.tasks.map((t) => (
+                <TaskItem
+                  key={t.id}
+                  task={t}
+                  now={now}
+                  assigneeName={t.assigneeId !== lead.assigneeId ? (t.assignee?.name ?? null) : undefined}
+                />
+              ))}
+            </ul>
+          )}
+          <TaskForm
+            leadId={lead.id}
+            defaultDue={defaultDue}
+            executives={user.role === "ADMIN" ? executives.map((e) => ({ id: e.id, name: e.name })) : undefined}
+            defaultAssigneeId={lead.assigneeId}
+          />
         </Card>
 
         <Card className="p-4">

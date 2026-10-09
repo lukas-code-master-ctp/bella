@@ -5,7 +5,7 @@ import type { Preset } from "../domain/presets";
  * Vambe ("Asistente2.0", V3): instrucciones, rutas, embudo, etiquetas y base de conocimiento.
  * Los textos son los de Vambe, adaptados a Bella: "Proyectos Vambe.xlsx" pasa a ser el
  * inventario (search_inventory), las funciones de Vambe pasan a las herramientas de Bella,
- * las "tareas" para el ejecutivo van en el motivo de la derivación, y Bella no envía imágenes.
+ * las "tareas" para el ejecutivo se crean con create_task, y Bella no envía imágenes.
  */
 
 const PERSONALIDAD = `Eres Valentina, asesora comercial de Compra Tu Parcela, una inmobiliaria especializada en venta de parcelas con más de 10 años de trayectoria.
@@ -60,7 +60,7 @@ const FUENTES = `- El inventario (search_inventory) es la planilla "Proyectos Va
 
 const HERRAMIENTAS = `Las rutas de Vambe se traducen así a tus herramientas:
 - "Mover a [etapa]": usa move_stage con el nombre exacto de la etapa. "Mover a Asistencia Humana" es handoff_to_human.
-- "Crear una tarea para el ejecutivo": no existe una herramienta aparte. Escribe ese resumen en el campo reason de move_stage o handoff_to_human; el ejecutivo lo ve en el historial del lead.
+- "Crear una tarea para el ejecutivo": usa create_task, con un título que diga qué hacer, el vencimiento y en notes el resumen (datos del cliente y lo acordado). Si además mueves o derivas el lead, deja también un resumen breve en reason.
 - Nombre y correo del cliente: guárdalos con update_contact apenas te los dé. El teléfono ya viene en el estado del CRM cuando el cliente escribe por WhatsApp.
 - RUT, presupuesto, región de interés, topografía preferida y residencia en Chile: son los campos del cliente del estado del CRM. Guárdalos con set_contact_field apenas el cliente los mencione, aunque no se los hayas preguntado. El plazo, el uso y la forma de pago siguen siendo etiquetas.
 - Etiquetas: usa tag_contact con las categorías del catálogo (Estado, Interés, Plazo, Uso, Forma de pago, Proyecto, Origen). Dentro de una categoría solo queda una etiqueta.
@@ -336,7 +336,7 @@ Sitio web: https://compratuparcela.cl`;
 
 export const COMPRA_TU_PARCELA: Preset = {
   id: "compra-tu-parcela",
-  version: 2,
+  version: 3,
   assistant: {
     assistantName: "Valentina",
     companyName: "Compra Tu Parcela",

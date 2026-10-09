@@ -66,10 +66,12 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  leads    Lead[]           @relation("Assignee")
-  messages Message[]
-  events   LeadEvent[]
-  rules    AssignmentRule[] @relation("RuleExecutives")
+  leads        Lead[]           @relation("Assignee")
+  messages     Message[]
+  events       LeadEvent[]
+  rules        AssignmentRule[] @relation("RuleExecutives")
+  tasks        Task[]           @relation("TaskAssignee")
+  createdTasks Task[]           @relation("TaskCreator")
 
   notifications     Notification[]
   pushSubscriptions PushSubscription[]
@@ -180,13 +182,14 @@ model Lead {
   /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
   insightsAt  DateTime?
 
-  contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  stage      Stage            @relation(fields: [stageId], references: [id])
-  assignee   User?            @relation("Assignee", fields: [assigneeId], references: [id])
-  messages   Message[]
-  events     LeadEvent[]
-  transcript AgentTranscript?
-  agentRuns  AgentRun[]
+  contact       Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage         Stage            @relation(fields: [stageId], references: [id])
+  assignee      User?            @relation("Assignee", fields: [assigneeId], references: [id])
+  messages      Message[]
+  events        LeadEvent[]
+  transcript    AgentTranscript?
+  agentRuns     AgentRun[]
+  tasks         Task[]
   notifications Notification[]
 
   @@index([stageId])
@@ -270,6 +273,28 @@ model LeadEvent {
   user User? @relation(fields: [userId], references: [id])
 
   @@index([leadId, createdAt])
+}
+
+/// Tarea con plazo sobre un lead, para un ejecutivo. La crea un ejecutivo a mano o la IA
+/// (herramienta create_task). Si el lead cambia de ejecutivo, sus tareas pendientes lo siguen.
+model Task {
+  id          String    @id @default(cuid())
+  leadId      String
+  title       String
+  notes       String?
+  dueAt       DateTime
+  assigneeId  String?
+  createdBy   Actor
+  createdById String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  lead     Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignee User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  creator  User? @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, completedAt, dueAt])
+  @@index([leadId])
 }
 
 /// Regla de asignación automática: cuando ocurre el disparador, se asigna un ejecutivo

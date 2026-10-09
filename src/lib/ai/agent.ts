@@ -1,6 +1,7 @@
 import type { Message } from "@prisma/client";
 import { db } from "../db";
 import { fieldsForCrmState } from "../domain/fields";
+import { formatLocal, toLocalInput } from "../dates";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
@@ -41,6 +42,9 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "- Mantén el CRM al día mientras conversas: mueve el lead de etapa cuando avance en el proceso " +
       "y etiqueta su producto de interés y nivel de interés en cuanto lo sepas. Cuando el cliente " +
       "entregue un dato que corresponde a un campo del cliente, guárdalo con set_contact_field.",
+    "- Cuando una persona del equipo deba hacer algo con plazo (llamar, enviar documentos, " +
+      "confirmar una visita), créale una tarea con create_task. Revisa en <crm_state> las tareas " +
+      "pendientes para no repetirlas.",
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
       "compra, esté molesto, o necesite algo que no puedes resolver.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
@@ -63,7 +67,11 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
 async function buildCrmState(leadId: string) {
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
-    include: { stage: true, contact: { include: { tags: { include: { tag: true } } } } },
+    include: {
+      stage: true,
+      contact: { include: { tags: { include: { tag: true } } } },
+      tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" } },
+    },
   });
   const [stages, catalog, fields] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
@@ -73,8 +81,10 @@ async function buildCrmState(leadId: string) {
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
   const currentTags = lead.contact.tags.map((ct) => `${ct.tag.category}: ${ct.tag.name}`);
+  const now = new Date();
   return [
     "<crm_state>",
+    `Fecha y hora actual (Chile): ${formatLocal(now)} (${toLocalInput(now).replace("T", " ")})`,
     `Contacto: ${lead.contact.name}`,
     `Teléfono: ${lead.contact.phone ?? "sin registrar"}`,
     `Correo: ${lead.contact.email ?? "sin registrar"}`,
@@ -85,6 +95,11 @@ async function buildCrmState(leadId: string) {
     `Etiquetas actuales: ${currentTags.length ? currentTags.join(", ") : "ninguna"}`,
     `Catálogo de etiquetas: ${[...byCategory].map(([c, names]) => `${c}: ${names.join(" | ")}`).join("; ") || "vacío"}`,
     ...fields,
+    `Tareas pendientes del equipo: ${
+      lead.tasks.length
+        ? lead.tasks.map((t) => `${t.title} (vence ${toLocalInput(t.dueAt).replace("T", " ")})`).join("; ")
+        : "ninguna"
+    }`,
     "</crm_state>",
   ].join("\n");
 }
