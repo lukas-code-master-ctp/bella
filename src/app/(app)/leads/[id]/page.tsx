@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, BotOff, CircleX, RotateCcw, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -10,12 +11,13 @@ import { LinkPending } from "@/components/link-pending";
 import {
   addTagAction,
   moveStageAction,
+  cancelFollowUpAction,
   removeTagAction,
   reopenLeadAction,
   setAssigneeAction,
   toggleAiAction,
 } from "./actions";
-import { CloseLeadForm, LeadChat } from "./client";
+import { CloseLeadForm, FollowUpNowButton, LeadChat } from "./client";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -31,6 +33,10 @@ const EVENT_LABEL: Record<string, string> = {
   WON: "Ganado",
   LOST: "Perdido",
   REOPENED: "Reabierto",
+  FOLLOW_UP_SENT: "Seguimiento enviado",
+  FOLLOW_UP_SKIPPED: "Seguimiento omitido",
+  FOLLOW_UP_SCHEDULED: "Recontacto agendado",
+  FOLLOW_UP_CANCELED: "Seguimientos cancelados",
 };
 
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
@@ -41,6 +47,8 @@ function describe(data: Record<string, unknown>) {
   if (data.name || data.email) return [data.name, data.email].filter(Boolean).join(" · ");
   if (data.assigneeName) return String(data.assigneeName);
   if (typeof data.amount === "number") return `$${data.amount.toLocaleString("es-CL")}`;
+  if (typeof data.number === "number") return `${data.number} de ${data.total}`;
+  if (typeof data.at === "string") return formatChileDateTime(new Date(data.at));
   return "";
 }
 
@@ -62,10 +70,11 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives] = await Promise.all([
+  const [stages, tags, executives, followUps] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
+    getFollowUpSettings(),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
@@ -182,6 +191,31 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </SubmitButton>
             </form>
           </Section>
+
+          {followUps.enabled && isOpen && lead.aiEnabled && (
+            <Section title="Seguimiento">
+              <p className="text-sm text-slate-800">
+                {lead.followUpAt
+                  ? formatChileDateTime(lead.followUpAt)
+                  : "Sin seguimiento programado"}
+              </p>
+              {lead.followUpAt && (
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {lead.followUpReason
+                    ? `Agendado por la IA: ${lead.followUpReason}`
+                    : `Seguimiento ${lead.followUpCount + 1} de ${followUps.delays.length} si no responde`}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <FollowUpNowButton leadId={lead.id} />
+                {lead.followUpAt && (
+                  <form action={cancelFollowUpAction.bind(null, lead.id)}>
+                    <SubmitButton variant="ghost">Cancelar</SubmitButton>
+                  </form>
+                )}
+              </div>
+            </Section>
+          )}
 
           <Section title="Etiquetas">
             <div className="mb-3 flex flex-wrap gap-1.5">

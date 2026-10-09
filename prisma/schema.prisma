@@ -130,6 +130,12 @@ model Lead {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
   closedAt   DateTime?
+  /// Próximo seguimiento de la IA si el cliente no responde (ver src/lib/domain/follow-ups.ts).
+  followUpAt     DateTime?
+  /// Seguimientos enviados desde el último mensaje del cliente.
+  followUpCount  Int       @default(0)
+  /// Motivo cuando la IA agendó el recontacto para una fecha; vacío si es automático.
+  followUpReason String?
 
   contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
   stage      Stage            @relation(fields: [stageId], references: [id])
@@ -141,6 +147,7 @@ model Lead {
 
   @@index([stageId])
   @@index([assigneeId])
+  @@index([followUpAt])
 }
 
 model Message {

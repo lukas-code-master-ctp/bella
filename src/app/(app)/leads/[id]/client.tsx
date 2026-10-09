@@ -3,10 +3,10 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
+import { Activity, BellRing, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { closeLeadAction, sendAsContactAction, sendAsUserAction } from "./actions";
+import { closeLeadAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
 
 export type ChatMessage = {
@@ -268,4 +268,18 @@ function ScrollToBottom({ dep }: { dep: number }) {
     ref.current?.scrollIntoView({ block: "end" });
   }, [dep]);
   return <div ref={ref} />;
+}
+
+/** Pide el seguimiento ahora, sin esperar el plazo. */
+export function FollowUpNowButton({ leadId }: { leadId: string }) {
+  const [message, action] = useActionState(sendFollowUpNowAction.bind(null, leadId), null);
+  return (
+    <form action={action} className="min-w-0 flex-1 space-y-2">
+      <SubmitButton variant="secondary" className="w-full" pendingText="Escribiendo…">
+        <BellRing aria-hidden />
+        Enviar ahora
+      </SubmitButton>
+      {message && <FormMessage>{message}</FormMessage>}
+    </form>
+  );
 }

@@ -222,7 +222,13 @@ function RunDetail({ run, body, time }: { run: RunView; body: string; time: stri
         <Item
           dot={run.outcome === "fallback" ? "bg-rose-500" : "bg-emerald-500"}
           icon={<MessageSquare />}
-          title={run.outcome === "fallback" ? "Mensaje de respaldo enviado" : "Mensaje enviado"}
+          title={
+            run.outcome === "fallback"
+              ? "Mensaje de respaldo enviado"
+              : run.outcome === "follow_up"
+                ? "Seguimiento enviado"
+                : "Mensaje enviado"
+          }
           subtitle={time}
           open
         >

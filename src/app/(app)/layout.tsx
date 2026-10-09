@@ -1,5 +1,7 @@
 import { FlaskConical, LogOut, Settings, SquareKanban } from "lucide-react";
+import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
@@ -7,6 +9,9 @@ import { Logo } from "@/components/logo";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  // El cron de Vercel Hobby corre una vez al día: mientras el equipo usa la app, los seguimientos
+  // vencidos se envían después de responder la página (como mucho cada 5 minutos).
+  after(runDueFollowUpsIfStale);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <a

@@ -1,5 +1,14 @@
 import type { Message } from "@prisma/client";
 import { db } from "../db";
+import {
+  agendaLine,
+  describeDuration,
+  formatChileDateTime,
+  getFollowUpSettings,
+  NO_FOLLOW_UP,
+  scheduleAfterAiTurnTx,
+  type FollowUpSettings,
+} from "../domain/follow-ups";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
@@ -37,6 +46,9 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
       "ofrece derivar a un ejecutivo; nunca lo inventes.",
     "- Mantén el CRM al día mientras conversas: mueve el lead de etapa cuando avance en el proceso " +
       "y etiqueta su producto de interés y nivel de interés en cuanto lo sepas.",
+    "- Si el cliente pide que lo contacten más adelante o acuerdan hablar en una fecha, agéndalo " +
+      "con schedule_follow_up. Si deja de responder, el sistema te pedirá un mensaje de seguimiento " +
+      "con un bloque <seguimiento>.",
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
       "compra, esté molesto, o necesite algo que no puedes resolver.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
@@ -56,7 +68,7 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
   return lines.join("\n");
 }
 
-async function buildCrmState(leadId: string) {
+async function buildCrmState(leadId: string, now = new Date()) {
   const [lead, stages, catalog] = await Promise.all([
     db.lead.findUniqueOrThrow({
       where: { id: leadId },
@@ -68,8 +80,10 @@ async function buildCrmState(leadId: string) {
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
   const currentTags = lead.contact.tags.map((ct) => `${ct.tag.category}: ${ct.tag.name}`);
+  const agenda = agendaLine(lead);
   return [
     "<crm_state>",
+    `Fecha y hora actual: ${formatChileDateTime(now)} (hora de Chile)`,
     `Contacto: ${lead.contact.name}`,
     `Teléfono: ${lead.contact.phone ?? "sin registrar"}`,
     `Correo: ${lead.contact.email ?? "sin registrar"}`,
@@ -79,6 +93,7 @@ async function buildCrmState(leadId: string) {
       .join(" → ")}`,
     `Etiquetas actuales: ${currentTags.length ? currentTags.join(", ") : "ninguna"}`,
     `Catálogo de etiquetas: ${[...byCategory].map(([c, names]) => `${c}: ${names.join(" | ")}`).join("; ") || "vacío"}`,
+    ...(agenda ? [agenda] : []),
     "</crm_state>",
   ].join("\n");
 }
@@ -95,25 +110,56 @@ function formatPending(messages: (Message & { user: { name: string } | null })[]
     .join("\n");
 }
 
-const running = new Map<string, Promise<void>>();
+/** Turno de seguimiento: el cliente no responde y la IA le vuelve a escribir. */
+export type FollowUpTurn = {
+  /** Seguimientos automáticos ya enviados desde el último mensaje del cliente. */
+  count: number;
+  /** Motivo si la IA agendó este recontacto; null si es automático. */
+  reason: string | null;
+};
+
+/** "sent": la IA escribió; "skipped": no había nada que hacer o la IA decidió no escribir. */
+export type TurnOutcome = "sent" | "skipped";
+
+const running = new Map<string, Promise<TurnOutcome>>();
 
 /**
- * Hace que la IA responda los mensajes pendientes de un lead. Si ya hay una ejecución
- * en curso para el mismo lead, espera a que termine y vuelve a revisar.
+ * Hace que la IA responda los mensajes pendientes de un lead (o, con `followUp`, que le escriba
+ * un seguimiento). Si ya hay una ejecución en curso para el mismo lead, espera a que termine.
  */
-export async function runAgent(leadId: string, clients: ProviderClients = {}): Promise<void> {
+export async function runAgent(
+  leadId: string,
+  clients: ProviderClients = {},
+  followUp?: FollowUpTurn,
+): Promise<TurnOutcome> {
   while (running.has(leadId)) await running.get(leadId);
-  const run = runAgentOnce(leadId, clients).finally(() => running.delete(leadId));
+  const run = runAgentOnce(leadId, clients, followUp).finally(() => running.delete(leadId));
   running.set(leadId, run);
   return run;
 }
 
-async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<void> {
+function followUpBlock(f: FollowUpTurn, s: FollowUpSettings, silentMs: number) {
+  return [
+    "<seguimiento>",
+    f.reason
+      ? `Agendaste este recontacto: ${f.reason}.`
+      : `El cliente no responde desde hace ${describeDuration(silentMs)}. ` +
+        (f.count < s.delays.length
+          ? `Este es el seguimiento ${f.count + 1} de ${s.delays.length}.`
+          : "Es un seguimiento adicional que pidió el equipo."),
+    "Escríbele un mensaje para retomar la conversación. " + s.instructions,
+    "Si no corresponde escribirle (la conversación ya terminó, se despidió o pidió que no le escriban), " +
+      `responde solo ${NO_FOLLOW_UP}.`,
+    "</seguimiento>",
+  ].join("\n");
+}
+
+async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?: FollowUpTurn): Promise<TurnOutcome> {
   const startedAt = new Date();
   const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { transcript: true, stage: true } });
-  if (!lead.aiEnabled || lead.status !== "OPEN") return;
+  if (!lead.aiEnabled || lead.status !== "OPEN") return "skipped";
 
-  const [settings, config] = await Promise.all([getAssistantSettings(), getAiConfig()]);
+  const [settings, config, followUps] = await Promise.all([getAssistantSettings(), getAiConfig(), getFollowUpSettings()]);
   const provider = providerFor(config, clients);
 
   const transcript =
@@ -130,10 +176,18 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
     include: { user: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
-  if (!pending.some((m) => m.author === "CONTACT" && m.createdAt > transcript.syncedUntil)) return;
+  const unanswered = pending.some((m) => m.author === "CONTACT" && m.createdAt > transcript.syncedUntil);
+  // Un turno normal necesita un mensaje nuevo del cliente; un seguimiento, que no haya ninguno.
+  if (followUp ? unanswered : !unanswered) return "skipped";
 
   const history = switched ? [] : (transcript.messages as unknown as TranscriptMessage[]);
-  const context = `${await buildCrmState(leadId)}\n\n${formatPending(pending, settings.assistantName)}`;
+  const blocks = [await buildCrmState(leadId, startedAt)];
+  if (pending.length) blocks.push(formatPending(pending, settings.assistantName));
+  if (followUp) {
+    const last = await db.message.findFirst({ where: { leadId }, orderBy: { createdAt: "desc" } });
+    blocks.push(followUpBlock(followUp, followUps, startedAt.getTime() - (last?.createdAt ?? startedAt).getTime()));
+  }
+  const context = blocks.join("\n\n");
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
   const system = buildSystemPrompt(settings, await knowledgeForPrompt());
 
@@ -200,8 +254,18 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
       reply = FALLBACK_REPLY;
       handedOff = true;
     }
+    // En un seguimiento que falló no se le escribe al cliente ni se pausa la IA.
+    if (followUp && handedOff) {
+      reply = NO_FOLLOW_UP;
+      handedOff = false;
+    }
     messages.push(provider.assistantText(reply));
+  } else if (followUp && handedOff) {
+    reply = NO_FOLLOW_UP;
+    handedOff = false;
   }
+  if (reply.trim() === NO_FOLLOW_UP) reply = "";
+  const agendaChanged = trace.some((t) => t.type === "tool" && t.name === "schedule_follow_up" && !t.isError);
 
   const sent = await db.$transaction(async (tx) => {
     await tx.agentTranscript.update({
@@ -209,10 +273,21 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
       data: {
         format: provider.format,
         messages: messages as unknown as object,
-        syncedUntil: pending[pending.length - 1].createdAt,
+        syncedUntil: pending.length ? pending[pending.length - 1].createdAt : transcript.syncedUntil,
       },
     });
     const message = reply ? await tx.message.create({ data: { leadId, author: "AI", body: reply } }) : null;
+    if (followUp) {
+      await tx.leadEvent.create({
+        data: {
+          leadId,
+          type: message ? "FOLLOW_UP_SENT" : "FOLLOW_UP_SKIPPED",
+          actor: "AI",
+          reason: followUp.reason,
+          data: followUp.reason ? {} : { number: followUp.count + 1, total: followUps.delays.length },
+        },
+      });
+    }
     if (handedOff) {
       const current = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
       if (current.aiEnabled) {
@@ -222,6 +297,17 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
         });
       }
     }
+    await scheduleAfterAiTurnTx(
+      tx,
+      leadId,
+      {
+        sentAt: message?.createdAt ?? new Date(),
+        sent: Boolean(message),
+        agendaChanged,
+        ...(followUp ? { followUp: { count: followUp.count, scheduled: Boolean(followUp.reason) } } : {}),
+      },
+      followUps,
+    );
     return message;
   });
 
@@ -239,11 +325,12 @@ async function runAgentOnce(leadId: string, clients: ProviderClients): Promise<v
           system,
           context,
           steps: trace as unknown as object,
-          outcome: handedOff ? "fallback" : "reply",
+          outcome: handedOff ? "fallback" : followUp ? "follow_up" : "reply",
           startedAt,
           durationMs: Date.now() - startedAt.getTime(),
         },
       })
       .catch((err) => console.error(`[agent] monitor de actividad, lead ${leadId}:`, err));
   }
+  return sent ? "sent" : "skipped";
 }
