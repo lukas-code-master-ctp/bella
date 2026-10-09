@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
-import { getAutoCloseSettings, type AutoCloseRun } from "@/lib/domain/auto-close";
+import { effectiveDays, getAutoCloseSettings, type AutoCloseRun } from "@/lib/domain/auto-close";
 import { Card, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAutoCloseAction } from "../actions";
@@ -13,6 +13,7 @@ export default async function AutoCloseSettingsPage() {
     getSetting<AutoCloseRun | null>("autoCloseRun", null),
     db.stage.findMany({ orderBy: { position: "asc" } }),
   ]);
+  const days = await effectiveDays(s.days);
   return (
     <>
       <PageHeader
@@ -28,7 +29,7 @@ export default async function AutoCloseSettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label="Días sin actividad"
-              hint="Sin mensajes ni movimientos de nadie. Cada seguimiento de reactivación reinicia el plazo, y nunca se cierra un lead cuyo último mensaje es del cliente sin respuesta."
+              hint="Sin mensajes ni movimientos de nadie. Cada seguimiento de reactivación reinicia el plazo (y si la reactivación espera más entre intentos, se usa esa espera más un día). Nunca se cierra un lead cuyo último mensaje es del cliente sin respuesta."
             >
               <input type="number" name="days" min={1} max={365} required defaultValue={s.days} className={inputClass} />
             </Field>
@@ -59,6 +60,11 @@ export default async function AutoCloseSettingsPage() {
           </fieldset>
           <SubmitButton>Guardar</SubmitButton>
         </form>
+        {s.enabled && days > s.days && (
+          <p className="mt-3 text-xs text-slate-600">
+            Por los plazos de la reactivación, hoy se cierra a los {days} días sin actividad.
+          </p>
+        )}
         {lastRun && (
           <p className="mt-3 text-xs text-slate-600">
             Última pasada: {new Date(lastRun.at).toLocaleString("es-CL", { timeZone: "America/Santiago" })} ·{" "}

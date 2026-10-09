@@ -21,6 +21,20 @@ export const DEFAULT_AUTO_CLOSE: AutoCloseSettings = {
   lostStageIds: [],
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Plazo real de inactividad: si la reactivación está activa y su mayor espera entre intentos
+ * (minutos desde el último mensaje de la IA) es más larga que el plazo configurado, se usa esa
+ * espera más un día de margen, para no cerrar un lead que aún tiene un seguimiento pendiente.
+ */
+export async function effectiveDays(days: number) {
+  const followUps = await getSetting<{ enabled?: boolean; delays?: number[] }>("followUps", {});
+  const delays = followUps.enabled ? (followUps.delays ?? []) : [];
+  const longest = delays.length ? Math.ceil(Math.max(...delays) / (24 * 60)) + 1 : 0;
+  return Math.max(days, longest);
+}
+
 export async function getAutoCloseSettings(): Promise<AutoCloseSettings> {
   const saved = await getSetting<Partial<AutoCloseSettings>>("autoClose", {});
   return { ...DEFAULT_AUTO_CLOSE, ...saved };
@@ -38,7 +52,7 @@ export async function getAutoCloseSettings(): Promise<AutoCloseSettings> {
 export async function runAutoClose(now = new Date()): Promise<number> {
   const settings = await getAutoCloseSettings();
   if (!settings.enabled) return 0;
-  const cutoff = new Date(now.getTime() - settings.days * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(now.getTime() - (await effectiveDays(settings.days)) * DAY_MS);
 
   const inactive = await db.$queryRaw<{ id: string }[]>`
     SELECT l.id FROM "Lead" l

@@ -62,6 +62,16 @@ describe("cierre automático por inactividad", () => {
     expect(await runAutoClose(new Date(now.getTime() + 6 * DAY))).toBe(1);
   });
 
+  it("espera a que la reactivación agote sus intentos si su plazo es mayor", async () => {
+    await seedFunnel();
+    await setSetting("autoClose", { enabled: true, days: 7 });
+    await setSetting("followUps", { enabled: true, delays: [60, 24 * 60, 7 * 24 * 60] });
+    const lead = await leadInactiveFor(7.5, "AI");
+    expect(await runAutoClose(now)).toBe(0);
+    expect(await runAutoClose(new Date(now.getTime() + DAY))).toBe(1);
+    expect((await status(lead.id)).status).toBe("LOST");
+  });
+
   it("los movimientos recientes cuentan como actividad", async () => {
     const [, calificado] = await seedFunnel();
     await setSetting("autoClose", { enabled: true, days: 7 });
