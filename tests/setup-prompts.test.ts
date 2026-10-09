@@ -13,6 +13,7 @@ const status = (over: Partial<SetupStatus> = {}): SetupStatus => ({
   stages: ["Nuevo", "Calificado"],
   fields: 3,
   followUps: false,
+  executives: 2,
   ...over,
 });
 
@@ -26,6 +27,16 @@ describe("Prompts para configurar con Claude", () => {
     expect(p).toContain("https://bella.test/privacidad");
     expect(p).toContain("pregúntame cuál");
     expect(p).toContain("Nunca los escribas en el chat");
+  });
+
+  it("Meta: sirve para una empresa que parte desde cero", () => {
+    const p = metaSetupPrompt(status({ assistant: { assistantName: "Bella", companyName: "nuestra empresa" } }));
+    expect(p).toContain("el CRM de leads que está en https://bella.test");
+    expect(p).not.toMatch(/Compra tu Parcela|proyecto bella/i);
+    for (const step of ["Portafolio comercial", "Número de WhatsApp", "Usuario del sistema", "Publicar la app"]) {
+      expect(p).toContain(step);
+    }
+    expect(p).toContain("el proyecto que publica https://bella.test");
   });
 
   it("Meta: no vuelve a pedir lo que ya está configurado", () => {
@@ -44,5 +55,21 @@ describe("Prompts para configurar con Claude", () => {
     expect(p).toContain("etapas del funnel: Nuevo, Calificado");
     expect(p).toContain("https://bella.test/simulator");
     expect(p).toContain("pregúntame antes de encenderlos");
+    expect(p).toContain("Clave de IA: ya está");
+  });
+
+  it("Asistente: en una instalación nueva pide la clave de IA, la empresa y los ejecutivos", () => {
+    const p = assistantSetupPrompt(
+      status({
+        missingEnv: ["OPENROUTER_API_KEY"],
+        assistant: { assistantName: "Bella", companyName: "nuestra empresa" },
+        knowledgeDocs: 0,
+        executives: 0,
+      }),
+    );
+    expect(p).toContain("sin el nombre de la empresa");
+    expect(p).toContain("como OPENROUTER_API_KEY");
+    expect(p).toContain("0 ejecutivos");
+    expect(p).not.toContain("Compra tu Parcela");
   });
 });

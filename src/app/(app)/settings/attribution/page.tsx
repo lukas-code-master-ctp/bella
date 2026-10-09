@@ -10,7 +10,7 @@ export default async function AttributionSettingsPage() {
   const s = await getAttributionSettings();
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
-  const example = `${origin}/wa?utm_source=google&utm_medium=cpc&utm_campaign=parcelas-sur&text=${encodeURIComponent("Hola, quiero información")}`;
+  const example = `${origin}/wa?utm_source=google&utm_medium=cpc&utm_campaign=campana-octubre&text=${encodeURIComponent("Hola, quiero información")}`;
   const hasAdsToken = Boolean(process.env.META_ADS_TOKEN);
   const snippet = `<script>
 document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {

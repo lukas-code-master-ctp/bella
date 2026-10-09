@@ -73,6 +73,13 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
      (`OPENROUTER_API_KEY`; el modelo se puede cambiar con `TRANSCRIPTION_MODEL`, por defecto
      `google/gemini-2.5-flash`).
 3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
+4. Para el resto (Meta, la asistente, el funnel y los ejecutivos), entra a **Configuración →
+   Configurar con Claude**, copia los prompts y pégalos en Claude con acceso a tu navegador. Sirven
+   para una empresa que parte desde cero en Meta.
+
+Una instalación nueva parte con la asistente en blanco. La configuración de Compra Tu Parcela
+(`src/lib/presets/compra-tu-parcela.ts`) se carga solo con `SEED_PRESET=compra-tu-parcela` o donde
+ya se había cargado antes.
 
 ## Inventario desde Google Sheets
 

@@ -29,7 +29,7 @@ function insightsPrompt(companyName: string) {
     '{"resumen": string, "puntaje": number, "motivo": string}',
     "",
     "- resumen: una sola línea (máximo 120 caracteres), en español de Chile y en tercera persona, de dónde " +
-      'quedó la conversación y qué sigue. Ej.: "Pidió precios de parcelas en Ovalle; revisará la info y volverá a escribir."',
+      'quedó la conversación y qué sigue. Ej.: "Pidió precios y formas de pago; revisará la info y volverá a escribir."',
     "- puntaje: de 0 a 100, qué tan probable es que compre. 0-39 bajo: curiosea, sin presupuesto, dejó de " +
       "responder, spam o no es cliente. 40-69 medio: interés concreto pero le falta definir producto, " +
       "presupuesto o plazo. 70-100 alto: producto definido, presupuesto o financiamiento claro, quiere " +
