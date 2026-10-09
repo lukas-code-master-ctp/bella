@@ -17,6 +17,7 @@ export function NavLink({ href, icon, children }: { href: string; icon?: React.R
           : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 [&_svg]:text-slate-500"
       }`}
     >
+      {active && <span aria-hidden className="absolute inset-y-2 left-0 w-[3px] origin-center animate-indicator rounded-full bg-brand-600" />}
       {icon}
       {children}
       <LinkPending className="mx-3" />

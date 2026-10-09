@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { unreadCountAction } from "./actions";
 
-/** Contador de avisos sin leer. Se actualiza al navegar, al volver a la pestaña y cada 30 s. */
+/**
+ * Contador de avisos sin leer. Se actualiza al navegar, al volver a la pestaña y cada 30 s;
+ * cuando cambia el número, el globo hace un pequeño rebote (la key lo vuelve a montar).
+ */
 export function UnreadBadge({ initial }: { initial: number }) {
   const [count, setCount] = useState(initial);
   const pathname = usePathname();
@@ -31,7 +34,7 @@ export function UnreadBadge({ initial }: { initial: number }) {
 
   if (count === 0) return null;
   return (
-    <span className="ml-auto min-w-5 rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-4 text-white">
+    <span key={count} className="ml-auto min-w-5 animate-pop rounded-full bg-brand-600 px-1.5 py-0.5 text-center text-[11px] font-semibold leading-4 text-white">
       <span className="sr-only">, sin leer: </span>
       {count > 99 ? "99+" : count}
     </span>

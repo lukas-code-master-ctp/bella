@@ -23,7 +23,7 @@ const sizes = {
 export type ButtonVariant = keyof typeof variants;
 
 export function buttonClass(variant: ButtonVariant = "primary", size: keyof typeof sizes = "md", className = "") {
-  return `inline-flex shrink-0 items-center justify-center gap-2 rounded-lg font-semibold transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 ${variants[variant]} ${sizes[size]} ${className}`;
+  return `inline-flex shrink-0 items-center justify-center gap-2 rounded-lg font-semibold transition-[color,background-color,border-color,box-shadow,scale] duration-150 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 ${variants[variant]} ${sizes[size]} ${className}`;
 }
 
 export function Button({
@@ -118,7 +118,7 @@ export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md"
 export function EmptyState({ icon, title, children }: { icon: ReactNode; title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col items-center px-6 py-10 text-center">
-      <span className="mb-3 flex size-11 items-center justify-center rounded-full bg-slate-100 text-slate-500 [&_svg]:size-5">{icon}</span>
+      <span className="mb-3 flex size-11 animate-pop items-center justify-center rounded-full bg-slate-100 text-slate-500 [&_svg]:size-5">{icon}</span>
       <p className="font-semibold text-slate-900">{title}</p>
       {children && <div className="mt-1 max-w-sm text-sm text-slate-600">{children}</div>}
     </div>
@@ -174,5 +174,16 @@ export function PageHeaderSkeleton({ action = true }: { action?: boolean }) {
       </div>
       {action && <Skeleton className="h-10 w-44" />}
     </div>
+  );
+}
+
+/** Tres puntos que saltan en ola: "escribiendo…". Hereda el color del texto. */
+export function TypingDots({ className = "" }: { className?: string }) {
+  return (
+    <span aria-hidden className={`inline-flex items-center gap-1 ${className}`}>
+      {[0, 160, 320].map((delay) => (
+        <span key={delay} className="size-1.5 animate-typing rounded-full bg-current" style={{ animationDelay: `${delay}ms` }} />
+      ))}
+    </span>
   );
 }

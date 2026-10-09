@@ -39,7 +39,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
         </Link>
       </PageHeader>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      <div className="stagger mb-6 flex flex-wrap items-center gap-3">
         <Stat icon={<Inbox />} label="Abiertos" value={leads.length} tone="text-brand-700 bg-brand-50" />
         <Stat icon={<Trophy />} label="Ganados" value={count("WON")} tone="text-emerald-700 bg-emerald-50" />
         <Stat icon={<CircleX />} label="Perdidos" value={count("LOST")} tone="text-rose-700 bg-rose-50" />
@@ -111,7 +111,9 @@ function Stat({ icon, label, value, tone }: { icon: React.ReactNode; label: stri
         {icon}
       </span>
       <span className="text-sm text-slate-600">{label}</span>
-      <span className="text-lg font-bold tabular-nums text-slate-900">{value}</span>
+      <span key={value} className="inline-block animate-pop text-lg font-bold tabular-nums text-slate-900">
+        {value}
+      </span>
     </div>
   );
 }
