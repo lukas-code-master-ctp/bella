@@ -3,10 +3,10 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
+import { Activity, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Mic, RefreshCw, Send, Trophy, X } from "lucide-react";
 import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { closeLeadAction, sendAsContactAction, sendAsUserAction } from "./actions";
+import { closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
 
 export type ChatMessage = {
@@ -14,10 +14,15 @@ export type ChatMessage = {
   author: "CONTACT" | "AI" | "USER";
   authorName: string;
   body: string;
+  /** Nota de voz: archivo y transcripción (null si no se pudo transcribir). */
+  audio?: { url: string; transcript: string | null };
   /** Hora ya formateada en el servidor (evita diferencias de zona horaria al hidratar). */
   time: string;
   pending?: boolean;
 };
+
+/** Igual que AUDIO_MAX_BYTES en el servidor (src/lib/media.ts, que no se puede importar aquí). */
+const AUDIO_MAX_MB = 4;
 
 /** Enter envía el formulario; Shift+Enter agrega una línea. */
 function submitOnEnter(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) {
@@ -46,11 +51,12 @@ export function LeadChat({
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
   const closeInspector = useCallback(() => setInspected(null), []);
-  const pending = (author: ChatMessage["author"], body: string): ChatMessage => ({
-    id: `pending-${Date.now()}`,
+  const pending = (author: ChatMessage["author"], body: string, audio?: ChatMessage["audio"]): ChatMessage => ({
+    id: `pending-${author}-${Date.now()}`,
     author,
     authorName: author === "CONTACT" ? contactName : userName,
     body,
+    ...(audio ? { audio } : {}),
     time: "Enviando…",
     pending: true,
   });
@@ -73,8 +79,10 @@ export function LeadChat({
         {simulator && (
           <ContactComposer
             leadId={leadId}
-            onSend={(body) => {
-              addPending(pending("CONTACT", body));
+            onSend={(body, audioUrl) => {
+              // Igual que en el servidor: primero la nota de voz y después el texto que la acompaña.
+              if (audioUrl) addPending(pending("CONTACT", "", { url: audioUrl, transcript: null }));
+              if (body) addPending(pending("CONTACT", body));
             }}
           />
         )}
@@ -121,10 +129,35 @@ function Bubble({ message: m, onInspect }: { message: ChatMessage; onInspect?: (
             </>
           )}
         </span>
-        <span className="block whitespace-pre-wrap">{m.body}</span>
+        {m.audio && <VoiceNote audio={m.audio} pending={m.pending} />}
+        {m.body && <span className="block whitespace-pre-wrap">{m.body}</span>}
         <span className={`mt-1 block text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>{m.time}</span>
       </Wrapper>
     </div>
+  );
+}
+
+/** Nota de voz del cliente: reproductor y lo que la IA entendió. */
+function VoiceNote({ audio, pending }: { audio: NonNullable<ChatMessage["audio"]>; pending?: boolean }) {
+  return (
+    <span className="block space-y-1.5">
+      <audio controls preload="none" src={audio.url} className="h-10 w-64 max-w-full">
+        <a href={audio.url}>Descargar la nota de voz</a>
+      </audio>
+      <span className="block rounded-lg bg-slate-50 px-2.5 py-1.5 text-[13px] text-slate-700">
+        <span className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+          <Mic aria-hidden className="size-3" />
+          Transcripción
+        </span>
+        {pending ? (
+          <span className="italic text-slate-500">Transcribiendo…</span>
+        ) : audio.transcript ? (
+          <span className="block whitespace-pre-wrap">{audio.transcript}</span>
+        ) : (
+          <span className="italic text-slate-500">No se pudo transcribir este audio.</span>
+        )}
+      </span>
+    </span>
   );
 }
 
@@ -145,18 +178,37 @@ function ContactSubmit() {
   );
 }
 
-function ContactComposer({ leadId, onSend }: { leadId: string; onSend: (body: string) => void }) {
+function ContactComposer({
+  leadId,
+  onSend,
+}: {
+  leadId: string;
+  onSend: (body: string, audioUrl: string | null) => void;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [audioName, setAudioName] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const clearAudio = () => {
+    if (fileRef.current) fileRef.current.value = "";
+    setAudioName(null);
+  };
   return (
     <form
       ref={formRef}
       action={async (fd) => {
         const body = String(fd.get("body") ?? "").trim();
-        if (!body) return;
-        onSend(body);
+        const audio = fd.get("audio");
+        const hasAudio = audio instanceof File && audio.size > 0;
+        if (!body && !hasAudio) return;
+        if (hasAudio && audio.size > AUDIO_MAX_MB * 1024 * 1024) {
+          setError(`El audio pesa más de ${AUDIO_MAX_MB} MB.`);
+          return;
+        }
+        onSend(body, hasAudio ? URL.createObjectURL(audio) : null);
         formRef.current?.reset();
+        setAudioName(null);
         setError(null);
         try {
           setError(await sendAsContactAction(leadId, null, fd));
@@ -172,25 +224,43 @@ function ContactComposer({ leadId, onSend }: { leadId: string; onSend: (body: st
     >
       <label htmlFor="as-contact" className="flex items-center gap-1.5 text-xs font-semibold text-brand-800">
         <FlaskConical aria-hidden className="size-3.5" />
-        Simulador: escribe como si fueras el cliente
+        Simulador: escribe o manda una nota de voz como si fueras el cliente
       </label>
       <textarea
         id="as-contact"
         name="body"
         rows={2}
-        required
         placeholder="Hola, quiero información sobre…"
         onKeyDown={submitOnEnter}
         className={inputClass}
       />
+      <input
+        ref={fileRef}
+        id="as-contact-audio"
+        type="file"
+        name="audio"
+        accept="audio/*,.ogg,.opus,.m4a"
+        hidden
+        onChange={(e) => setAudioName(e.currentTarget.files?.[0]?.name ?? null)}
+      />
       <div className="flex flex-wrap items-center justify-end gap-3">
-        {error && (
-          <div className="mr-auto">
-            <FormMessage>{error}</FormMessage>
-          </div>
+        {audioName ? (
+          <span className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-700 shadow-xs">
+            <Mic aria-hidden className="size-3.5 shrink-0 text-brand-700" />
+            <span className="truncate">{audioName}</span>
+            <button type="button" onClick={clearAudio} aria-label="Quitar audio" className="rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+              <X aria-hidden className="size-3.5" />
+            </button>
+          </span>
+        ) : (
+          <Button type="button" variant="ghost" size="sm" className="mr-auto" onClick={() => fileRef.current?.click()}>
+            <Mic aria-hidden />
+            Adjuntar nota de voz
+          </Button>
         )}
         <ContactSubmit />
       </div>
+      {error && <FormMessage>{error}</FormMessage>}
     </form>
   );
 }
@@ -217,6 +287,20 @@ function UserComposer({ leadId, onSend }: { leadId: string; onSend: (body: strin
         <Send aria-hidden />
         <span className="hidden sm:inline">Enviar</span>
       </SubmitButton>
+    </form>
+  );
+}
+
+/** Recalcula a pedido el resumen y el puntaje del lead. */
+export function RefreshInsightsForm({ leadId, hasSummary }: { leadId: string; hasSummary: boolean }) {
+  const [error, action] = useActionState(refreshInsightsAction.bind(null, leadId), null);
+  return (
+    <form action={action} className="mt-3 space-y-2">
+      <SubmitButton variant="secondary" size="sm" pendingText="Analizando…">
+        <RefreshCw aria-hidden />
+        {hasSummary ? "Actualizar" : "Generar resumen"}
+      </SubmitButton>
+      {error && <FormMessage>{error}</FormMessage>}
     </form>
   );
 }

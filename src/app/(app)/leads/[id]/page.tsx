@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, ListTodo, RotateCcw, Trophy } from "lucide-react";
+import { ArrowLeft, Bot, BotOff, CircleX, ListTodo, RotateCcw, Sparkles, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
+import { ScoreBadge } from "@/components/score-badge";
 import {
   addTagAction,
   moveStageAction,
@@ -17,7 +19,7 @@ import {
   setAssigneeAction,
   toggleAiAction,
 } from "./actions";
-import { CloseLeadForm, LeadChat } from "./client";
+import { CloseLeadForm, LeadChat, RefreshInsightsForm } from "./client";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
 import { TaskItem } from "../../tasks/task-item";
@@ -83,6 +85,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       orderBy: { position: "asc" },
       include: { values: { where: { contactId: lead.contactId } } },
     }),
+    markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
@@ -148,6 +151,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             authorName:
               m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
             body: m.body,
+            ...(m.mediaUrl ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
             time: time(m.createdAt),
           }))}
         />
@@ -155,6 +159,29 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
       <aside className="space-y-4">
         <Card className="divide-y divide-slate-100">
+          <section className="p-4">
+            <div className="mb-2.5 flex items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Resumen IA</h2>
+              {lead.score !== null && <ScoreBadge score={lead.score} className="ml-auto" />}
+            </div>
+            {lead.aiSummary ? (
+              <>
+                <p className="flex gap-1.5 text-sm leading-relaxed text-slate-800">
+                  <Sparkles aria-hidden className="mt-1 size-3.5 shrink-0 text-brand-500" />
+                  {lead.aiSummary}
+                </p>
+                {lead.scoreReason && <p className="mt-1.5 text-xs text-slate-600">Puntaje: {lead.scoreReason}</p>}
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">
+                {lead.messages.length ? "Aún sin resumen." : "Se genera cuando haya conversación."}
+              </p>
+            )}
+            {lead.messages.length > 0 && (
+              <RefreshInsightsForm leadId={lead.id} hasSummary={Boolean(lead.aiSummary)} />
+            )}
+          </section>
+
           <Section title="Etapa">
             <form action={moveStageAction.bind(null, lead.id)} className="flex gap-2">
               <select key={lead.stageId} name="stageId" aria-label="Etapa" defaultValue={lead.stageId} className={inputClass}>

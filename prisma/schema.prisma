@@ -66,12 +66,15 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  leads    Lead[]           @relation("Assignee")
-  messages Message[]
-  events   LeadEvent[]
-  rules    AssignmentRule[] @relation("RuleExecutives")
-  tasks        Task[]         @relation("TaskAssignee")
-  createdTasks Task[]         @relation("TaskCreator")
+  leads        Lead[]           @relation("Assignee")
+  messages     Message[]
+  events       LeadEvent[]
+  rules        AssignmentRule[] @relation("RuleExecutives")
+  tasks        Task[]           @relation("TaskAssignee")
+  createdTasks Task[]           @relation("TaskCreator")
+
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
 }
 
 /// Etapa del funnel de ventas. `requiresHuman` marca la etapa de atención humana:
@@ -171,26 +174,41 @@ model Lead {
   updatedAt  DateTime   @updatedAt
   closedAt   DateTime?
 
-  contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  stage      Stage            @relation(fields: [stageId], references: [id])
-  assignee   User?            @relation("Assignee", fields: [assigneeId], references: [id])
-  messages   Message[]
-  events     LeadEvent[]
-  transcript AgentTranscript?
-  agentRuns  AgentRun[]
-  tasks      Task[]
+  /// Resumen de una línea de dónde quedó la conversación, hecho por la IA (ver src/lib/ai/insights.ts).
+  aiSummary   String?
+  /// Puntaje 0-100 de qué tan probable es que compre, con su motivo; lo calcula la IA.
+  score       Int?
+  scoreReason String?
+  /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
+  insightsAt  DateTime?
+
+  contact       Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage         Stage            @relation(fields: [stageId], references: [id])
+  assignee      User?            @relation("Assignee", fields: [assigneeId], references: [id])
+  messages      Message[]
+  events        LeadEvent[]
+  transcript    AgentTranscript?
+  agentRuns     AgentRun[]
+  tasks         Task[]
+  notifications Notification[]
 
   @@index([stageId])
   @@index([assigneeId])
 }
 
 model Message {
-  id        String        @id @default(cuid())
-  leadId    String
-  author    MessageAuthor
-  userId    String?
-  body      String
-  createdAt DateTime      @default(now())
+  id         String        @id @default(cuid())
+  leadId     String
+  author     MessageAuthor
+  userId     String?
+  /// Texto del mensaje. Vacío en una nota de voz sin texto.
+  body       String
+  /// Archivo adjunto (por ahora, notas de voz del cliente): URL en Vercel Blob y tipo MIME.
+  mediaUrl   String?
+  mediaType  String?
+  /// Transcripción de la nota de voz; null si no se pudo transcribir.
+  transcript String?
+  createdAt  DateTime      @default(now())
 
   lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user     User?     @relation(fields: [userId], references: [id])
@@ -318,4 +336,40 @@ model InventoryItem {
 model Setting {
   key   String @id
   value Json
+}
+
+/// Aviso al ejecutivo sobre un lead (ver src/lib/domain/notifications.ts). Hay a lo más uno
+/// sin leer por usuario y lead: los avisos nuevos lo actualizan con el último motivo.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  leadId    String
+  /// HUMAN_STAGE, ASSIGNED o CONTACT_MESSAGE.
+  type      String
+  title     String
+  body      String
+  readAt    DateTime?
+  /// Cuándo se envió (o descartó) el push al navegador; null = pendiente.
+  pushedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([pushedAt])
+}
+
+/// Suscripción Web Push de un navegador (uno por dispositivo del usuario).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

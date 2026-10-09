@@ -1,14 +1,17 @@
-import { FlaskConical, ListTodo, LogOut, Settings, SquareKanban } from "lucide-react";
+import { Bell, FlaskConical, ListTodo, LogOut, Settings, SquareKanban } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { countUrgentTasks } from "@/lib/domain/tasks";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
 import { Logo } from "@/components/logo";
+import { unreadNotificationCount } from "@/lib/domain/notifications";
+import { UnreadBadge } from "./notifications/unread-badge";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const urgentTasks = await countUrgentTasks(user.id);
+  const unread = await unreadNotificationCount(user.id);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <a
@@ -45,6 +48,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <span className="sr-only"> vencidas o para hoy</span>
               </span>
             )}
+          </NavLink>
+          <NavLink href="/notifications" icon={<Bell />}>
+            Avisos
+            <UnreadBadge initial={unread} />
           </NavLink>
           <NavLink href="/simulator" icon={<FlaskConical />}>
             Simulador

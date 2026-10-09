@@ -1,6 +1,8 @@
 import type { Actor, Channel, Prisma } from "@prisma/client";
 import { db } from "../db";
+import { deliverPendingPush } from "../push";
 import { applyAssignment } from "./assignment";
+import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
 import { moveOpenTasksTx } from "./tasks";
 
 export type ActorRef = { actor: Actor; userId?: string | null };
@@ -18,7 +20,7 @@ export async function createLead(input: {
 }) {
   const firstStage = await db.stage.findFirst({ orderBy: { position: "asc" } });
   if (!firstStage) throw new DomainError("No hay etapas configuradas en el funnel.");
-  return db.$transaction(async (tx) => {
+  const created = await db.$transaction(async (tx) => {
     const contact = await tx.contact.create({
       data: {
         name: input.name,
@@ -32,12 +34,17 @@ export async function createLead(input: {
       data: { leadId: lead.id, type: "CREATED", actor: "SYSTEM", data: { stage: firstStage.name } },
     });
     await applyAssignment(tx, lead.id, { type: "STAGE_ENTERED", stageId: firstStage.id });
+    if (firstStage.requiresHuman) await notifyHumanStageTx(tx, lead.id);
     return lead;
   });
+  await deliverPendingPush();
+  return created;
 }
 
 export async function moveStage(leadId: string, stageId: string, by: ActorRef, reason?: string) {
-  return db.$transaction((tx) => moveStageTx(tx, leadId, stageId, by, reason));
+  const lead = await db.$transaction((tx) => moveStageTx(tx, leadId, stageId, by, reason));
+  await deliverPendingPush();
+  return lead;
 }
 
 export async function moveStageTx(
@@ -66,11 +73,14 @@ export async function moveStageTx(
     },
   });
   await applyAssignment(tx, leadId, { type: "STAGE_ENTERED", stageId });
+  if (stage.requiresHuman) await notifyHumanStageTx(tx, leadId, reason, by.userId);
   return updated;
 }
 
 export async function addTag(leadId: string, tagId: string, by: ActorRef, reason?: string) {
-  return db.$transaction((tx) => addTagTx(tx, leadId, tagId, by, reason));
+  const added = await db.$transaction((tx) => addTagTx(tx, leadId, tagId, by, reason));
+  await deliverPendingPush();
+  return added;
 }
 
 /**
@@ -174,7 +184,7 @@ export async function reopenLead(leadId: string, by: ActorRef) {
 }
 
 export async function setAssignee(leadId: string, assigneeId: string | null, by: ActorRef) {
-  return db.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     const user = assigneeId ? await tx.user.findUniqueOrThrow({ where: { id: assigneeId } }) : null;
     const before = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
     await tx.lead.update({ where: { id: leadId }, data: { assigneeId } });
@@ -188,7 +198,9 @@ export async function setAssignee(leadId: string, assigneeId: string | null, by:
         data: user ? { assigneeId: user.id, assigneeName: user.name } : {},
       },
     });
+    if (user) await notifyAssignedTx(tx, leadId, user.id, by.userId);
   });
+  await deliverPendingPush();
 }
 
 export async function setAiEnabled(leadId: string, enabled: boolean, by: ActorRef) {
@@ -219,5 +231,6 @@ export async function handoffToHumanTx(tx: Tx, leadId: string, reason: string) {
     await moveStageTx(tx, leadId, humanStage.id, { actor: "AI" }, reason);
   }
   await tx.lead.update({ where: { id: leadId }, data: { aiEnabled: false } });
+  await notifyHumanStageTx(tx, leadId, reason);
   return humanStage;
 }

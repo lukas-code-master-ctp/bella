@@ -7,6 +7,8 @@ export type AiConfig = {
   provider: AiProvider;
   model: string;
   effort: AiEffort;
+  /** Modelo chico y barato para el resumen y el puntaje del lead (ver insights.ts). */
+  summaryModel?: string;
 };
 
 export const PROVIDER_LABEL: Record<AiProvider, string> = {
@@ -24,12 +26,17 @@ export const DEFAULT_MODEL: Record<AiProvider, string> = {
   anthropic: "claude-opus-5-5",
 };
 
+export const DEFAULT_SUMMARY_MODEL: Record<AiProvider, string> = {
+  openrouter: "anthropic/claude-haiku-5.5",
+  anthropic: "claude-haiku-5-5",
+};
+
 /** Proveedor por defecto: OpenRouter si su clave está configurada, si no Anthropic. */
 function defaultProvider(): AiProvider {
   return process.env.OPENROUTER_API_KEY || !process.env.ANTHROPIC_API_KEY ? "openrouter" : "anthropic";
 }
 
-export async function getAiConfig(): Promise<AiConfig> {
+export async function getAiConfig(): Promise<Required<AiConfig>> {
   const saved = await getSetting<Partial<AiConfig>>("ai", {});
   const provider = saved.provider ?? defaultProvider();
   return {
@@ -37,6 +44,7 @@ export async function getAiConfig(): Promise<AiConfig> {
     // El modelo guardado solo vale para el proveedor con que se guardó.
     model: (saved.provider === provider && saved.model) || DEFAULT_MODEL[provider],
     effort: saved.effort ?? "medium",
+    summaryModel: (saved.provider === provider && saved.summaryModel) || DEFAULT_SUMMARY_MODEL[provider],
   };
 }
 

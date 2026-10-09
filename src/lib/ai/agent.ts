@@ -31,6 +31,8 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "- Cada mensaje del cliente llega con un bloque <crm_state> que muestra la etapa actual del " +
       "lead, las etapas del funnel, sus etiquetas, el catálogo de etiquetas y los campos del cliente. El cliente no ve ese " +
       "bloque; no lo menciones.",
+    "- Las notas de voz del cliente te llegan transcritas: respóndelas con naturalidad, como si las " +
+      "hubieras escuchado. La transcripción puede tener errores; si algo importante no se entiende, pregunta.",
     (knowledge?.length
       ? "- La base de conocimiento completa está al final, en <base_de_conocimiento>: úsala para " +
         "responder sobre la empresa (no necesitas search_knowledge). Consulta search_inventory "
@@ -102,11 +104,20 @@ async function buildCrmState(leadId: string) {
   ].join("\n");
 }
 
+/** Texto del cliente tal como lo ve la IA. Las notas de voz llegan transcritas. */
+function contactText(m: Message) {
+  if (!m.mediaUrl) return `Cliente: ${m.body}`;
+  const caption = m.body ? `\n${m.body}` : "";
+  return m.transcript
+    ? `Cliente (nota de voz, transcrita): ${m.transcript}${caption}`
+    : `Cliente: [envió una nota de voz que no se pudo transcribir; pídele que la escriba]${caption}`;
+}
+
 function formatPending(messages: (Message & { user: { name: string } | null })[], assistantName: string) {
   return messages
     .map((m) =>
       m.author === "CONTACT"
-        ? `Cliente: ${m.body}`
+        ? contactText(m)
         : m.author === "AI"
           ? `${assistantName} (tú): ${m.body}`
           : `Ejecutivo (${m.user?.name ?? "equipo"}): ${m.body}`,

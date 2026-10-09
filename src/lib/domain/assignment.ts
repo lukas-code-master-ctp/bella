@@ -1,4 +1,5 @@
 import type { AssignmentRule, Prisma, User } from "@prisma/client";
+import { notifyAssignedTx } from "./notifications";
 import { moveOpenTasksTx } from "./tasks";
 
 export type AssignmentTrigger =
@@ -105,4 +106,5 @@ async function assign(tx: Tx, leadId: string, user: User, reason: string) {
       data: { assigneeId: user.id, assigneeName: user.name },
     },
   });
+  await notifyAssignedTx(tx, leadId, user.id);
 }
