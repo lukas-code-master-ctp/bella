@@ -1,4 +1,4 @@
-import type { AssignStrategy, Prisma, PrismaClient } from "@prisma/client";
+import type { AssignStrategy, FieldType, Prisma, PrismaClient } from "@prisma/client";
 import type { AssistantSettings } from "../settings";
 import type { InventorySettings } from "../inventory";
 
@@ -20,6 +20,8 @@ export type Preset = {
    */
   stages?: { name: string; color: string; requiresHuman?: boolean; replaces?: string[] }[];
   tags?: { category: string; color: string; names: string[] }[];
+  /** Campos del cliente que completa la IA. Se agregan los que falten por nombre; no se editan. */
+  fields?: { name: string; type: FieldType; options?: string[]; description: string }[];
   /** Reglas por etapa; sin ejecutivos listados, reparten entre todos los ejecutivos activos. */
   stageRules?: { name: string; stage: string; strategy: AssignStrategy }[];
 };
@@ -44,7 +46,7 @@ async function writeSetting<T>(tx: Db, key: string, value: T) {
 /**
  * Carga el preset si aún no se aplicó esta versión. Reemplaza la configuración de la
  * asistente, crea o actualiza los documentos por título (sin tocar los demás), fija la
- * planilla de inventario, ordena el funnel y agrega las etiquetas y reglas que falten
+ * planilla de inventario, ordena el funnel y agrega las etiquetas, campos y reglas que falten
  * (nunca borra). Devuelve true si aplicó cambios.
  */
 export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boolean> {
@@ -71,6 +73,12 @@ export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boo
 
     await tx.tag.createMany({
       data: (preset.tags ?? []).flatMap((g) => g.names.map((name) => ({ category: g.category, name, color: g.color }))),
+      skipDuplicates: true,
+    });
+
+    const lastField = await tx.customField.findFirst({ orderBy: { position: "desc" } });
+    await tx.customField.createMany({
+      data: (preset.fields ?? []).map((f, i) => ({ ...f, position: (lastField?.position ?? -1) + 1 + i })),
       skipDuplicates: true,
     });
 
