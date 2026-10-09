@@ -181,12 +181,16 @@ model Lead {
   followUpReason String?
 
   /// Resumen de una línea de dónde quedó la conversación, hecho por la IA (ver src/lib/ai/insights.ts).
-  aiSummary   String?
+  aiSummary      String?
   /// Puntaje 0-100 de qué tan probable es que compre, con su motivo; lo calcula la IA.
-  score       Int?
-  scoreReason String?
+  score          Int?
+  scoreReason    String?
+  /// Mientras la IA responde por un canal real, evita que dos servidores le contesten a la vez
+  /// (ver src/lib/domain/channels.ts).
+  agentBusyUntil DateTime?
+
   /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
-  insightsAt  DateTime?
+  insightsAt DateTime?
 
   contact       Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
   stage         Stage            @relation(fields: [stageId], references: [id])
@@ -204,18 +208,26 @@ model Lead {
 }
 
 model Message {
-  id         String        @id @default(cuid())
-  leadId     String
-  author     MessageAuthor
-  userId     String?
+  id             String        @id @default(cuid())
+  leadId         String
+  author         MessageAuthor
+  userId         String?
   /// Texto del mensaje. Vacío en una nota de voz sin texto.
-  body       String
+  body           String
   /// Archivo adjunto (por ahora, notas de voz del cliente): URL en Vercel Blob y tipo MIME.
-  mediaUrl   String?
-  mediaType  String?
+  mediaUrl       String?
+  mediaType      String?
   /// Transcripción de la nota de voz; null si no se pudo transcribir.
-  transcript String?
-  createdAt  DateTime      @default(now())
+  transcript     String?
+  createdAt      DateTime      @default(now())
+  /// Id del mensaje en el canal (ej. wamid de WhatsApp). Evita guardar dos veces el mismo
+  /// mensaje entrante y permite seguir el estado de entrega de uno saliente.
+  externalId     String?       @unique
+  /// Entrega de un mensaje saliente por el canal: SENDING, SENT, DELIVERED, READ o FAILED.
+  /// Null en el simulador y en los mensajes del cliente.
+  deliveryStatus String?
+  /// Motivo cuando el canal no pudo entregar el mensaje.
+  deliveryError  String?
 
   lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user     User?     @relation(fields: [userId], references: [id])

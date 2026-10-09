@@ -119,7 +119,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <div className="min-w-0">
             <h1 className="truncate font-semibold text-slate-900">{lead.contact.name}</h1>
             <p className="text-xs text-slate-600">
-              {lead.contact.phone ?? CHANNEL_LABEL[lead.contact.channel]} · {lead.stage.name}
+              {[CHANNEL_LABEL[lead.contact.channel], lead.contact.phone, lead.stage.name].filter(Boolean).join(" · ")}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -161,6 +161,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
             body: m.body,
             ...(m.mediaUrl ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
+            ...(m.deliveryStatus ? { delivery: { status: m.deliveryStatus, error: m.deliveryError } } : {}),
             time: time(m.createdAt),
           }))}
         />

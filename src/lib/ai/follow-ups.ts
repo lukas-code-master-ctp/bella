@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { aiChannels } from "../domain/channels";
 import { getFollowUpSettings, withinSendingHours } from "../domain/follow-ups";
 import { getSetting, setSetting } from "../settings";
 import { getAiConfig, missingKeyMessage } from "./config";
@@ -27,7 +28,8 @@ export async function runDueFollowUps(
   if (missing) return { ...result, reason: missing };
 
   const due = await db.lead.findMany({
-    where: { status: "OPEN", aiEnabled: true, followUpAt: { lte: now } },
+    // Solo en canales donde la IA puede escribir sola (WhatsApp se enciende en Configuración → Canales).
+    where: { status: "OPEN", aiEnabled: true, followUpAt: { lte: now }, contact: { channel: { in: await aiChannels() } } },
     orderBy: { followUpAt: "asc" },
     take: limit,
   });

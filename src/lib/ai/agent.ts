@@ -10,6 +10,7 @@ import {
   scheduleAfterAiTurnTx,
   type FollowUpSettings,
 } from "../domain/follow-ups";
+import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
@@ -367,6 +368,8 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
         },
       })
       .catch((err) => console.error(`[agent] monitor de actividad, lead ${leadId}:`, err));
+    // En un canal real (WhatsApp) la respuesta sale al cliente; en el simulador no hace nada.
+    await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío, lead ${leadId}:`, err));
   }
   return sent ? "sent" : "skipped";
 }

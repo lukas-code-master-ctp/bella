@@ -13,7 +13,13 @@ type VoiceNoteAuthor = { author: "CONTACT" } | { author: "USER"; userId: string 
  * (y el equipo) sepan qué se dijo. Si la transcripción falla, el mensaje queda igual, sin
  * transcripción, y la IA sabe que no la pudo escuchar.
  */
-async function saveVoiceNote(leadId: string, from: VoiceNoteAuthor, file: AudioFile, deps: MediaDeps) {
+async function saveVoiceNote(
+  leadId: string,
+  from: VoiceNoteAuthor,
+  file: AudioFile,
+  deps: MediaDeps,
+  extra: { externalId?: string } = {},
+) {
   if (!file.bytes.byteLength) throw new DomainError("El archivo de audio está vacío.");
   if (file.bytes.byteLength > AUDIO_MAX_BYTES) {
     throw new DomainError(`El audio pesa más de ${AUDIO_MAX_BYTES / 1024 / 1024} MB.`);
@@ -22,7 +28,7 @@ async function saveVoiceNote(leadId: string, from: VoiceNoteAuthor, file: AudioF
 
   const url = await (deps.store ?? blobStore)(file, `leads/${leadId}`);
   const message = await db.message.create({
-    data: { leadId, ...from, body: "", mediaUrl: url, mediaType: file.mimeType || "audio/ogg" },
+    data: { leadId, ...from, ...extra, body: "", mediaUrl: url, mediaType: file.mimeType || "audio/ogg" },
   });
 
   let transcript: string | null = null;
@@ -35,9 +41,9 @@ async function saveVoiceNote(leadId: string, from: VoiceNoteAuthor, file: AudioF
   return db.message.update({ where: { id: message.id }, data: { transcript } });
 }
 
-/** Llega una nota de voz del cliente. */
-export function receiveContactAudio(leadId: string, file: AudioFile, deps: MediaDeps = {}) {
-  return saveVoiceNote(leadId, { author: "CONTACT" }, file, deps);
+/** Llega una nota de voz del cliente (`externalId`: id del mensaje en el canal). */
+export function receiveContactAudio(leadId: string, file: AudioFile, deps: MediaDeps = {}, externalId?: string) {
+  return saveVoiceNote(leadId, { author: "CONTACT" }, file, deps, externalId ? { externalId } : {});
 }
 
 /** Un ejecutivo responde con una nota de voz grabada desde el chat. */

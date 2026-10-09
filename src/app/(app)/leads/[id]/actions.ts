@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
 import { sendFollowUpNow } from "@/lib/ai/follow-ups";
+import { deliverOutbound } from "@/lib/domain/channels";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
@@ -106,9 +107,11 @@ export async function sendAsUserAction(leadId: string, form: FormData): Promise<
   if (body) await db.message.create({ data: { leadId, author: "USER", userId: user.id, body } });
   if (!audio && !body) return null;
   if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
+  // En WhatsApp el mensaje sale al cliente; si no se pudo, el ejecutivo ve el motivo.
+  const failed = await deliverOutbound(leadId);
   refreshInsightsLater(leadId);
   done(leadId);
-  return null;
+  return failed;
 }
 
 export async function moveStageAction(leadId: string, form: FormData) {

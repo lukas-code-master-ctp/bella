@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, BellRing, Bot, CircleX, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
+import { Activity, BellRing, Bot, Check, CheckCheck, CircleAlert, CircleX, Clock, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
@@ -20,6 +20,8 @@ export type ChatMessage = {
   /** Hora ya formateada en el servidor (evita diferencias de zona horaria al hidratar). */
   time: string;
   pending?: boolean;
+  /** Entrega por WhatsApp de un mensaje enviado (no existe en el simulador). */
+  delivery?: { status: string; error: string | null };
 };
 
 /** Enter envía el formulario; Shift+Enter agrega una línea. */
@@ -166,9 +168,38 @@ function Bubble({ message: m, animate, onInspect }: { message: ChatMessage; anim
         </span>
         {m.audio && <VoiceNote audio={m.audio} pending={m.pending} />}
         {m.body && <span className="block whitespace-pre-wrap">{m.body}</span>}
-        <span className={`mt-1 block text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>{m.time}</span>
+        <span className={`mt-1 flex items-center justify-end gap-1 text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>
+          {m.time}
+          {m.delivery && <DeliveryMark status={m.delivery.status} />}
+        </span>
+        {m.delivery?.status === "FAILED" && (
+          <span className="mt-1.5 flex gap-1 rounded-lg bg-white/95 px-2 py-1 text-[12px] font-medium text-red-700">
+            <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            No se entregó: {m.delivery.error ?? "WhatsApp no pudo enviarlo."}
+          </span>
+        )}
       </Wrapper>
     </div>
+  );
+}
+
+const DELIVERY: Record<string, { label: string; icon: React.ReactNode }> = {
+  SENDING: { label: "Enviando", icon: <Clock aria-hidden className="size-3.5" /> },
+  SENT: { label: "Enviado", icon: <Check aria-hidden className="size-3.5" /> },
+  DELIVERED: { label: "Entregado", icon: <CheckCheck aria-hidden className="size-3.5" /> },
+  READ: { label: "Leído", icon: <CheckCheck aria-hidden className="size-3.5 text-sky-200" /> },
+  FAILED: { label: "No entregado", icon: <CircleAlert aria-hidden className="size-3.5 text-red-200" /> },
+};
+
+/** Ticks de WhatsApp: enviado, entregado, leído o fallido. */
+function DeliveryMark({ status }: { status: string }) {
+  const d = DELIVERY[status];
+  if (!d) return null;
+  return (
+    <span title={d.label} className="inline-flex">
+      {d.icon}
+      <span className="sr-only">{d.label}</span>
+    </span>
   );
 }
 
