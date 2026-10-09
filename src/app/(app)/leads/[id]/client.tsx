@@ -66,7 +66,7 @@ export function LeadChat({
 
   return (
     <>
-      <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6" aria-live="polite">
+      <div className="relative flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6" aria-live="polite">
         {shown.length === 0 && (
           <EmptyState icon={<MessageCircle />} title="Aún no hay mensajes">
             Cuando el cliente escriba, la conversación aparecerá aquí.

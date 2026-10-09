@@ -33,7 +33,7 @@ export default function LeadLoading() {
             <Skeleton className="h-10 w-24" />
           </div>
         </Card>
-        <aside className="space-y-4">
+        <aside className="relative space-y-4 xl:h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1.5">
           <Card className="divide-y divide-slate-100">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="space-y-3 p-4">
