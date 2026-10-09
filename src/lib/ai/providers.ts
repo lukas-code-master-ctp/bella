@@ -141,6 +141,13 @@ export type ChatResponse = {
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
+/** URL con que OpenRouter identifica a Bella en Logs y Apps; sin HTTP-Referer la app no aparece. */
+const APP_URL =
+  process.env.APP_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "https://github.com/lukas-code-master-ctp/bella");
+
 export const openRouterClient: ChatClient = {
   async complete(body) {
     const res = await fetch(`${OPENROUTER_URL}/chat/completions`, {
@@ -148,6 +155,7 @@ export const openRouterClient: ChatClient = {
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
+        "HTTP-Referer": APP_URL,
         "X-Title": "Bella CRM",
       },
       body: JSON.stringify(body),

@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { AiConfig, AiProvider } from "@/lib/ai/config";
-import type { ModelOption } from "@/lib/ai/models";
+import type { ModelOption, OpenRouterKeyInfo } from "@/lib/ai/models";
 import { Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAiAction } from "../actions";
@@ -13,12 +13,14 @@ export function AiForm({
   defaults,
   summaryDefaults,
   keys,
+  keyInfo,
 }: {
   config: Required<AiConfig>;
   models: ModelOption[] | null;
   defaults: Record<AiProvider, string>;
   summaryDefaults: Record<AiProvider, string>;
   keys: Record<AiProvider, boolean>;
+  keyInfo: OpenRouterKeyInfo | null;
 }) {
   const [message, action] = useActionState(saveAiAction, null);
   const [provider, setProvider] = useState(config.provider);
@@ -91,6 +93,12 @@ export function AiForm({
       )}
       {provider === "openrouter" && models && !selected && (
         <p className="text-sm text-amber-700">Ese modelo no aparece en OpenRouter. Escribe para buscar en la lista.</p>
+      )}
+      {provider === "openrouter" && keyInfo && (
+        <p className="text-sm text-slate-600">
+          Clave en uso: <span className="font-medium">{keyInfo.label}</span> · gasto acumulado US$
+          {keyInfo.usage.toFixed(2)}. Los registros quedan en la cuenta de OpenRouter dueña de esta clave.
+        </p>
       )}
       {!keys[provider] && (
         <p className="text-sm text-rose-600">
