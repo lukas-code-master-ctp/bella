@@ -15,8 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Además del cron (cada 15 minutos), mientras el equipo usa la app los seguimientos
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   after(runDueFollowUpsIfStale);
-  const urgentTasks = await countUrgentTasks(user.id);
-  const unread = await unreadNotificationCount(user.id);
+  const [urgentTasks, unread] = await Promise.all([countUrgentTasks(user.id), unreadNotificationCount(user.id)]);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <a
