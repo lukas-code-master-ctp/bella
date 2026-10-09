@@ -61,7 +61,8 @@ const FUENTES = `- El inventario (search_inventory) es la planilla "Proyectos Va
 const HERRAMIENTAS = `Las rutas de Vambe se traducen así a tus herramientas:
 - "Mover a [etapa]": usa move_stage con el nombre exacto de la etapa. "Mover a Asistencia Humana" es handoff_to_human.
 - "Crear una tarea para el ejecutivo": no existe una herramienta aparte. Escribe ese resumen en el campo reason de move_stage o handoff_to_human; el ejecutivo lo ve en el historial del lead.
-- Nombre y correo del cliente: guárdalos con update_contact apenas te los dé. El teléfono ya viene en el estado del CRM cuando el cliente escribe por WhatsApp. El RUT, el presupuesto y los demás datos quedan en la conversación y en los resúmenes.
+- Nombre y correo del cliente: guárdalos con update_contact apenas te los dé. El teléfono ya viene en el estado del CRM cuando el cliente escribe por WhatsApp.
+- RUT, presupuesto, región de interés, topografía preferida y residencia en Chile: son los campos del cliente del estado del CRM. Guárdalos con set_contact_field apenas el cliente los mencione, aunque no se los hayas preguntado. El plazo, el uso y la forma de pago siguen siendo etiquetas.
 - Etiquetas: usa tag_contact con las categorías del catálogo (Estado, Interés, Plazo, Uso, Forma de pago, Proyecto, Origen). Dentro de una categoría solo queda una etiqueta.
 - Imágenes: no puedes enviar imágenes. Si el cliente pide fotos o material visual, envía el link de la landing page del proyecto y el video de presentación si el inventario los tiene; si no, ofrece que un ejecutivo se las envíe. Nunca respondas solo que no puedes enviar fotos.`;
 
@@ -335,7 +336,7 @@ Sitio web: https://compratuparcela.cl`;
 
 export const COMPRA_TU_PARCELA: Preset = {
   id: "compra-tu-parcela",
-  version: 1,
+  version: 2,
   assistant: {
     assistantName: "Valentina",
     companyName: "Compra Tu Parcela",
@@ -404,6 +405,36 @@ export const COMPRA_TU_PARCELA: Preset = {
       ],
     },
     { category: "Origen", color: "#db2777", names: ["Sitio web", "Live Ofertas Parcelas"] },
+  ],
+  // Campos de cliente de Vambe que no cubren las etiquetas (Plazo, Proyecto e Interés ya lo son).
+  fields: [
+    {
+      name: "RUT",
+      type: "RUT",
+      description: "RUT del cliente. Pídelo solo si quiere reservar o agendar visita; guárdalo si lo entrega antes.",
+    },
+    {
+      name: "Presupuesto",
+      type: "NUMBER",
+      description: "Presupuesto total aproximado en pesos chilenos. Pregúntalo solo cuando ya sepas el plazo y la forma de pago.",
+    },
+    {
+      name: "Región de interés",
+      type: "TEXT",
+      description: "Región o zona donde busca parcela (ej. Maule, Los Lagos, cerca de Pichilemu).",
+    },
+    {
+      name: "Topografía preferida",
+      type: "OPTIONS",
+      options: ["Plana", "Con pendiente", "Indiferente"],
+      description: "Tipo de terreno que prefiere, si lo menciona.",
+    },
+    {
+      name: "Residencia en Chile",
+      type: "OPTIONS",
+      options: ["Chileno", "Extranjero con residencia", "Extranjero sin residencia"],
+      description: "Relevante para los requisitos de compra; guárdalo si el cliente lo menciona.",
+    },
   ],
   // En Vambe la asignación balanceada (Tiare Otarola y Carlos Faundez) está en Inicial y en
   // Asistencia Humana. Sin ejecutivos listados, la regla reparte entre todos los activos.
