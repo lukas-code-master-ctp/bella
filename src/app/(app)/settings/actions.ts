@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
+import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
 import { saveChannelSettings } from "@/lib/domain/channels";
 import { saveLegalSettings } from "@/lib/domain/privacy";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
@@ -298,4 +299,15 @@ export async function toggleUserAction(id: string, active: boolean) {
   if (admin.id === id) throw new Error("No puedes desactivarte a ti mismo.");
   await db.user.update({ where: { id }, data: { active } });
   revalidatePath("/settings/users");
+}
+
+// Origen de leads
+
+export async function saveAttributionAction(form: FormData) {
+  await requireAdmin();
+  await saveAttributionSettings({
+    whatsappNumber: str(form, "whatsappNumber"),
+    defaultText: str(form, "defaultText") || DEFAULT_ATTRIBUTION.defaultText,
+  });
+  revalidatePath("/settings/attribution");
 }

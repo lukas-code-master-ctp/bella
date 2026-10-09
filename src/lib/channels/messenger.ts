@@ -107,9 +107,21 @@ export type MsgEvent = {
     is_deleted?: boolean;
     attachments?: MsgAttachment[];
     quick_reply?: { payload?: string };
+    referral?: MsgReferral;
   };
-  postback?: { mid?: string; title?: string; payload?: string };
+  postback?: { mid?: string; title?: string; payload?: string; referral?: MsgReferral };
+  /** Clic en un anuncio o enlace m.me/ig.me con `ref` en una conversación que ya existía. */
+  referral?: MsgReferral;
   read?: { watermark?: number; mid?: string };
+};
+
+/** Anuncio de clic a Messenger o Instagram Direct (source ADS) o enlace con `ref`. */
+export type MsgReferral = {
+  source?: string;
+  type?: string;
+  ref?: string;
+  ad_id?: string;
+  ads_context_data?: { ad_title?: string; post_id?: string; photo_url?: string; video_url?: string };
 };
 
 /** Comentario nuevo: field "comments" en Instagram y "feed" (item "comment") en la página. */

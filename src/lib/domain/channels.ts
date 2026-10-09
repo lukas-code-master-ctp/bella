@@ -21,8 +21,11 @@ import {
   type MessengerApi,
   type MessengerWebhook,
   type MetaPlatform,
+  type MsgReferral,
   type MsgEvent,
 } from "../channels/messenger";
+import type { AdsApi } from "../channels/ads";
+import { attachAdSource, attachLinkSource, takeRefCode } from "./attribution";
 import { createLead } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
 import { notifyContactMessage } from "./notifications";
@@ -54,7 +57,7 @@ export async function aiChannels(): Promise<Channel[]> {
 
 // --- Entrantes ---------------------------------------------------------------------------
 
-export type InboundDeps = { api?: WhatsAppApi; messenger?: MessengerApi; media?: MediaDeps };
+export type InboundDeps = { api?: WhatsAppApi; messenger?: MessengerApi; media?: MediaDeps; ads?: AdsApi };
 
 /**
  * Procesa un webhook de WhatsApp: guarda los mensajes nuevos (cada uno una sola vez, aunque
@@ -142,12 +145,22 @@ async function receiveWhatsAppMessage(
   const body = m.type === "audio" ? "" : describeMessage(m);
   if (body === null) return null;
   const leadId = await openLeadFor("WHATSAPP", m.from, async () => profileName?.trim() || `+${m.from}`, aiEnabled, `+${m.from}`);
+  const r = m.referral;
+  if (r) {
+    await attachAdSource(
+      leadId,
+      { adId: r.source_id, adType: r.source_type, headline: r.headline, body: r.body, url: r.source_url, ctwaClid: r.ctwa_clid },
+      deps.ads,
+    );
+  }
   if (m.type === "audio" && m.audio) {
     const mediaId = m.audio.id;
     await receiveAudio(leadId, m.id, () => (deps.api ?? cloudApi).downloadMedia(mediaId), deps);
     return leadId;
   }
-  return (await receiveText(leadId, m.id, body)) ? leadId : null;
+  // El código de una landing (/wa) une sus UTM al lead y no se guarda en el mensaje.
+  const text = m.type === "text" ? await takeRefCode(leadId, body) : body;
+  return (await receiveText(leadId, m.id, text)) ? leadId : null;
 }
 
 /**
@@ -181,6 +194,16 @@ async function receiveMessengerEvent(
   const m = event.message;
   // Los ecos son nuestros propios envíos (o respuestas desde la app de Meta): no son del cliente.
   if (m?.is_echo || m?.is_deleted) return null;
+  const referral = event.referral ?? m?.referral ?? event.postback?.referral;
+  // Un clic en un anuncio sin mensaje (conversación que ya existía) solo marca el origen.
+  if (referral && !m && !event.postback) {
+    const contact = await db.contact.findUnique({
+      where: { channel_externalId: { channel: platform, externalId: event.sender.id } },
+      include: { leads: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1 } },
+    });
+    if (contact?.leads[0]) await attachReferral(contact.leads[0].id, referral, deps);
+    return null;
+  }
   const externalId = m?.mid ?? event.postback?.mid;
   if (!externalId || (await db.message.findUnique({ where: { externalId } }))) return null;
   const audio = m?.attachments?.find((a) => a.type === "audio" && a.payload?.url);
@@ -192,11 +215,25 @@ async function receiveMessengerEvent(
   const userId = event.sender.id;
   const fallback = platform === "INSTAGRAM" ? "Usuario de Instagram" : "Usuario de Facebook";
   const leadId = await openLeadFor(platform, userId, async () => (await api.profileName(platform, userId)) ?? fallback, aiEnabled);
+  if (referral) await attachReferral(leadId, referral, deps);
   if (audio) {
     await receiveAudio(leadId, externalId, () => api.download(audio.payload!.url!), deps);
     return leadId;
   }
   return (await receiveText(leadId, externalId, body)) ? leadId : null;
+}
+
+/** Origen de un mensaje de Instagram o Messenger: un anuncio o un enlace m.me/ig.me con código. */
+async function attachReferral(leadId: string, r: MsgReferral, deps: InboundDeps) {
+  if (r.ad_id || r.source === "ADS") {
+    await attachAdSource(
+      leadId,
+      { adId: r.ad_id, adType: "ad", headline: r.ads_context_data?.ad_title },
+      deps.ads,
+    );
+  } else if (r.ref) {
+    await attachLinkSource(leadId, r.ref.trim().toUpperCase());
+  }
 }
 
 /** El cliente leyó: todo lo enviado hasta ese momento queda como leído. */
