@@ -3,39 +3,45 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Mic, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui";
+import { encodeWav, mergeAndResample, peakLevel } from "@/lib/wav";
 
 /**
- * Formatos en orden de preferencia. La transcripción (OpenRouter) entiende ogg y m4a; webm queda
- * de último recurso para navegadores que no graban en otro formato.
+ * Una nota de voz pesa ~32 KB por segundo (WAV de 16 kHz) y el servidor acepta hasta 4 MB
+ * (AUDIO_MAX_BYTES en src/lib/media.ts): a esta duración se corta sola y se envía.
  */
-const MIME_TYPES = ["audio/ogg;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"];
+const MAX_SECONDS = 120;
 
-const EXTENSIONS: Record<string, string> = { "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/webm": "webm" };
+/** Bajo este volumen máximo la grabación se considera silencio (micrófono apagado o equivocado). */
+const SILENCE_PEAK = 0.01;
 
-/** Igual que AUDIO_MAX_BYTES en el servidor (src/lib/media.ts, que no se puede importar aquí). */
-export const AUDIO_MAX_MB = 4;
-
-/** Una nota de voz no debería pasar de unos minutos; a esta duración se corta sola. */
-const MAX_SECONDS = 5 * 60;
-
-type Recording = { recorder: MediaRecorder; stream: MediaStream; chunks: Blob[]; startedAt: number };
+type Recording = {
+  stream: MediaStream;
+  context: AudioContext;
+  processor: ScriptProcessorNode;
+  chunks: Float32Array[];
+  startedAt: number;
+};
 
 /**
  * Graba una nota de voz con el micrófono, como en WhatsApp: `start` pide permiso y empieza,
- * `finish` entrega el archivo y `cancel` lo descarta.
+ * `finish` entrega el archivo y `cancel` lo descarta. Se toma el audio crudo y se arma un WAV
+ * (ver src/lib/wav.ts), así no dependemos del codificador de cada navegador.
  */
 export function useVoiceRecorder(onRecorded: (file: File) => void) {
   const [supported, setSupported] = useState(false);
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [level, setLevel] = useState(0);
+  const [heard, setHeard] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const current = useRef<Recording | null>(null);
+  const levelRef = useRef(0);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
 
   // Se revisa en el cliente para no desalinear el HTML del servidor al hidratar.
   useEffect(() => {
-    setSupported(typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia);
+    setSupported(typeof AudioContext !== "undefined" && !!navigator.mediaDevices?.getUserMedia);
   }, []);
 
   const stop = useCallback((keep: boolean) => {
@@ -43,18 +49,19 @@ export function useVoiceRecorder(onRecorded: (file: File) => void) {
     if (!rec) return;
     current.current = null;
     setRecording(false);
-    rec.recorder.onstop = () => {
-      rec.stream.getTracks().forEach((t) => t.stop());
-      if (!keep) return;
-      const type = (rec.recorder.mimeType || rec.chunks[0]?.type || "audio/webm").split(";")[0];
-      const blob = new Blob(rec.chunks, { type });
-      if (!blob.size) return setError("No se grabó nada. Revisa el micrófono e intenta de nuevo.");
-      if (blob.size > AUDIO_MAX_MB * 1024 * 1024) return setError(`La nota de voz pesa más de ${AUDIO_MAX_MB} MB.`);
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
-      onRecordedRef.current(new File([blob], `nota-de-voz-${stamp}.${EXTENSIONS[type] ?? "webm"}`, { type }));
-    };
-    if (rec.recorder.state === "inactive") rec.recorder.onstop(new Event("stop"));
-    else rec.recorder.stop();
+    rec.processor.onaudioprocess = null;
+    rec.processor.disconnect();
+    rec.stream.getTracks().forEach((t) => t.stop());
+    void rec.context.close();
+    if (!keep) return;
+    const samples = mergeAndResample(rec.chunks, rec.context.sampleRate);
+    if (!samples.length) return setError("No se grabó nada. Revisa el micrófono e intenta de nuevo.");
+    if (peakLevel(samples) < SILENCE_PEAK) {
+      return setError("La grabación quedó en silencio: revisa que el micrófono correcto esté activo y no silenciado.");
+    }
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+    const wav = encodeWav(samples);
+    onRecordedRef.current(new File([wav], `nota-de-voz-${stamp}.wav`, { type: "audio/wav" }));
   }, []);
 
   const start = useCallback(async () => {
@@ -62,7 +69,9 @@ export function useVoiceRecorder(onRecorded: (file: File) => void) {
     setError(null);
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
     } catch (err) {
       const denied = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
       setError(
@@ -72,19 +81,30 @@ export function useVoiceRecorder(onRecorded: (file: File) => void) {
       );
       return;
     }
-    const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t));
-    const recorder = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32_000 });
-    const rec: Recording = { recorder, stream, chunks: [], startedAt: Date.now() };
-    recorder.ondataavailable = (e) => {
-      if (e.data.size) rec.chunks.push(e.data);
+    const context = new AudioContext();
+    await context.resume();
+    const source = context.createMediaStreamSource(stream);
+    // ScriptProcessor entrega el audio crudo en todos los navegadores, sin archivos aparte.
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    const mute = context.createGain();
+    mute.gain.value = 0;
+    const rec: Recording = { stream, context, processor, chunks: [], startedAt: Date.now() };
+    processor.onaudioprocess = (e) => {
+      const input = e.inputBuffer.getChannelData(0);
+      rec.chunks.push(new Float32Array(input));
+      levelRef.current = Math.max(levelRef.current, peakLevel(input));
     };
+    source.connect(processor);
+    processor.connect(mute);
+    mute.connect(context.destination);
     current.current = rec;
-    recorder.start(250);
     setSeconds(0);
+    setLevel(0);
+    setHeard(false);
     setRecording(true);
   }, []);
 
-  // Cronómetro, y corte automático al llegar al máximo.
+  // Cronómetro, medidor de volumen y corte automático al llegar al máximo.
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(() => {
@@ -92,8 +112,11 @@ export function useVoiceRecorder(onRecorded: (file: File) => void) {
       if (!rec) return;
       const elapsed = Math.floor((Date.now() - rec.startedAt) / 1000);
       setSeconds(elapsed);
+      setLevel(levelRef.current);
+      if (levelRef.current >= SILENCE_PEAK) setHeard(true);
+      levelRef.current = 0;
       if (elapsed >= MAX_SECONDS) stop(true);
-    }, 250);
+    }, 100);
     return () => clearInterval(timer);
   }, [recording, stop]);
 
@@ -104,6 +127,8 @@ export function useVoiceRecorder(onRecorded: (file: File) => void) {
     supported,
     recording,
     seconds,
+    level,
+    heard,
     error,
     clearError: () => setError(null),
     start,
@@ -136,6 +161,8 @@ export function MicButton({ recorder, disabled, label }: { recorder: VoiceRecord
 export function RecordingBar({ recorder }: { recorder: VoiceRecorder }) {
   const m = Math.floor(recorder.seconds / 60);
   const s = String(recorder.seconds % 60).padStart(2, "0");
+  // Si tras un par de segundos no ha llegado ningún sonido, se avisa antes de enviar una nota vacía.
+  const quiet = recorder.seconds >= 2 && !recorder.heard;
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <Button type="button" variant="ghost-danger" size="icon" onClick={recorder.cancel} aria-label="Descartar nota de voz" title="Descartar">
@@ -146,11 +173,29 @@ export function RecordingBar({ recorder }: { recorder: VoiceRecorder }) {
         <span className="tabular-nums font-semibold">
           {m}:{s}
         </span>
-        <span className="truncate">Grabando nota de voz…</span>
+        <span className="truncate">{quiet ? "No se escucha el micrófono…" : "Grabando nota de voz…"}</span>
+        <LevelMeter level={recorder.level} />
       </div>
       <Button type="button" size="icon" onClick={recorder.finish} aria-label="Enviar nota de voz" title="Enviar">
         <Send aria-hidden />
       </Button>
     </div>
+  );
+}
+
+/** Barras que se mueven con la voz, para saber que el micrófono está captando. */
+function LevelMeter({ level }: { level: number }) {
+  // La raíz hace visible también la voz baja.
+  const filled = Math.round(Math.sqrt(Math.min(1, level)) * 5);
+  return (
+    <span aria-hidden className="ml-auto flex h-4 shrink-0 items-end gap-0.5">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={`w-1 rounded-full transition-colors duration-100 ${i <= filled ? "bg-rose-600" : "bg-rose-200"}`}
+          style={{ height: `${i * 20}%` }}
+        />
+      ))}
+    </span>
   );
 }
