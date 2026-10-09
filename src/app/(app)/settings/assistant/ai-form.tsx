@@ -11,19 +11,23 @@ export function AiForm({
   config,
   models,
   defaults,
+  summaryDefaults,
   keys,
   keyInfo,
 }: {
-  config: AiConfig;
+  config: Required<AiConfig>;
   models: ModelOption[] | null;
   defaults: Record<AiProvider, string>;
+  summaryDefaults: Record<AiProvider, string>;
   keys: Record<AiProvider, boolean>;
   keyInfo: OpenRouterKeyInfo | null;
 }) {
   const [message, action] = useActionState(saveAiAction, null);
   const [provider, setProvider] = useState(config.provider);
   const [model, setModel] = useState(config.model);
+  const [summaryModel, setSummaryModel] = useState(config.summaryModel);
   const selected = models?.find((m) => m.id === model);
+  const summarySelected = models?.find((m) => m.id === summaryModel);
 
   return (
     <form action={action} className="space-y-4">
@@ -36,6 +40,7 @@ export function AiForm({
               const next = e.target.value as AiProvider;
               setProvider(next);
               setModel(next === config.provider ? config.model : defaults[next]);
+              setSummaryModel(next === config.provider ? config.summaryModel : summaryDefaults[next]);
             }}
             className={inputClass}
           >
@@ -61,6 +66,22 @@ export function AiForm({
           </select>
         </Field>
       </div>
+      <Field
+        label="Modelo para resumen y puntaje"
+        hint={
+          "Resume cada conversación en una línea y le pone puntaje al lead después de cada respuesta. Conviene uno chico y barato." +
+          (provider === "openrouter" && summarySelected ? ` ${summarySelected.name}: ${summarySelected.price} USD por millón de tokens.` : "")
+        }
+      >
+        <input
+          name="summaryModel"
+          list={provider === "openrouter" ? "openrouter-models" : undefined}
+          value={summaryModel}
+          onChange={(e) => setSummaryModel(e.target.value)}
+          required
+          className={`${inputClass} sm:max-w-md`}
+        />
+      </Field>
       {provider === "openrouter" && models && (
         <datalist id="openrouter-models">
           {models.map((m) => (

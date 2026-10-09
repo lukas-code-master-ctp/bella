@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
-import { parseInventoryCsv, searchInventory, syncInventory, toCsvExportUrl } from "@/lib/inventory";
+import {
+  INVENTORY_MAX_AGE_MS,
+  parseInventoryCsv,
+  searchInventory,
+  syncInventory,
+  syncInventoryIfStale,
+  toCsvExportUrl,
+  type InventorySettings,
+} from "@/lib/inventory";
 import { searchKnowledge } from "@/lib/knowledge";
-import { setSetting } from "@/lib/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 
 describe("inventario desde Google Sheets", () => {
   it("convierte el enlace de la planilla en la URL de exportación CSV", () => {
@@ -28,6 +36,59 @@ describe("inventario desde Google Sheets", () => {
   it("avisa si la planilla no es pública", async () => {
     await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
     await expect(syncInventory(async () => new Response("<html>login</html>"))).rejects.toThrow("no es pública");
+  });
+});
+
+describe("sincronización automática del inventario", () => {
+  const csv = "Modelo,Precio\nYamaha FZ,1990000\n";
+
+  it("no relee la planilla si la copia es reciente", async () => {
+    await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
+    await syncInventory(async () => new Response(csv));
+    let calls = 0;
+    const fetchImpl = async () => (calls++, new Response(csv));
+    expect(await syncInventoryIfStale(fetchImpl)).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it("relee la planilla si la copia está vieja", async () => {
+    await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
+    await syncInventory(async () => new Response(csv));
+    const later = new Date(Date.now() + INVENTORY_MAX_AGE_MS + 1000);
+    const updated = "Modelo,Precio\nYamaha FZ,1990000\nHonda CB,2500000\n";
+    expect(await syncInventoryIfStale(async () => new Response(updated), later)).toBe(true);
+    expect(await db.inventoryItem.count()).toBe(2);
+  });
+
+  it("si la planilla falla conserva el inventario, guarda el error y no reintenta en cada turno", async () => {
+    await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
+    await syncInventory(async () => new Response(csv));
+    const later = new Date(Date.now() + INVENTORY_MAX_AGE_MS + 1000);
+    expect(await syncInventoryIfStale(async () => new Response("", { status: 404 }), later)).toBe(false);
+    expect(await db.inventoryItem.count()).toBe(1);
+    const settings = await getSetting<InventorySettings>("inventory", { sheetUrl: "" });
+    expect(settings.lastError).toContain("HTTP 404");
+
+    let calls = 0;
+    expect(await syncInventoryIfStale(async () => (calls++, new Response(csv)))).toBe(false);
+    expect(calls).toBe(0);
+  });
+
+  it("dos sincronizaciones simultáneas no duplican filas", async () => {
+    await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
+    await Promise.all([1, 2, 3].map(() => syncInventory(async () => new Response(csv))));
+    expect(await db.inventoryItem.count()).toBe(1);
+  });
+
+  it("un sincronizado exitoso limpia el error anterior", async () => {
+    await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv", lastError: "x" });
+    await syncInventory(async () => new Response(csv));
+    const settings = await getSetting<InventorySettings>("inventory", { sheetUrl: "" });
+    expect(settings.lastError).toBeUndefined();
+  });
+
+  it("sin enlace configurado no hace nada", async () => {
+    expect(await syncInventoryIfStale(async () => new Response(csv))).toBe(false);
   });
 });
 

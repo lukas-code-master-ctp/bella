@@ -1,7 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { addTagTx, handoffToHumanTx, moveStageTx } from "../domain/leads";
-import { searchInventory } from "../inventory";
+import { parseLocalDateTime } from "../dates";
+import { findField, setFieldValueTx } from "../domain/fields";
+import { scheduleFollowUpTx } from "../domain/follow-ups";
+import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
+import { createTask } from "../domain/tasks";
+import { deliverPendingPush } from "../push";
+import { searchInventory, syncInventoryIfStale } from "../inventory";
 import { searchKnowledge } from "../knowledge";
 import { normalize } from "../text";
 
@@ -60,6 +65,47 @@ export const AGENT_TOOLS: Tool[] = [
     { name: text("Nombre del cliente, o vacío"), email: text("Correo del cliente, o vacío") },
   ),
   tool(
+    "schedule_follow_up",
+    "Agenda un recontacto para una fecha: cuando el cliente pida que le escriban más adelante o " +
+      "acuerden retomar en un día (ej. después de una visita). Ese día recibirás un bloque " +
+      "<seguimiento> para escribirle. Con la fecha vacía se cancelan los seguimientos (por ejemplo, " +
+      "si pide que no le escriban más).",
+    {
+      date: text('Fecha y hora en hora de Chile, formato "AAAA-MM-DD HH:MM", o vacío para cancelar'),
+      reason: text("Para qué se recontacta, en una frase (ej. confirmar si pudo ver la parcela)"),
+    },
+  ),
+  tool(
+    "set_contact_field",
+    "Guarda un dato del cliente en uno de los campos del cliente del estado del CRM (por ejemplo " +
+      "RUT, presupuesto o región de interés) en cuanto el cliente lo entregue o lo corrija. Un " +
+      "campo por llamada; puedes hacer varias llamadas en el mismo turno. No inventes ni deduzcas " +
+      "datos que el cliente no dijo.",
+    {
+      field: text("Nombre exacto del campo"),
+      value: text(
+        "Valor tal como lo dijo el cliente. En campos de opciones, una de las opciones; en campos " +
+          "numéricos, un solo monto en pesos (si da un rango, el mayor)",
+      ),
+    },
+  ),
+  tool(
+    "create_task",
+    "Crea una tarea con plazo para el ejecutivo del lead: algo concreto que una persona del equipo " +
+      "debe hacer (llamar, enviar documentos, confirmar una visita, verificar disponibilidad). " +
+      "El ejecutivo la ve en \"Mis tareas\" y en la ficha del lead. No la uses para lo que tú " +
+      "misma puedes resolver en el chat.",
+    {
+      title: text("Qué hay que hacer, en una frase corta que empiece con un verbo"),
+      due: text(
+        "Vencimiento en hora de Chile, formato AAAA-MM-DD HH:MM (ej. 2026-10-12 10:00). Usa la fecha " +
+          "y hora actual del estado del CRM como referencia. Si el cliente no dio un plazo, usa el " +
+          "siguiente día hábil.",
+      ),
+      notes: text("Contexto para el ejecutivo: datos del cliente y lo acordado, o vacío"),
+    },
+  ),
+  tool(
     "handoff_to_human",
     "Deriva la conversación a un ejecutivo humano y te pausa. Úsala cuando el cliente pida hablar " +
       "con una persona, esté listo para comprar o cerrar, esté molesto, o pregunte algo que no " +
@@ -92,6 +138,7 @@ export async function executeTool(
       };
     }
     case "search_inventory": {
+      await syncInventoryIfStale();
       const results = await searchInventory(str("query"));
       return {
         content: results.length
@@ -109,6 +156,7 @@ export async function executeTool(
         };
       }
       await db.$transaction((tx) => moveStageTx(tx, leadId, stage.id, { actor: "AI" }, str("reason")));
+      await deliverPendingPush();
       return {
         content: stage.requiresHuman
           ? `Lead movido a "${stage.name}". Es una etapa de atención humana: quedas pausada y un ejecutivo continuará.`
@@ -126,6 +174,7 @@ export async function executeTool(
         };
       }
       const added = await db.$transaction((tx) => addTagTx(tx, leadId, tag.id, { actor: "AI" }, str("reason")));
+      await deliverPendingPush();
       return { content: added ? `Etiqueta "${tag.category}: ${tag.name}" asignada.` : "El contacto ya tenía esa etiqueta." };
     }
     case "update_contact": {
@@ -147,8 +196,50 @@ export async function executeTool(
       ]);
       return { content: "Datos del contacto guardados." };
     }
+    case "schedule_follow_up":
+      return db.$transaction((tx) => scheduleFollowUpTx(tx, leadId, { date: str("date"), reason: str("reason") }));
+    case "set_contact_field": {
+      const fields = await db.customField.findMany({ orderBy: { position: "asc" } });
+      const field = findField(fields, str("field"));
+      if (!field) {
+        return {
+          isError: true,
+          content: fields.length
+            ? `Campo desconocido. Campos válidos: ${fields.map((f) => f.name).join(", ")}`
+            : "No hay campos del cliente configurados.",
+        };
+      }
+      if (!str("value")) return { isError: true, content: "Indica el valor del campo." };
+      try {
+        const saved = await db.$transaction((tx) => setFieldValueTx(tx, leadId, field, str("value"), { actor: "AI" }));
+        return { content: saved === undefined ? `"${field.name}" ya tenía ese valor.` : `"${field.name}" guardado.` };
+      } catch (err) {
+        if (err instanceof DomainError) return { isError: true, content: err.message };
+        throw err;
+      }
+    }
+    case "create_task": {
+      const dueAt = parseLocalDateTime(str("due"));
+      if (!dueAt) return { isError: true, content: "Fecha inválida. Usa el formato AAAA-MM-DD HH:MM." };
+      if (dueAt.getTime() < Date.now() - 5 * 60_000) {
+        return { isError: true, content: "Esa fecha ya pasó: revisa la fecha y hora actual del estado del CRM." };
+      }
+      try {
+        const task = await createTask(leadId, { title: str("title"), dueAt, notes: str("notes") }, { actor: "AI" });
+        const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { assignee: true } });
+        return {
+          content: lead.assignee
+            ? `Tarea creada para ${lead.assignee.name}: "${task.title}".`
+            : `Tarea creada: "${task.title}". El lead aún no tiene ejecutivo; la tomará quien se le asigne.`,
+        };
+      } catch (e) {
+        if (e instanceof DomainError) return { isError: true, content: e.message };
+        throw e;
+      }
+    }
     case "handoff_to_human": {
       const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason")));
+      await deliverPendingPush();
       return {
         content:
           `Derivado a un ejecutivo${stage ? ` (etapa "${stage.name}")` : ""}. Quedas pausada: ` +

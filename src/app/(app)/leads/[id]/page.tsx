@@ -1,22 +1,30 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, MessageCircle, RotateCcw, Send, Trophy } from "lucide-react";
+import { ArrowLeft, Bot, BotOff, CircleX, ListTodo, RotateCcw, Sparkles, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { displayFieldValue } from "@/lib/domain/fields";
+import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
-import { Avatar, Badge, Button, Card, EmptyState, inputClass, TagPill } from "@/components/ui";
+import { startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { markLeadNotificationsRead } from "@/lib/domain/notifications";
+import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
+import { ScoreBadge } from "@/components/score-badge";
 import {
   addTagAction,
   moveStageAction,
+  cancelFollowUpAction,
   removeTagAction,
   reopenLeadAction,
-  sendAsUserAction,
   setAssigneeAction,
   toggleAiAction,
 } from "./actions";
-import { CloseLeadForm, ContactComposer, ScrollToBottom } from "./client";
+import { CloseLeadForm, FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
+import { LeadFieldsForm } from "./fields-form";
+import { TaskForm } from "../../tasks/task-form";
+import { TaskItem } from "../../tasks/task-item";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -24,6 +32,7 @@ const EVENT_LABEL: Record<string, string> = {
   TAG_ADDED: "Etiqueta agregada",
   TAG_REMOVED: "Etiqueta quitada",
   CONTACT_UPDATED: "Datos del contacto",
+  FIELD_UPDATED: "Campo del cliente",
   ASSIGNED: "Asignado",
   UNASSIGNED: "Sin asignar",
   HANDOFF: "Derivado a humano",
@@ -32,16 +41,28 @@ const EVENT_LABEL: Record<string, string> = {
   WON: "Ganado",
   LOST: "Perdido",
   REOPENED: "Reabierto",
+  FOLLOW_UP_SENT: "Seguimiento enviado",
+  FOLLOW_UP_SKIPPED: "Seguimiento omitido",
+  FOLLOW_UP_SCHEDULED: "Recontacto agendado",
+  FOLLOW_UP_CANCELED: "Seguimientos cancelados",
+  TASK_CREATED: "Tarea creada:",
+  TASK_DONE: "Tarea cumplida:",
+  TASK_REOPENED: "Tarea pendiente otra vez:",
+  TASK_DELETED: "Tarea eliminada:",
 };
 
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 
 function describe(data: Record<string, unknown>) {
+  if (data.field) return `${data.field}: ${data.value ?? "borrado"}`;
   if (data.from && data.to) return `${data.from} → ${data.to}`;
   if (data.tag) return String(data.tag);
   if (data.name || data.email) return [data.name, data.email].filter(Boolean).join(" · ");
+  if (data.title) return String(data.title);
   if (data.assigneeName) return String(data.assigneeName);
   if (typeof data.amount === "number") return `$${data.amount.toLocaleString("es-CL")}`;
+  if (typeof data.number === "number") return `${data.number} de ${data.total}`;
+  if (typeof data.at === "string") return formatChileDateTime(new Date(data.at));
   return "";
 }
 
@@ -59,17 +80,28 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       assignee: true,
       messages: { include: { user: true }, orderBy: { createdAt: "asc" } },
       events: { include: { user: true }, orderBy: { createdAt: "desc" } },
+      tasks: { include: { assignee: true }, orderBy: [{ completedAt: { sort: "desc", nulls: "first" } }, { dueAt: "asc" }] },
     },
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives] = await Promise.all([
+  const [stages, tags, executives, fields, followUps] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
+    db.customField.findMany({
+      orderBy: { position: "asc" },
+      include: { values: { where: { contactId: lead.contactId } } },
+    }),
+    getFollowUpSettings(),
+    markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
+  const now = new Date();
+  // Mañana a las 10:00 (Chile) como vencimiento sugerido.
+  const defaultDue = toLocalInput(new Date(startOfLocalDay(now, 1).getTime() + 10 * 3_600_000));
+  const pendingTasks = lead.tasks.filter((t) => !t.completedAt);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -117,58 +149,48 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6" aria-live="polite">
-          {lead.messages.length === 0 && (
-            <EmptyState icon={<MessageCircle />} title="Aún no hay mensajes">
-              Cuando el cliente escriba, la conversación aparecerá aquí.
-            </EmptyState>
-          )}
-          {lead.messages.map((m) => {
-            const fromContact = m.author === "CONTACT";
-            const author = fromContact ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo");
-            return (
-              <div key={m.id} className={`flex ${fromContact ? "justify-start" : "justify-end"}`}>
-                <div
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-xs sm:max-w-[70%] ${
-                    fromContact
-                      ? "rounded-bl-md border border-slate-200 bg-white text-slate-800"
-                      : m.author === "AI"
-                        ? "rounded-br-md bg-brand-600 text-white"
-                        : "rounded-br-md bg-emerald-700 text-white"
-                  }`}
-                >
-                  <p className={`mb-0.5 flex items-center gap-1 text-[11px] font-semibold ${fromContact ? "text-slate-600" : "text-white/85"}`}>
-                    {m.author === "AI" && <Bot aria-hidden className="size-3.5" />}
-                    {author}
-                  </p>
-                  <p className="whitespace-pre-wrap">{m.body}</p>
-                  <p className={`mt-1 text-right text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>
-                    {time(m.createdAt)}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-          <ScrollToBottom dep={lead.messages.length} />
-        </div>
-
-        <div className="space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4">
-          {lead.contact.channel === "SIMULATOR" && <ContactComposer leadId={lead.id} />}
-          <form action={sendAsUserAction.bind(null, lead.id)} className="flex gap-2">
-            <label htmlFor="reply" className="sr-only">
-              Responder como ejecutivo
-            </label>
-            <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
-            <SubmitButton pendingText="Enviando…">
-              <Send aria-hidden />
-              <span className="hidden sm:inline">Enviar</span>
-            </SubmitButton>
-          </form>
-        </div>
+        <LeadChat
+          leadId={lead.id}
+          contactName={lead.contact.name}
+          userName={user.name}
+          simulator={lead.contact.channel === "SIMULATOR"}
+          messages={lead.messages.map((m) => ({
+            id: m.id,
+            author: m.author,
+            authorName:
+              m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
+            body: m.body,
+            ...(m.mediaUrl ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
+            time: time(m.createdAt),
+          }))}
+        />
       </Card>
 
       <aside className="space-y-4">
         <Card className="divide-y divide-slate-100">
+          <section className="p-4">
+            <div className="mb-2.5 flex items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Resumen IA</h2>
+              {lead.score !== null && <ScoreBadge score={lead.score} className="ml-auto" />}
+            </div>
+            {lead.aiSummary ? (
+              <>
+                <p className="flex gap-1.5 text-sm leading-relaxed text-slate-800">
+                  <Sparkles aria-hidden className="mt-1 size-3.5 shrink-0 text-brand-500" />
+                  {lead.aiSummary}
+                </p>
+                {lead.scoreReason && <p className="mt-1.5 text-xs text-slate-600">Puntaje: {lead.scoreReason}</p>}
+              </>
+            ) : (
+              <p className="text-sm text-slate-500">
+                {lead.messages.length ? "Aún sin resumen." : "Se genera cuando haya conversación."}
+              </p>
+            )}
+            {lead.messages.length > 0 && (
+              <RefreshInsightsForm leadId={lead.id} hasSummary={Boolean(lead.aiSummary)} />
+            )}
+          </section>
+
           <Section title="Etapa">
             <form action={moveStageAction.bind(null, lead.id)} className="flex gap-2">
               <select key={lead.stageId} name="stageId" aria-label="Etapa" defaultValue={lead.stageId} className={inputClass}>
@@ -218,6 +240,31 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             </form>
           </Section>
 
+          {followUps.enabled && isOpen && lead.aiEnabled && (
+            <Section title="Seguimiento">
+              <p className="text-sm text-slate-800">
+                {lead.followUpAt
+                  ? formatChileDateTime(lead.followUpAt)
+                  : "Sin seguimiento programado"}
+              </p>
+              {lead.followUpAt && (
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {lead.followUpReason
+                    ? `Agendado por la IA: ${lead.followUpReason}`
+                    : `Seguimiento ${lead.followUpCount + 1} de ${followUps.delays.length} si no responde`}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <FollowUpNowButton leadId={lead.id} />
+                {lead.followUpAt && (
+                  <form action={cancelFollowUpAction.bind(null, lead.id)}>
+                    <SubmitButton variant="ghost">Cancelar</SubmitButton>
+                  </form>
+                )}
+              </div>
+            </Section>
+          )}
+
           <Section title="Etiquetas">
             <div className="mb-3 flex flex-wrap gap-1.5">
               {lead.contact.tags.length === 0 && <span className="text-sm text-slate-500">Sin etiquetas</span>}
@@ -246,6 +293,33 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             </form>
           </Section>
 
+          <Section title="Datos del cliente">
+            {fields.length ? (
+              <LeadFieldsForm
+                leadId={lead.id}
+                fields={fields.map((f) => ({
+                  id: f.id,
+                  name: f.name,
+                  options: f.type === "OPTIONS" ? f.options : null,
+                  value: f.values[0] ? displayFieldValue(f, f.values[0].value) : "",
+                  byAi: f.values[0]?.updatedBy === "AI",
+                }))}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">
+                Sin campos configurados.
+                {user.role === "ADMIN" && (
+                  <>
+                    {" "}
+                    <Link href="/settings/fields" className="font-medium text-brand-700 hover:underline">
+                      Crear campos
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+          </Section>
+
           <Section title="Resultado">
             {isOpen ? (
               <CloseLeadForm leadId={lead.id} />
@@ -266,6 +340,34 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </div>
             )}
           </Section>
+        </Card>
+
+        <Card className="p-4">
+          <h2 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            <ListTodo aria-hidden className="size-4" />
+            Tareas
+            {pendingTasks.length > 0 && <span className="normal-case tracking-normal text-slate-500">· {pendingTasks.length} pendientes</span>}
+          </h2>
+          {lead.tasks.length === 0 ? (
+            <p className="mb-3 text-sm text-slate-500">Sin tareas.</p>
+          ) : (
+            <ul className="mb-3 max-h-80 divide-y divide-slate-100 overflow-y-auto">
+              {lead.tasks.map((t) => (
+                <TaskItem
+                  key={t.id}
+                  task={t}
+                  now={now}
+                  assigneeName={t.assigneeId !== lead.assigneeId ? (t.assignee?.name ?? null) : undefined}
+                />
+              ))}
+            </ul>
+          )}
+          <TaskForm
+            leadId={lead.id}
+            defaultDue={defaultDue}
+            executives={user.role === "ADMIN" ? executives.map((e) => ({ id: e.id, name: e.name })) : undefined}
+            defaultAssigneeId={lead.assigneeId}
+          />
         </Card>
 
         <Card className="p-4">

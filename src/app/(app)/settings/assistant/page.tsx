@@ -1,5 +1,5 @@
 import { getAssistantSettings } from "@/lib/settings";
-import { API_KEY_ENV, DEFAULT_MODEL, getAiConfig } from "@/lib/ai/config";
+import { API_KEY_ENV, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
 import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
 import { Card, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -41,7 +41,14 @@ export default async function AssistantSettingsPage() {
       </Card>
       <h2 className="mb-3 mt-8 text-base font-semibold text-slate-900">Modelo de IA</h2>
       <Card className="p-5">
-        <AiForm config={config} models={models} defaults={DEFAULT_MODEL} keys={keys} keyInfo={keyInfo} />
+        <AiForm
+          config={config}
+          models={models}
+          defaults={DEFAULT_MODEL}
+          summaryDefaults={DEFAULT_SUMMARY_MODEL}
+          keys={keys}
+          keyInfo={keyInfo}
+        />
       </Card>
     </>
   );
