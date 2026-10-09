@@ -73,7 +73,7 @@ export const AGENT_TOOLS: Tool[] = [
       "si pide que no le escriban más).",
     {
       date: text('Fecha y hora en hora de Chile, formato "AAAA-MM-DD HH:MM", o vacío para cancelar'),
-      reason: text("Para qué se recontacta, en una frase (ej. confirmar si pudo ver la parcela)"),
+      reason: text("Para qué se recontacta, en una frase (ej. confirmar si pudo revisar la cotización)"),
     },
   ),
   tool(
