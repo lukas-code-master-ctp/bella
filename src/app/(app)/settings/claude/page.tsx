@@ -26,7 +26,7 @@ const ENV_KEYS = [
 export default async function ClaudeSetupPage() {
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
-  const [attribution, pixel, legal, assistant, followUps, inventory, stages, knowledgeDocs, fields] = await Promise.all([
+  const [attribution, pixel, legal, assistant, followUps, inventory, stages, knowledgeDocs, fields, executives] = await Promise.all([
     getAttributionSettings(),
     getPixelSettings(),
     getLegalSettings(),
@@ -36,6 +36,7 @@ export default async function ClaudeSetupPage() {
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.knowledgeDoc.count(),
     db.customField.count(),
+    db.user.count({ where: { role: "EXECUTIVE", active: true } }),
   ]);
   const status: SetupStatus = {
     origin,
@@ -53,13 +54,14 @@ export default async function ClaudeSetupPage() {
     stages: stages.map((s) => s.name),
     fields,
     followUps: followUps.enabled,
+    executives,
   };
 
   return (
     <>
       <PageHeader
         title="Configurar con Claude"
-        description="Copia el prompt, pégalo en Claude con acceso a tu navegador y Claude hace la configuración por ti. El prompt se arma con lo que ya está listo, así solo hace lo que falta."
+        description="Copia el prompt, pégalo en Claude con acceso a tu navegador y Claude hace la configuración por ti, aunque la empresa parta desde cero en Meta. El prompt se arma con lo que ya está listo, así solo hace lo que falta."
       />
       <Card className="p-5">
         <CardHeader
