@@ -1,13 +1,16 @@
 import { headers } from "next/headers";
 import Link from "next/link";
-import { CircleCheck, CircleDashed, Sparkles } from "lucide-react";
+import { ArrowUpRight, CircleCheck, CircleDashed, Plus, Smartphone, Sparkles, SquareKanban } from "lucide-react";
 import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
-import { getChannelSettings } from "@/lib/domain/channels";
+import { getChannelSettings, openLeadsByChannel } from "@/lib/domain/channels";
+import { db } from "@/lib/db";
 import { getLegalSettings } from "@/lib/domain/privacy";
 import { Badge, buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveChannelsAction, saveLegalAction } from "../actions";
+import { ChannelIcon } from "./channel-icon";
+import { ChannelList, type ChannelRow } from "./channel-list";
 
 const ENV_HELP: Record<string, string> = {
   WHATSAPP_TOKEN: "Token permanente de un usuario del sistema (Business Manager → Usuarios del sistema).",
@@ -53,12 +56,53 @@ function Webhook({ url, where, fields }: { url: string; where: string; fields: s
 }
 
 export default async function ChannelsSettingsPage() {
-  const [s, legal] = await Promise.all([getChannelSettings(), getLegalSettings()]);
+  const [s, legal, leads, stages] = await Promise.all([
+    getChannelSettings(),
+    getLegalSettings(),
+    openLeadsByChannel(),
+    db.stage.count(),
+  ]);
   const waMissing = missingWhatsAppEnv();
   const metaMissing = missingMessengerEnv();
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
   const base = `${origin}/api/webhooks`;
+  const env = process.env;
+  const metaOk = metaMissing.length === 0;
+
+  const rows: ChannelRow[] = [
+    {
+      kind: "WHATSAPP",
+      group: "WhatsApp",
+      name: "WhatsApp",
+      detail: env.WHATSAPP_PHONE_NUMBER_ID ? `Número ${env.WHATSAPP_PHONE_NUMBER_ID}` : "Sin conectar",
+      connected: waMissing.length === 0,
+      aiOn: s.whatsappAi,
+      setup: "#whatsapp",
+    },
+    {
+      kind: "INSTAGRAM",
+      group: "Instagram",
+      name: "Instagram",
+      detail: !metaOk ? "Sin conectar" : env.META_IG_ACCOUNT_ID ? `Cuenta ${env.META_IG_ACCOUNT_ID}` : "Cuenta vinculada a la página",
+      connected: metaOk,
+      aiOn: s.instagramAi,
+      setup: "#meta",
+    },
+    {
+      kind: "FACEBOOK",
+      group: "Messenger",
+      name: "Messenger",
+      detail: metaOk && env.META_PAGE_ID ? `Página ${env.META_PAGE_ID}` : "Sin conectar",
+      connected: metaOk,
+      aiOn: s.facebookAi,
+      setup: "#meta",
+    },
+  ];
+  const inFunnel = [
+    ...rows.filter((r) => r.connected),
+    { kind: "SIMULATOR" as const, name: "Simulador", detail: "Pruebas de la asistente" },
+  ];
 
   return (
     <>
@@ -71,8 +115,69 @@ export default async function ChannelsSettingsPage() {
           Configurar con Claude
         </Link>
       </PageHeader>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        <Card className="flex flex-col p-5">
+          <CardHeader title="Canales conectados" description="Administra tus canales conectados." icon={<Smartphone />} />
+          <div className="flex-1">
+            <ChannelList rows={rows} />
+          </div>
+          <a href="#configurar" className={buttonClass("primary", "md", "mt-5 w-full")}>
+            <Plus aria-hidden />
+            Agregar canal
+          </a>
+        </Card>
+
+        <Card className="self-start p-5">
+          <CardHeader
+            title="Canales en tu funnel"
+            description="Las conversaciones de cada canal entran como leads al funnel de ventas."
+            icon={<SquareKanban />}
+          />
+          <div className="rounded-xl border border-slate-100 bg-slate-50">
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-900">Funnel de ventas</p>
+                <p className="text-xs text-slate-600">
+                  {stages} {stages === 1 ? "etapa" : "etapas"} · {inFunnel.length} {inFunnel.length === 1 ? "canal asociado" : "canales asociados"}
+                </p>
+              </div>
+              <Link href="/settings/funnel" className={buttonClass("secondary", "sm")}>
+                Etapas
+              </Link>
+              <Link href="/funnel" className={buttonClass("primary", "sm")}>
+                <ArrowUpRight aria-hidden />
+                Ir al funnel
+              </Link>
+            </div>
+            <ul className="grid gap-3 p-4 sm:grid-cols-2">
+              {inFunnel.map((c) => (
+                <li key={c.kind} className="rounded-lg border border-slate-200 bg-white p-3 shadow-xs">
+                  <ChannelIcon kind={c.kind} />
+                  <p className="mt-2 truncate text-sm font-semibold text-slate-900">{c.name}</p>
+                  <p className="truncate text-xs text-slate-600">{c.detail}</p>
+                  <p className="mt-2 text-xs font-medium text-brand-700">
+                    {leads[c.kind]} {leads[c.kind] === 1 ? "lead abierto" : "leads abiertos"}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {inFunnel.length === 1 && (
+            <p className="mt-3 text-xs text-slate-600">
+              Aún no hay canales de Meta conectados. Con &quot;Agregar canal&quot; ves qué falta para conectar WhatsApp, Instagram o Messenger.
+            </p>
+          )}
+        </Card>
+      </div>
+
+      <h2 id="configurar" className="mb-1 mt-10 scroll-mt-6 text-lg font-semibold text-slate-900">
+        Agregar o configurar un canal
+      </h2>
+      <p className="mb-4 text-sm text-slate-600">
+        Bella se conecta directo con Meta. Carga estas variables en Vercel y registra el webhook en la app de Meta.
+      </p>
       <div className="space-y-6">
-        <Card className="p-5">
+        <Card id="whatsapp" className="scroll-mt-6 p-5">
           <CardHeader title="WhatsApp" description="API oficial de WhatsApp Cloud, directa con Meta.">
             {waMissing.length ? <Badge>Sin conectar</Badge> : <Badge tone="success">Conectado</Badge>}
           </CardHeader>
@@ -80,7 +185,7 @@ export default async function ChannelsSettingsPage() {
           <Webhook url={`${base}/whatsapp`} where="WhatsApp → Configuración" fields="el campo messages" />
         </Card>
 
-        <Card className="p-5">
+        <Card id="meta" className="scroll-mt-6 p-5">
           <CardHeader
             title="Instagram y Facebook Messenger"
             description="Mensajes directos de Instagram y de la página de Facebook, con la app de Meta."
