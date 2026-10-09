@@ -202,7 +202,11 @@ export async function saveInventoryAction(_prev: string | null, form: FormData):
 
 export async function saveChannelsAction(form: FormData) {
   await requireAdmin();
-  await saveChannelSettings({ whatsappAi: form.get("whatsappAi") === "on" });
+  await saveChannelSettings({
+    whatsappAi: form.get("whatsappAi") === "on",
+    instagramAi: form.get("instagramAi") === "on",
+    facebookAi: form.get("facebookAi") === "on",
+  });
   revalidatePath("/settings/channels");
 }
 

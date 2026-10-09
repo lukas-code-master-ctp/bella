@@ -120,6 +120,22 @@ simulador; imágenes, documentos y ubicaciones llegan como texto descriptivo. La
 IA y del equipo salen por WhatsApp y en el chat se ve si se enviaron, entregaron o leyeron, o por
 qué fallaron (por ejemplo, la ventana de 24 horas de WhatsApp).
 
+## Instagram y Facebook Messenger
+
+Los mensajes directos de Instagram y de la página de Facebook entran igual que WhatsApp, por la
+misma app de Meta:
+
+1. Vincula la cuenta profesional de Instagram a la página de Facebook y agrega a la app los
+   productos Messenger e Instagram.
+2. En Vercel define `META_PAGE_ACCESS_TOKEN` (token permanente de la página), `META_PAGE_ID` y,
+   opcional, `META_IG_ACCOUNT_ID`. `META_APP_SECRET` y `META_VERIFY_TOKEN` son los mismos de WhatsApp.
+3. En Webhooks registra `https://<tu-dominio>/api/webhooks/meta` para los objetos Page e Instagram y
+   suscribe `messages`, `messaging_postbacks` y `message_reads`; suscribe la página a la app.
+4. En Configuración → Canales enciende la asistente por canal cuando quieras.
+
+Hasta que Meta apruebe `pages_messaging` e `instagram_manage_messages` en la revisión de la app,
+solo funciona con personas que tengan un rol en la app.
+
 ## Cómo está construido
 
 - Next.js 15 (App Router, server actions) + TypeScript + Tailwind.

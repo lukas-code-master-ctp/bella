@@ -153,7 +153,7 @@ describe("WhatsApp: mensajes entrantes", () => {
     });
     const m = await db.message.findFirstOrThrow();
     expect([m.externalId, m.transcript, m.mediaType]).toEqual(["wamid.a", "Quiero visitar el sábado", "audio/ogg; codecs=opus"]);
-    expect(m.mediaUrl).toMatch(/whatsapp\.ogg$/);
+    expect(m.mediaUrl).toMatch(/audio\.ogg$/);
   });
 });
 
@@ -170,8 +170,8 @@ describe("WhatsApp: envío y estado de entrega", () => {
     await db.message.create({ data: { leadId: lead.id, author: "USER", userId: user.id, body: "Hola Ana, soy Eje" } });
     await db.message.create({ data: { leadId: lead.id, author: "AI", body: "¿En qué te ayudo?" } });
     const { api, sent } = fakeApi();
-    expect(await deliverOutbound(lead.id, api)).toBeNull();
-    await deliverOutbound(lead.id, api);
+    expect(await deliverOutbound(lead.id, { whatsapp: api })).toBeNull();
+    await deliverOutbound(lead.id, { whatsapp: api });
 
     expect(sent).toEqual([
       { to: "56911112222", text: "Hola Ana, soy Eje" },
@@ -189,7 +189,7 @@ describe("WhatsApp: envío y estado de entrega", () => {
     await db.message.create({ data: { leadId: lead.id, author: "AI", body: "¿Sigues interesada?" } });
     const reason = "Pasaron más de 24 horas desde el último mensaje del cliente.";
     const { api } = fakeApi(new ChannelSendError(reason, 131047));
-    expect(await deliverOutbound(lead.id, api)).toBe(reason);
+    expect(await deliverOutbound(lead.id, { whatsapp: api })).toBe(reason);
     const m = await db.message.findFirstOrThrow({ where: { author: "AI" } });
     expect([m.deliveryStatus, m.deliveryError]).toEqual(["FAILED", reason]);
   });
@@ -200,7 +200,7 @@ describe("WhatsApp: envío y estado de entrega", () => {
       data: { leadId: lead.id, author: "USER", body: "", mediaUrl: "https://blob.test/a.webm", mediaType: "audio/webm" },
     });
     const { api, sent } = fakeApi();
-    expect(await deliverOutbound(lead.id, api)).toMatch(/formato de audio/);
+    expect(await deliverOutbound(lead.id, { whatsapp: api })).toMatch(/formato de audio/);
     expect(sent).toEqual([]);
   });
 
@@ -208,7 +208,7 @@ describe("WhatsApp: envío y estado de entrega", () => {
     const lead = await waLead();
     await db.message.create({ data: { leadId: lead.id, author: "AI", body: "Uno" } });
     await db.message.create({ data: { leadId: lead.id, author: "AI", body: "Dos" } });
-    await deliverOutbound(lead.id, fakeApi().api);
+    await deliverOutbound(lead.id, { whatsapp: fakeApi().api });
     const status = (id: string, s: string, errors?: object[]) => webhook([], { statuses: [{ id, status: s, errors }] });
 
     await receiveWhatsApp(status("wamid.out1", "read"));
@@ -226,7 +226,7 @@ describe("WhatsApp: envío y estado de entrega", () => {
     const lead = await createLead({ name: "Sim", channel: "SIMULATOR" });
     await db.message.create({ data: { leadId: lead.id, author: "AI", body: "Hola" } });
     const { api, sent } = fakeApi();
-    await deliverOutbound(lead.id, api);
+    await deliverOutbound(lead.id, { whatsapp: api });
     expect(sent).toEqual([]);
     expect((await db.message.findFirstOrThrow()).deliveryStatus).toBeNull();
   });
