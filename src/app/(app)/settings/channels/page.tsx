@@ -1,10 +1,11 @@
 import { headers } from "next/headers";
-import { CircleCheck, CircleDashed } from "lucide-react";
+import Link from "next/link";
+import { CircleCheck, CircleDashed, Sparkles } from "lucide-react";
 import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
 import { getChannelSettings } from "@/lib/domain/channels";
 import { getLegalSettings } from "@/lib/domain/privacy";
-import { Badge, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
+import { Badge, buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveChannelsAction, saveLegalAction } from "../actions";
 
@@ -64,7 +65,12 @@ export default async function ChannelsSettingsPage() {
       <PageHeader
         title="Canales"
         description="Conecta los canales por donde escriben los leads. Las conversaciones llegan al mismo funnel y chat que el simulador."
-      />
+      >
+        <Link href="/settings/claude" className={buttonClass("secondary")}>
+          <Sparkles aria-hidden />
+          Configurar con Claude
+        </Link>
+      </PageHeader>
       <div className="space-y-6">
         <Card className="p-5">
           <CardHeader title="WhatsApp" description="API oficial de WhatsApp Cloud, directa con Meta.">
