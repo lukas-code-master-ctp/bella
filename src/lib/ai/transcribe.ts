@@ -10,7 +10,7 @@ export const DEFAULT_TRANSCRIPTION_MODEL = "google/gemini-2.5-flash";
 export type Transcriber = (file: AudioFile) => Promise<string>;
 
 const INSTRUCTIONS =
-  "Transcribe esta nota de voz de un cliente, palabra por palabra, en el idioma en que habla " +
+  "Transcribe esta nota de voz, palabra por palabra, en el idioma en que habla " +
   "(normalmente español de Chile). Responde solo con la transcripción, sin comillas, comentarios " +
   "ni marcas de tiempo. Si no se entiende nada o no hay voz, responde exactamente: [inaudible]";
 

@@ -5,12 +5,15 @@ import { DomainError } from "./leads";
 
 export type MediaDeps = { store?: MediaStore; transcribe?: Transcriber };
 
+/** Quién manda la nota de voz: el cliente o un ejecutivo del equipo. */
+type VoiceNoteAuthor = { author: "CONTACT" } | { author: "USER"; userId: string };
+
 /**
- * Llega una nota de voz del cliente: se guarda el archivo, se crea el mensaje y se transcribe
- * para que la IA (y el ejecutivo) sepan qué dijo. Si la transcripción falla, el mensaje queda
- * igual, sin transcripción, y la IA sabe que no la pudo escuchar.
+ * Guarda una nota de voz: se sube el archivo, se crea el mensaje y se transcribe para que la IA
+ * (y el equipo) sepan qué se dijo. Si la transcripción falla, el mensaje queda igual, sin
+ * transcripción, y la IA sabe que no la pudo escuchar.
  */
-export async function receiveContactAudio(leadId: string, file: AudioFile, deps: MediaDeps = {}) {
+async function saveVoiceNote(leadId: string, from: VoiceNoteAuthor, file: AudioFile, deps: MediaDeps) {
   if (!file.bytes.byteLength) throw new DomainError("El archivo de audio está vacío.");
   if (file.bytes.byteLength > AUDIO_MAX_BYTES) {
     throw new DomainError(`El audio pesa más de ${AUDIO_MAX_BYTES / 1024 / 1024} MB.`);
@@ -19,7 +22,7 @@ export async function receiveContactAudio(leadId: string, file: AudioFile, deps:
 
   const url = await (deps.store ?? blobStore)(file, `leads/${leadId}`);
   const message = await db.message.create({
-    data: { leadId, author: "CONTACT", body: "", mediaUrl: url, mediaType: file.mimeType || "audio/ogg" },
+    data: { leadId, ...from, body: "", mediaUrl: url, mediaType: file.mimeType || "audio/ogg" },
   });
 
   let transcript: string | null = null;
@@ -30,4 +33,14 @@ export async function receiveContactAudio(leadId: string, file: AudioFile, deps:
   }
   if (transcript === null) return message;
   return db.message.update({ where: { id: message.id }, data: { transcript } });
+}
+
+/** Llega una nota de voz del cliente. */
+export function receiveContactAudio(leadId: string, file: AudioFile, deps: MediaDeps = {}) {
+  return saveVoiceNote(leadId, { author: "CONTACT" }, file, deps);
+}
+
+/** Un ejecutivo responde con una nota de voz grabada desde el chat. */
+export function sendUserAudio(leadId: string, userId: string, file: AudioFile, deps: MediaDeps = {}) {
+  return saveVoiceNote(leadId, { author: "USER", userId }, file, deps);
 }

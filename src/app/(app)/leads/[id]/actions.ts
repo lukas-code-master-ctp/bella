@@ -21,7 +21,7 @@ import {
   setAiEnabled,
   setAssignee,
 } from "@/lib/domain/leads";
-import { receiveContactAudio } from "@/lib/domain/messages";
+import { receiveContactAudio, sendUserAudio } from "@/lib/domain/messages";
 import { notifyContactMessage } from "@/lib/domain/notifications";
 import { BLOB_MISSING } from "@/lib/media";
 
@@ -47,20 +47,12 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
   const { lead } = await authorize(leadId);
   if (lead.contact.channel !== "SIMULATOR") return "Solo disponible en leads del simulador.";
   const body = String(form.get("body") ?? "").trim();
-  const audio = form.get("audio");
-  if (audio instanceof File && audio.size > 0) {
+  const audio = await audioFrom(form);
+  if (audio) {
     try {
-      await receiveContactAudio(leadId, {
-        bytes: new Uint8Array(await audio.arrayBuffer()),
-        mimeType: audio.type,
-        fileName: audio.name,
-      });
+      await receiveContactAudio(leadId, audio);
     } catch (e) {
-      if (e instanceof DomainError) return e.message;
-      console.error(e);
-      return e instanceof Error && e.message === BLOB_MISSING
-        ? e.message
-        : "No se pudo guardar el audio. Intenta de nuevo.";
+      return audioError(e);
     }
     if (body) await db.message.create({ data: { leadId, author: "CONTACT", body } });
     await notifyContactMessage(leadId, body || "🎤 Nota de voz");
@@ -83,15 +75,40 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
   return null;
 }
 
-/** Respuesta de un ejecutivo. Al responder, el ejecutivo toma la conversación y la IA se pausa. */
-export async function sendAsUserAction(leadId: string, form: FormData) {
+/** Lee la nota de voz del formulario (null si no viene). */
+async function audioFrom(form: FormData) {
+  const audio = form.get("audio");
+  if (!(audio instanceof File) || audio.size === 0) return null;
+  return { bytes: new Uint8Array(await audio.arrayBuffer()), mimeType: audio.type, fileName: audio.name };
+}
+
+function audioError(e: unknown) {
+  if (e instanceof DomainError) return e.message;
+  console.error(e);
+  return e instanceof Error && e.message === BLOB_MISSING ? e.message : "No se pudo guardar el audio. Intenta de nuevo.";
+}
+
+/**
+ * Respuesta de un ejecutivo, escrita o como nota de voz grabada en el chat. Al responder, el
+ * ejecutivo toma la conversación y la IA se pausa.
+ */
+export async function sendAsUserAction(leadId: string, form: FormData): Promise<string | null> {
   const { user, lead, by } = await authorize(leadId);
   const body = String(form.get("body") ?? "").trim();
-  if (!body) return;
-  await db.message.create({ data: { leadId, author: "USER", userId: user.id, body } });
+  const audio = await audioFrom(form);
+  if (audio) {
+    try {
+      await sendUserAudio(leadId, user.id, audio);
+    } catch (e) {
+      return audioError(e);
+    }
+  }
+  if (body) await db.message.create({ data: { leadId, author: "USER", userId: user.id, body } });
+  if (!audio && !body) return null;
   if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
   refreshInsightsLater(leadId);
   done(leadId);
+  return null;
 }
 
 export async function moveStageAction(leadId: string, form: FormData) {
