@@ -1,5 +1,8 @@
 import { put } from "@vercel/blob";
 
+export const BLOB_MISSING =
+  "Falta conectar un Blob store de Vercel al proyecto (Storage → Blob) para guardar las notas de voz.";
+
 /** Tope de una nota de voz: Vercel no acepta cuerpos de más de 4,5 MB en una función. */
 export const AUDIO_MAX_BYTES = 4 * 1024 * 1024;
 
@@ -9,12 +12,12 @@ export type AudioFile = { bytes: Uint8Array; mimeType: string; fileName: string 
 export type MediaStore = (file: AudioFile, folder: string) => Promise<string>;
 
 /**
- * Vercel Blob: necesita BLOB_READ_WRITE_TOKEN, que Vercel agrega solo al conectar un Blob store
- * al proyecto. La URL lleva un sufijo aleatorio, así que no se puede adivinar.
+ * Vercel Blob: al conectar un Blob store al proyecto, Vercel agrega BLOB_STORE_ID (y la librería se
+ * autentica con el token OIDC del despliegue) o, en conexiones antiguas, BLOB_READ_WRITE_TOKEN. La URL lleva un sufijo aleatorio, así que no se puede adivinar.
  */
 export const blobStore: MediaStore = async (file, folder) => {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
-    throw new Error("Falta configurar BLOB_READ_WRITE_TOKEN (almacenamiento de archivos de Vercel Blob).");
+  if (!process.env.BLOB_STORE_ID && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error(BLOB_MISSING);
   }
   const name = file.fileName.replace(/[^\w.-]+/g, "_") || "audio";
   const blob = await put(`${folder}/${name}`, Buffer.from(file.bytes), {
