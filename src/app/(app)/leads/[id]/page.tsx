@@ -4,6 +4,7 @@ import { ArrowLeft, Bot, BotOff, CircleX, ListTodo, RotateCcw, Sparkles, Trophy 
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
+import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
@@ -14,12 +15,13 @@ import { ScoreBadge } from "@/components/score-badge";
 import {
   addTagAction,
   moveStageAction,
+  cancelFollowUpAction,
   removeTagAction,
   reopenLeadAction,
   setAssigneeAction,
   toggleAiAction,
 } from "./actions";
-import { CloseLeadForm, LeadChat, RefreshInsightsForm } from "./client";
+import { CloseLeadForm, FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
 import { TaskItem } from "../../tasks/task-item";
@@ -39,6 +41,10 @@ const EVENT_LABEL: Record<string, string> = {
   WON: "Ganado",
   LOST: "Perdido",
   REOPENED: "Reabierto",
+  FOLLOW_UP_SENT: "Seguimiento enviado",
+  FOLLOW_UP_SKIPPED: "Seguimiento omitido",
+  FOLLOW_UP_SCHEDULED: "Recontacto agendado",
+  FOLLOW_UP_CANCELED: "Seguimientos cancelados",
   TASK_CREATED: "Tarea creada:",
   TASK_DONE: "Tarea cumplida:",
   TASK_REOPENED: "Tarea pendiente otra vez:",
@@ -55,6 +61,8 @@ function describe(data: Record<string, unknown>) {
   if (data.title) return String(data.title);
   if (data.assigneeName) return String(data.assigneeName);
   if (typeof data.amount === "number") return `$${data.amount.toLocaleString("es-CL")}`;
+  if (typeof data.number === "number") return `${data.number} de ${data.total}`;
+  if (typeof data.at === "string") return formatChileDateTime(new Date(data.at));
   return "";
 }
 
@@ -77,7 +85,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields] = await Promise.all([
+  const [stages, tags, executives, fields, followUps] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -85,6 +93,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       orderBy: { position: "asc" },
       include: { values: { where: { contactId: lead.contactId } } },
     }),
+    getFollowUpSettings(),
     markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
@@ -230,6 +239,31 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </SubmitButton>
             </form>
           </Section>
+
+          {followUps.enabled && isOpen && lead.aiEnabled && (
+            <Section title="Seguimiento">
+              <p className="text-sm text-slate-800">
+                {lead.followUpAt
+                  ? formatChileDateTime(lead.followUpAt)
+                  : "Sin seguimiento programado"}
+              </p>
+              {lead.followUpAt && (
+                <p className="mt-0.5 text-xs text-slate-600">
+                  {lead.followUpReason
+                    ? `Agendado por la IA: ${lead.followUpReason}`
+                    : `Seguimiento ${lead.followUpCount + 1} de ${followUps.delays.length} si no responde`}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <FollowUpNowButton leadId={lead.id} />
+                {lead.followUpAt && (
+                  <form action={cancelFollowUpAction.bind(null, lead.id)}>
+                    <SubmitButton variant="ghost">Cancelar</SubmitButton>
+                  </form>
+                )}
+              </div>
+            </Section>
+          )}
 
           <Section title="Etiquetas">
             <div className="mb-3 flex flex-wrap gap-1.5">

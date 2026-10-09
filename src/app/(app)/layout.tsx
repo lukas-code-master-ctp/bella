@@ -1,5 +1,7 @@
 import { Bell, FlaskConical, ListTodo, LogOut, Settings, SquareKanban } from "lucide-react";
+import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
 import { countUrgentTasks } from "@/lib/domain/tasks";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
@@ -10,6 +12,9 @@ import { UnreadBadge } from "./notifications/unread-badge";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
+  // El cron de Vercel Hobby corre una vez al día: mientras el equipo usa la app, los seguimientos
+  // vencidos se envían después de responder la página (como mucho cada 5 minutos).
+  after(runDueFollowUpsIfStale);
   const urgentTasks = await countUrgentTasks(user.id);
   const unread = await unreadNotificationCount(user.id);
   return (

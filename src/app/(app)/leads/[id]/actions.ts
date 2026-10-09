@@ -6,6 +6,8 @@ import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
+import { sendFollowUpNow } from "@/lib/ai/follow-ups";
+import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
 import { setContactFields } from "@/lib/domain/fields";
@@ -111,6 +113,25 @@ export async function toggleAiAction(leadId: string, enabled: boolean) {
     await runAgent(leadId).catch((e) => console.error(e));
     refreshInsightsLater(leadId);
   }
+  done(leadId);
+}
+
+/** Pide a la IA el seguimiento del lead ahora (para no esperar el plazo, ej. al probar). */
+export async function sendFollowUpNowAction(leadId: string, _prev: string | null): Promise<string | null> {
+  const { lead } = await authorize(leadId);
+  if (!lead.aiEnabled || lead.status !== "OPEN") return "La IA debe estar activa en un lead abierto.";
+  const missing = missingKeyMessage((await getAiConfig()).provider);
+  if (missing) return missing;
+  const outcome = await sendFollowUpNow(leadId);
+  done(leadId);
+  if (outcome === "sent") return null;
+  if (outcome === "error") return "No se pudo enviar el seguimiento.";
+  return "La IA no envió seguimiento: el último mensaje no es de ella o decidió que no corresponde escribir.";
+}
+
+export async function cancelFollowUpAction(leadId: string) {
+  const { user } = await authorize(leadId);
+  await cancelFollowUp(leadId, user.id);
   done(leadId);
 }
 

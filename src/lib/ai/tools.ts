@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { parseLocalDateTime } from "../dates";
 import { findField, setFieldValueTx } from "../domain/fields";
+import { scheduleFollowUpTx } from "../domain/follow-ups";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
 import { createTask } from "../domain/tasks";
 import { deliverPendingPush } from "../push";
@@ -62,6 +63,17 @@ export const AGENT_TOOLS: Tool[] = [
     "Guarda en el CRM el nombre o el correo del cliente en cuanto te los dé. Deja en blanco " +
       "el campo que no cambia.",
     { name: text("Nombre del cliente, o vacío"), email: text("Correo del cliente, o vacío") },
+  ),
+  tool(
+    "schedule_follow_up",
+    "Agenda un recontacto para una fecha: cuando el cliente pida que le escriban más adelante o " +
+      "acuerden retomar en un día (ej. después de una visita). Ese día recibirás un bloque " +
+      "<seguimiento> para escribirle. Con la fecha vacía se cancelan los seguimientos (por ejemplo, " +
+      "si pide que no le escriban más).",
+    {
+      date: text('Fecha y hora en hora de Chile, formato "AAAA-MM-DD HH:MM", o vacío para cancelar'),
+      reason: text("Para qué se recontacta, en una frase (ej. confirmar si pudo ver la parcela)"),
+    },
   ),
   tool(
     "set_contact_field",
@@ -184,6 +196,8 @@ export async function executeTool(
       ]);
       return { content: "Datos del contacto guardados." };
     }
+    case "schedule_follow_up":
+      return db.$transaction((tx) => scheduleFollowUpTx(tx, leadId, { date: str("date"), reason: str("reason") }));
     case "set_contact_field": {
       const fields = await db.customField.findMany({ orderBy: { position: "asc" } });
       const field = findField(fields, str("field"));

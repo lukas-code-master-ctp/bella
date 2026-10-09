@@ -162,17 +162,23 @@ model ContactFieldValue {
 
 /// Un lead (ticket) es una oportunidad de venta de un contacto que avanza por el funnel.
 model Lead {
-  id         String     @id @default(cuid())
-  contactId  String
-  stageId    String
-  status     LeadStatus @default(OPEN)
-  lostReason String?
-  amount     Int?
-  assigneeId String?
-  aiEnabled  Boolean    @default(true)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  closedAt   DateTime?
+  id             String     @id @default(cuid())
+  contactId      String
+  stageId        String
+  status         LeadStatus @default(OPEN)
+  lostReason     String?
+  amount         Int?
+  assigneeId     String?
+  aiEnabled      Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  closedAt       DateTime?
+  /// Próximo seguimiento de la IA si el cliente no responde (ver src/lib/domain/follow-ups.ts).
+  followUpAt     DateTime?
+  /// Seguimientos enviados desde el último mensaje del cliente.
+  followUpCount  Int        @default(0)
+  /// Motivo cuando la IA agendó el recontacto para una fecha; vacío si es automático.
+  followUpReason String?
 
   /// Resumen de una línea de dónde quedó la conversación, hecho por la IA (ver src/lib/ai/insights.ts).
   aiSummary   String?
@@ -194,6 +200,7 @@ model Lead {
 
   @@index([stageId])
   @@index([assigneeId])
+  @@index([followUpAt])
 }
 
 model Message {

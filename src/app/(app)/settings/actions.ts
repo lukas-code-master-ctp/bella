@@ -6,6 +6,8 @@ import { hashPassword, requireAdmin } from "@/lib/auth";
 import { DEFAULT_SUMMARY_MODEL, type AiConfig, type AiEffort, type AiProvider } from "@/lib/ai/config";
 import { listOpenRouterModels } from "@/lib/ai/models";
 import { db } from "@/lib/db";
+import { runDueFollowUps } from "@/lib/ai/follow-ups";
+import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
@@ -207,6 +209,47 @@ export async function saveAutoCloseAction(form: FormData) {
     lostStageIds: form.getAll("lostStageIds").map(String),
   });
   revalidatePath("/settings/auto-close");
+}
+
+// Seguimientos
+
+export async function saveFollowUpsAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  const delays = parseDelays(str(form, "delays"));
+  if (!delays) return 'No entendí los plazos. Escríbelos como "3h, 1d, 3d, 7d" (m = minutos, h = horas, d = días).';
+  if (delays.length > 10) return "Configura como máximo 10 seguimientos.";
+  const hour = (key: string) => Math.min(24, Math.max(0, Math.round(Number(str(form, key)) || 0)));
+  const [sendFrom, sendTo] = [hour("sendFrom"), hour("sendTo")];
+  if (sendFrom === sendTo % 24) return "El horario de envío debe terminar a una hora distinta de la que empieza.";
+  const current = await getFollowUpSettings();
+  const enabled = form.get("enabled") === "on";
+  await setSetting<FollowUpSettings>("followUps", {
+    enabled,
+    delays,
+    sendFrom,
+    sendTo,
+    instructions: str(form, "instructions") || current.instructions,
+  });
+  // Al apagarlos se descartan los pendientes, para que al encenderlos no salgan todos de golpe.
+  if (!enabled) await db.lead.updateMany({ where: { followUpAt: { not: null } }, data: { followUpAt: null, followUpReason: null } });
+  revalidatePath("/settings/follow-ups");
+  return "Guardado.";
+}
+
+export async function runFollowUpsNowAction(_prev: string | null): Promise<string | null> {
+  await requireAdmin();
+  const r = await runDueFollowUps();
+  revalidatePath("/settings/follow-ups");
+  revalidatePath("/funnel");
+  if (r.reason) return r.reason;
+  if (!r.sent && !r.skipped && !r.failed) return "No hay seguimientos vencidos.";
+  return [
+    `${r.sent} enviados`,
+    r.skipped ? `${r.skipped} omitidos` : "",
+    r.failed ? `${r.failed} con error` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 // Usuarios

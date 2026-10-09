@@ -64,7 +64,7 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
      la API de Anthropic directo)
    - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
    - `CRON_SECRET`: un texto largo al azar; Vercel lo usa para llamar la sincronización diaria del
-     inventario (`vercel.json`)
+     inventario, el cierre automático y la revisión de seguimientos (`vercel.json`)
    - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` (opcional): activan los avisos push al navegador.
      Genéralas una vez con `npx web-push generate-vapid-keys`. Sin ellas los avisos quedan solo en
      la página **Avisos**.
@@ -86,6 +86,21 @@ El inventario se actualiza solo: cuando la asistente lo consulta y la copia guar
 una vez al día (`/api/cron/inventory`, protegido con `CRON_SECRET`). En el plan Hobby de Vercel los
 cron solo pueden correr una vez al día; en Pro se puede subir la frecuencia en `vercel.json`. Si la
 planilla falla, la asistente sigue usando la última copia y el error aparece en Configuración.
+
+## Seguimiento de leads inactivos
+
+En Configuración → Seguimientos se activa y se definen los plazos (por defecto 3 h, 1 día, 3 días
+y 7 días sin respuesta, contados desde el último mensaje de la IA), el horario de envío en hora de
+Chile y cómo escribir los mensajes. La IA también agenda un recontacto para una fecha cuando el
+cliente lo pide (`schedule_follow_up`). Solo aplica a leads abiertos con la IA activa; si un
+ejecutivo escribió último, no hay seguimiento automático.
+
+Los seguimientos vencidos se envían con Vercel Cron una vez al día (`/api/cron/follow-ups`,
+protegido con `CRON_SECRET`) y, mientras alguien usa la app, cada 5 minutos como máximo. En el plan
+Hobby, para que salgan a la hora exacta sin que nadie use la app, un servicio externo (por ejemplo
+cron-job.org) puede llamar esa ruta cada 15 minutos con el encabezado
+`Authorization: Bearer $CRON_SECRET`. Mientras no haya un canal real, los seguimientos aparecen en
+el chat del lead como cualquier mensaje de la IA.
 
 ## Cómo está construido
 
