@@ -136,6 +136,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             authorName:
               m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
             body: m.body,
+            ...(m.mediaUrl ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
             time: time(m.createdAt),
           }))}
         />

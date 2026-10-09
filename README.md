@@ -65,6 +65,10 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
    - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
    - `CRON_SECRET`: un texto largo al azar; Vercel lo usa para llamar la sincronización diaria del
      inventario (`vercel.json`)
+   - Notas de voz: en *Storage → Create → Blob* crea un Blob store y conéctalo al proyecto; Vercel
+     agrega solo `BLOB_READ_WRITE_TOKEN`. Los audios se transcriben con OpenRouter
+     (`OPENROUTER_API_KEY`; el modelo se puede cambiar con `TRANSCRIPTION_MODEL`, por defecto
+     `google/gemini-2.5-flash`).
 3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
 
 ## Inventario desde Google Sheets

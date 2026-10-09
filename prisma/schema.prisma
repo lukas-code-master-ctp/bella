@@ -190,12 +190,18 @@ model Lead {
 }
 
 model Message {
-  id        String        @id @default(cuid())
-  leadId    String
-  author    MessageAuthor
-  userId    String?
-  body      String
-  createdAt DateTime      @default(now())
+  id         String        @id @default(cuid())
+  leadId     String
+  author     MessageAuthor
+  userId     String?
+  /// Texto del mensaje. Vacío en una nota de voz sin texto.
+  body       String
+  /// Archivo adjunto (por ahora, notas de voz del cliente): URL en Vercel Blob y tipo MIME.
+  mediaUrl   String?
+  mediaType  String?
+  /// Transcripción de la nota de voz; null si no se pudo transcribir.
+  transcript String?
+  createdAt  DateTime      @default(now())
 
   lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user     User?     @relation(fields: [userId], references: [id])
