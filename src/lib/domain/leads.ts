@@ -2,6 +2,7 @@ import type { Actor, Channel, Prisma } from "@prisma/client";
 import { db } from "../db";
 import { deliverPendingPush } from "../push";
 import { applyAssignment } from "./assignment";
+import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
 import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
 import { moveOpenTasksTx } from "./tasks";
 
@@ -45,6 +46,7 @@ export async function createLead(
 export async function moveStage(leadId: string, stageId: string, by: ActorRef, reason?: string) {
   const lead = await db.$transaction((tx) => moveStageTx(tx, leadId, stageId, by, reason));
   await deliverPendingPush();
+  await deliverPendingConversions();
   return lead;
 }
 
@@ -75,6 +77,7 @@ export async function moveStageTx(
   });
   await applyAssignment(tx, leadId, { type: "STAGE_ENTERED", stageId });
   if (stage.requiresHuman) await notifyHumanStageTx(tx, leadId, reason, by.userId);
+  await queueQualifiedTx(tx, leadId, stageId);
   return updated;
 }
 
@@ -147,7 +150,7 @@ export async function closeLead(
   if (outcome === "LOST" && !details.lostReason?.trim()) {
     throw new DomainError("Indica el motivo de pérdida.");
   }
-  return db.$transaction(async (tx) => {
+  const closed = await db.$transaction(async (tx) => {
     const lead = await tx.lead.update({
       where: { id: leadId },
       data: {
@@ -168,8 +171,11 @@ export async function closeLead(
         data: { amount: details.amount ?? null },
       },
     });
+    if (outcome === "WON") await queuePurchaseTx(tx, leadId, lead.amount);
     return lead;
   });
+  await deliverPendingConversions();
+  return closed;
 }
 
 export async function reopenLead(leadId: string, by: ActorRef) {
