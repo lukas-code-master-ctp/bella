@@ -10,6 +10,7 @@ self.addEventListener("push", (event) => {
     Promise.all([
       self.registration.showNotification(data.title || "Bella", {
         body: data.body || "",
+        icon: "/icons/icon-192.png",
         tag: data.tag,
         renotify: Boolean(data.tag),
         data: { url: data.url || "/notifications" },
