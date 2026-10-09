@@ -9,6 +9,7 @@ import {
   BookOpen,
   Brain,
   ChevronRight,
+  ClipboardPen,
   Cpu,
   FileText,
   Gauge,
@@ -31,6 +32,7 @@ const TOOL: Record<string, { label: string; icon: React.ReactNode; dot: string }
   move_stage: { label: "Cambió la etapa", icon: <ArrowRightLeft />, dot: "bg-amber-500" },
   tag_contact: { label: "Etiquetó al contacto", icon: <Tag />, dot: "bg-pink-500" },
   update_contact: { label: "Actualizó datos del contacto", icon: <UserPen />, dot: "bg-pink-500" },
+  set_contact_field: { label: "Guardó un campo del cliente", icon: <ClipboardPen />, dot: "bg-pink-500" },
   handoff_to_human: { label: "Derivó a un ejecutivo", icon: <UserRound />, dot: "bg-rose-500" },
 };
 
@@ -54,6 +56,8 @@ function toolSummary(step: Extract<TraceStep, { type: "tool" }>) {
       return [`${i.category}: ${i.tag}`, i.reason].filter(Boolean).join(" · ");
     case "update_contact":
       return [i.name, i.email].filter(Boolean).join(" · ");
+    case "set_contact_field":
+      return `${i.field}: ${i.value}`;
     case "handoff_to_human":
       return i.reason ?? "";
     default:

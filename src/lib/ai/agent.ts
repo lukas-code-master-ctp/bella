@@ -1,4 +1,5 @@
 import type { Message } from "@prisma/client";
+import { toLocalInput } from "../dates";
 import { db } from "../db";
 import {
   agendaLine,
@@ -9,6 +10,7 @@ import {
   scheduleAfterAiTurnTx,
   type FollowUpSettings,
 } from "../domain/follow-ups";
+import { fieldsForCrmState } from "../domain/fields";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
@@ -36,8 +38,10 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "",
     "Cómo trabajas:",
     "- Cada mensaje del cliente llega con un bloque <crm_state> que muestra la etapa actual del " +
-      "lead, las etapas del funnel, sus etiquetas y el catálogo de etiquetas. El cliente no ve ese " +
+      "lead, las etapas del funnel, sus etiquetas, el catálogo de etiquetas y los campos del cliente. El cliente no ve ese " +
       "bloque; no lo menciones.",
+    "- Las notas de voz del cliente te llegan transcritas: respóndelas con naturalidad, como si las " +
+      "hubieras escuchado. La transcripción puede tener errores; si algo importante no se entiende, pregunta.",
     (knowledge?.length
       ? "- La base de conocimiento completa está al final, en <base_de_conocimiento>: úsala para " +
         "responder sobre la empresa (no necesitas search_knowledge). Consulta search_inventory "
@@ -45,10 +49,14 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
       "antes de mencionar cualquier producto, precio o stock. Si no encuentras el dato, dilo y " +
       "ofrece derivar a un ejecutivo; nunca lo inventes.",
     "- Mantén el CRM al día mientras conversas: mueve el lead de etapa cuando avance en el proceso " +
-      "y etiqueta su producto de interés y nivel de interés en cuanto lo sepas.",
+      "y etiqueta su producto de interés y nivel de interés en cuanto lo sepas. Cuando el cliente " +
+      "entregue un dato que corresponde a un campo del cliente, guárdalo con set_contact_field.",
     "- Si el cliente pide que lo contacten más adelante o acuerdan hablar en una fecha, agéndalo " +
       "con schedule_follow_up. Si deja de responder, el sistema te pedirá un mensaje de seguimiento " +
       "con un bloque <seguimiento>.",
+    "- Cuando una persona del equipo deba hacer algo con plazo (llamar, enviar documentos, " +
+      "confirmar una visita), créale una tarea con create_task. Revisa en <crm_state> las tareas " +
+      "pendientes para no repetirlas.",
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
       "compra, esté molesto, o necesite algo que no puedes resolver.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
@@ -69,13 +77,18 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
 }
 
 async function buildCrmState(leadId: string, now = new Date()) {
-  const [lead, stages, catalog] = await Promise.all([
-    db.lead.findUniqueOrThrow({
-      where: { id: leadId },
-      include: { stage: true, contact: { include: { tags: { include: { tag: true } } } } },
-    }),
+  const lead = await db.lead.findUniqueOrThrow({
+    where: { id: leadId },
+    include: {
+      stage: true,
+      contact: { include: { tags: { include: { tag: true } } } },
+      tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" } },
+    },
+  });
+  const [stages, catalog, fields] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    fieldsForCrmState(lead.contactId),
   ]);
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
@@ -83,7 +96,7 @@ async function buildCrmState(leadId: string, now = new Date()) {
   const agenda = agendaLine(lead);
   return [
     "<crm_state>",
-    `Fecha y hora actual: ${formatChileDateTime(now)} (hora de Chile)`,
+    `Fecha y hora actual: ${formatChileDateTime(now)} (hora de Chile; en formato de fecha: ${toLocalInput(now).replace("T", " ")})`,
     `Contacto: ${lead.contact.name}`,
     `Teléfono: ${lead.contact.phone ?? "sin registrar"}`,
     `Correo: ${lead.contact.email ?? "sin registrar"}`,
@@ -93,16 +106,31 @@ async function buildCrmState(leadId: string, now = new Date()) {
       .join(" → ")}`,
     `Etiquetas actuales: ${currentTags.length ? currentTags.join(", ") : "ninguna"}`,
     `Catálogo de etiquetas: ${[...byCategory].map(([c, names]) => `${c}: ${names.join(" | ")}`).join("; ") || "vacío"}`,
+    ...fields,
+    `Tareas pendientes del equipo: ${
+      lead.tasks.length
+        ? lead.tasks.map((t) => `${t.title} (vence ${toLocalInput(t.dueAt).replace("T", " ")})`).join("; ")
+        : "ninguna"
+    }`,
     ...(agenda ? [agenda] : []),
     "</crm_state>",
   ].join("\n");
+}
+
+/** Texto del cliente tal como lo ve la IA. Las notas de voz llegan transcritas. */
+function contactText(m: Message) {
+  if (!m.mediaUrl) return `Cliente: ${m.body}`;
+  const caption = m.body ? `\n${m.body}` : "";
+  return m.transcript
+    ? `Cliente (nota de voz, transcrita): ${m.transcript}${caption}`
+    : `Cliente: [envió una nota de voz que no se pudo transcribir; pídele que la escriba]${caption}`;
 }
 
 function formatPending(messages: (Message & { user: { name: string } | null })[], assistantName: string) {
   return messages
     .map((m) =>
       m.author === "CONTACT"
-        ? `Cliente: ${m.body}`
+        ? contactText(m)
         : m.author === "AI"
           ? `${assistantName} (tú): ${m.body}`
           : `Ejecutivo (${m.user?.name ?? "equipo"}): ${m.body}`,

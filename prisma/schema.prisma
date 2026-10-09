@@ -44,6 +44,14 @@ enum RuleTrigger {
   TAG_ADDED
 }
 
+/// Tipo de un campo del cliente: define cómo se valida y se muestra el valor.
+enum FieldType {
+  TEXT
+  NUMBER
+  OPTIONS
+  RUT
+}
+
 enum AssignStrategy {
   ROUND_ROBIN
   LEAST_LOADED
@@ -58,10 +66,15 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
-  leads    Lead[]           @relation("Assignee")
-  messages Message[]
-  events   LeadEvent[]
-  rules    AssignmentRule[] @relation("RuleExecutives")
+  leads        Lead[]           @relation("Assignee")
+  messages     Message[]
+  events       LeadEvent[]
+  rules        AssignmentRule[] @relation("RuleExecutives")
+  tasks        Task[]           @relation("TaskAssignee")
+  createdTasks Task[]           @relation("TaskCreator")
+
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
 }
 
 /// Etapa del funnel de ventas. `requiresHuman` marca la etapa de atención humana:
@@ -99,8 +112,9 @@ model Contact {
   externalId String?
   createdAt  DateTime @default(now())
 
-  tags  ContactTag[]
-  leads Lead[]
+  tags   ContactTag[]
+  leads  Lead[]
+  fields ContactFieldValue[]
 
   @@unique([channel, externalId])
 }
@@ -117,33 +131,72 @@ model ContactTag {
   @@id([contactId, tagId])
 }
 
+/// Campo del cliente que define el admin (ej. RUT, presupuesto, región de interés). La IA lo
+/// completa con set_contact_field a medida que el cliente entrega el dato.
+model CustomField {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  type        FieldType @default(TEXT)
+  /// Valores permitidos cuando el tipo es OPTIONS.
+  options     String[]
+  /// Indicación para la IA: qué guardar y cuándo preguntarlo.
+  description String    @default("")
+  position    Int
+
+  values ContactFieldValue[]
+}
+
+/// Valor de un campo del cliente, ya validado y normalizado según el tipo del campo.
+model ContactFieldValue {
+  contactId String
+  fieldId   String
+  value     String
+  updatedBy Actor
+  updatedAt DateTime @updatedAt
+
+  contact Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  field   CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, fieldId])
+}
+
 /// Un lead (ticket) es una oportunidad de venta de un contacto que avanza por el funnel.
 model Lead {
-  id         String     @id @default(cuid())
-  contactId  String
-  stageId    String
-  status     LeadStatus @default(OPEN)
-  lostReason String?
-  amount     Int?
-  assigneeId String?
-  aiEnabled  Boolean    @default(true)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  closedAt   DateTime?
+  id             String     @id @default(cuid())
+  contactId      String
+  stageId        String
+  status         LeadStatus @default(OPEN)
+  lostReason     String?
+  amount         Int?
+  assigneeId     String?
+  aiEnabled      Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  closedAt       DateTime?
   /// Próximo seguimiento de la IA si el cliente no responde (ver src/lib/domain/follow-ups.ts).
   followUpAt     DateTime?
   /// Seguimientos enviados desde el último mensaje del cliente.
-  followUpCount  Int       @default(0)
+  followUpCount  Int        @default(0)
   /// Motivo cuando la IA agendó el recontacto para una fecha; vacío si es automático.
   followUpReason String?
 
-  contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  stage      Stage            @relation(fields: [stageId], references: [id])
-  assignee   User?            @relation("Assignee", fields: [assigneeId], references: [id])
-  messages   Message[]
-  events     LeadEvent[]
-  transcript AgentTranscript?
-  agentRuns  AgentRun[]
+  /// Resumen de una línea de dónde quedó la conversación, hecho por la IA (ver src/lib/ai/insights.ts).
+  aiSummary   String?
+  /// Puntaje 0-100 de qué tan probable es que compre, con su motivo; lo calcula la IA.
+  score       Int?
+  scoreReason String?
+  /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
+  insightsAt  DateTime?
+
+  contact       Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage         Stage            @relation(fields: [stageId], references: [id])
+  assignee      User?            @relation("Assignee", fields: [assigneeId], references: [id])
+  messages      Message[]
+  events        LeadEvent[]
+  transcript    AgentTranscript?
+  agentRuns     AgentRun[]
+  tasks         Task[]
+  notifications Notification[]
 
   @@index([stageId])
   @@index([assigneeId])
@@ -151,12 +204,18 @@ model Lead {
 }
 
 model Message {
-  id        String        @id @default(cuid())
-  leadId    String
-  author    MessageAuthor
-  userId    String?
-  body      String
-  createdAt DateTime      @default(now())
+  id         String        @id @default(cuid())
+  leadId     String
+  author     MessageAuthor
+  userId     String?
+  /// Texto del mensaje. Vacío en una nota de voz sin texto.
+  body       String
+  /// Archivo adjunto (por ahora, notas de voz del cliente): URL en Vercel Blob y tipo MIME.
+  mediaUrl   String?
+  mediaType  String?
+  /// Transcripción de la nota de voz; null si no se pudo transcribir.
+  transcript String?
+  createdAt  DateTime      @default(now())
 
   lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user     User?     @relation(fields: [userId], references: [id])
@@ -223,6 +282,28 @@ model LeadEvent {
   @@index([leadId, createdAt])
 }
 
+/// Tarea con plazo sobre un lead, para un ejecutivo. La crea un ejecutivo a mano o la IA
+/// (herramienta create_task). Si el lead cambia de ejecutivo, sus tareas pendientes lo siguen.
+model Task {
+  id          String    @id @default(cuid())
+  leadId      String
+  title       String
+  notes       String?
+  dueAt       DateTime
+  assigneeId  String?
+  createdBy   Actor
+  createdById String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  lead     Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignee User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  creator  User? @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, completedAt, dueAt])
+  @@index([leadId])
+}
+
 /// Regla de asignación automática: cuando ocurre el disparador, se asigna un ejecutivo
 /// de la lista (o de todos los ejecutivos activos si la lista está vacía).
 model AssignmentRule {
@@ -262,4 +343,40 @@ model InventoryItem {
 model Setting {
   key   String @id
   value Json
+}
+
+/// Aviso al ejecutivo sobre un lead (ver src/lib/domain/notifications.ts). Hay a lo más uno
+/// sin leer por usuario y lead: los avisos nuevos lo actualizan con el último motivo.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  leadId    String
+  /// HUMAN_STAGE, ASSIGNED o CONTACT_MESSAGE.
+  type      String
+  title     String
+  body      String
+  readAt    DateTime?
+  /// Cuándo se envió (o descartó) el push al navegador; null = pendiente.
+  pushedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([pushedAt])
+}
+
+/// Suscripción Web Push de un navegador (uno por dispositivo del usuario).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

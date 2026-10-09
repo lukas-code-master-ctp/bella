@@ -85,6 +85,24 @@ describe("presets de configuración", () => {
     const firstHuman = stages.find((s) => s.requiresHuman);
     expect(firstHuman?.name).toBe("Asistencia Humana");
     expect(await db.assignmentRule.count()).toBe(2);
+    const fields = await db.customField.findMany({ orderBy: { position: "asc" } });
+    expect(fields.map((f) => f.name)).toEqual(COMPRA_TU_PARCELA.fields!.map((f) => f.name));
+  });
+
+  it("agrega los campos del cliente que falten sin tocar los editados", async () => {
+    await db.customField.create({ data: { name: "RUT", type: "TEXT", position: 0, description: "Editado" } });
+    await applyPreset(db, {
+      ...preset,
+      fields: [
+        { name: "RUT", type: "RUT", description: "Del preset" },
+        { name: "Presupuesto", type: "NUMBER", description: "" },
+      ],
+    });
+    const fields = await db.customField.findMany({ orderBy: { position: "asc" } });
+    expect(fields.map((f) => [f.name, f.type, f.description, f.position])).toEqual([
+      ["RUT", "TEXT", "Editado", 0],
+      ["Presupuesto", "NUMBER", "", 2],
+    ]);
   });
 
   it("la configuración de Compra Tu Parcela trae a Valentina y su inventario", () => {

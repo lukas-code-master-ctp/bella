@@ -1,17 +1,22 @@
-import { FlaskConical, LogOut, Settings, SquareKanban } from "lucide-react";
+import { Bell, FlaskConical, ListTodo, LogOut, Settings, SquareKanban } from "lucide-react";
 import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
+import { countUrgentTasks } from "@/lib/domain/tasks";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
 import { Logo } from "@/components/logo";
+import { unreadNotificationCount } from "@/lib/domain/notifications";
+import { UnreadBadge } from "./notifications/unread-badge";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   // El cron de Vercel Hobby corre una vez al día: mientras el equipo usa la app, los seguimientos
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   after(runDueFollowUpsIfStale);
+  const urgentTasks = await countUrgentTasks(user.id);
+  const unread = await unreadNotificationCount(user.id);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <a
@@ -38,6 +43,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <nav aria-label="Principal" className="flex flex-wrap gap-1 px-3 pb-2 lg:flex-1 lg:flex-col lg:flex-nowrap lg:px-3 lg:pb-0">
           <NavLink href="/funnel" icon={<SquareKanban />}>
             Funnel
+          </NavLink>
+          <NavLink href="/tasks" icon={<ListTodo />}>
+            {user.role === "ADMIN" ? "Tareas" : "Mis tareas"}
+            {urgentTasks > 0 && (
+              <span className="ml-auto rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
+                <span className="sr-only">, </span>
+                {urgentTasks}
+                <span className="sr-only"> vencidas o para hoy</span>
+              </span>
+            )}
+          </NavLink>
+          <NavLink href="/notifications" icon={<Bell />}>
+            Avisos
+            <UnreadBadge initial={unread} />
           </NavLink>
           <NavLink href="/simulator" icon={<FlaskConical />}>
             Simulador

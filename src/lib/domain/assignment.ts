@@ -1,4 +1,6 @@
 import type { AssignmentRule, Prisma, User } from "@prisma/client";
+import { notifyAssignedTx } from "./notifications";
+import { moveOpenTasksTx } from "./tasks";
 
 export type AssignmentTrigger =
   | { type: "STAGE_ENTERED"; stageId: string }
@@ -92,7 +94,9 @@ export async function applyAssignment(
 }
 
 async function assign(tx: Tx, leadId: string, user: User, reason: string) {
+  const { assigneeId: previous } = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
   await tx.lead.update({ where: { id: leadId }, data: { assigneeId: user.id } });
+  await moveOpenTasksTx(tx, leadId, previous, user.id);
   await tx.leadEvent.create({
     data: {
       leadId,
@@ -102,4 +106,5 @@ async function assign(tx: Tx, leadId: string, user: User, reason: string) {
       data: { assigneeId: user.id, assigneeName: user.name },
     },
   });
+  await notifyAssignedTx(tx, leadId, user.id);
 }
