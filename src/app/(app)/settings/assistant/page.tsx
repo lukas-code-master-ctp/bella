@@ -1,7 +1,9 @@
+import Link from "next/link";
+import { Sparkles } from "lucide-react";
 import { getAssistantSettings } from "@/lib/settings";
 import { API_KEY_ENV, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
 import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
-import { Card, Field, inputClass, PageHeader } from "@/components/ui";
+import { buttonClass, Card, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAssistantAction } from "../actions";
 import { AiForm } from "./ai-form";
@@ -19,7 +21,12 @@ export default async function AssistantSettingsPage() {
   };
   return (
     <>
-      <PageHeader title="Asistente IA" />
+      <PageHeader title="Asistente IA">
+        <Link href="/settings/claude" className={buttonClass("secondary")}>
+          <Sparkles aria-hidden />
+          Configurar con Claude
+        </Link>
+      </PageHeader>
       <Card className="p-5">
         <form action={saveAssistantAction} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
