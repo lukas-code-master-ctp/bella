@@ -205,6 +205,7 @@ model Lead {
   agentRuns     AgentRun[]
   tasks         Task[]
   notifications Notification[]
+  source        LeadSource?
 
   @@index([stageId])
   @@index([assigneeId])
@@ -439,4 +440,54 @@ model DataDeletionRequest {
   contacts       Int      @default(0)
   comments       Int      @default(0)
   createdAt      DateTime @default(now())
+}
+
+/// Origen de un lead (ver src/lib/domain/attribution.ts): el anuncio de Meta por el que escribió
+/// (clic a WhatsApp, Instagram o Messenger) o los UTM del enlace de Bella que usó una landing.
+/// Se guarda con el primer mensaje que lo trae y no se reemplaza.
+model LeadSource {
+  leadId       String   @id
+  /// AD (anuncio o publicación de Meta) o LINK (enlace /wa con UTM).
+  kind         String
+  /// Lo que manda Meta en el primer mensaje desde un anuncio.
+  adId         String?
+  /// "ad" o "post".
+  adType       String?
+  adHeadline   String?
+  adBody       String?
+  adUrl        String?
+  /// Id del clic en anuncios a WhatsApp: la API de Conversiones lo usa para atribuir la venta.
+  ctwaClid     String?
+  /// Nombres del anuncio, conjunto y campaña según la API de Marketing (si el token lo permite).
+  adName       String?
+  adsetName    String?
+  campaignId   String?
+  campaignName String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  utmContent   String?
+  utmTerm      String?
+  /// Página desde donde la persona hizo clic.
+  landingUrl   String?
+  createdAt    DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+/// Clic en el enlace /wa desde una landing: guarda los UTM y entrega un código que viaja en el
+/// mensaje prellenado de WhatsApp. Cuando llega ese mensaje, los UTM pasan al lead.
+model SourceLink {
+  code        String   @id
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+  landingUrl  String?
+  createdAt   DateTime @default(now())
+  /// Lead que llegó con este código (el primero).
+  leadId      String?
+
+  @@index([createdAt])
 }

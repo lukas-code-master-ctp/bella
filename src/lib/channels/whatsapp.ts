@@ -129,6 +129,17 @@ export type WaMessage = {
   interactive?: { button_reply?: { title: string }; list_reply?: { title: string } };
   reaction?: { emoji?: string };
   contacts?: { name?: { formatted_name?: string } }[];
+  /** Viene en el primer mensaje cuando la persona escribió desde un anuncio o publicación (clic a WhatsApp). */
+  referral?: WaReferral;
+};
+
+export type WaReferral = {
+  source_url?: string;
+  source_id?: string;
+  source_type?: string;
+  headline?: string;
+  body?: string;
+  ctwa_clid?: string;
 };
 
 export type WaStatus = {

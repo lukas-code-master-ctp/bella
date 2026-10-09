@@ -1,11 +1,14 @@
+import { Fragment } from "react";
 import Link from "next/link";
+import type { LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, ListTodo, RotateCcw, Sparkles, Trophy } from "lucide-react";
+import { ArrowLeft, Bot, BotOff, CircleX, ExternalLink, ListTodo, RotateCcw, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
 import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
+import { sourceLabel } from "@/lib/domain/attribution";
 import { startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
@@ -78,6 +81,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       contact: { include: { tags: { include: { tag: true } } } },
       stage: true,
       assignee: true,
+      source: true,
       messages: { include: { user: true }, orderBy: { createdAt: "asc" } },
       events: { include: { user: true }, orderBy: { createdAt: "desc" } },
       tasks: { include: { assignee: true }, orderBy: [{ completedAt: { sort: "desc", nulls: "first" } }, { dueAt: "asc" }] },
@@ -192,6 +196,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               <RefreshInsightsForm leadId={lead.id} hasSummary={Boolean(lead.aiSummary)} />
             )}
           </section>
+
+          <Section title="Origen">
+            <LeadOrigin source={lead.source} />
+          </Section>
 
           <Section title="Etapa">
             <form action={moveStageAction.bind(null, lead.id)} className="flex gap-2">
@@ -394,6 +402,52 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           </ol>
         </Card>
       </aside>
+    </div>
+  );
+}
+
+function LeadOrigin({ source: s }: { source: LeadSource | null }) {
+  if (!s) return <p className="text-sm text-slate-500">Llegó directo, sin anuncio ni enlace con UTM.</p>;
+  const rows: [string, string | null][] =
+    s.kind === "AD"
+      ? [
+          ["Campaña", s.campaignName],
+          ["Conjunto", s.adsetName],
+          ["Anuncio", s.adName ?? s.adHeadline],
+          ["Id del anuncio", s.adId],
+        ]
+      : [
+          ["Fuente", s.utmSource],
+          ["Medio", s.utmMedium],
+          ["Campaña", s.utmCampaign],
+          ["Contenido", s.utmContent],
+          ["Término", s.utmTerm],
+        ];
+  const link = s.kind === "AD" ? s.adUrl : s.landingUrl;
+  return (
+    <div className="space-y-2 text-sm">
+      <Badge tone="brand">
+        <Target aria-hidden />
+        {sourceLabel(s)}
+      </Badge>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+        {rows
+          .filter(([, v]) => v)
+          .map(([k, v]) => (
+            <Fragment key={k}>
+              <dt className="text-slate-600">{k}</dt>
+              <dd className="truncate text-slate-900" title={v!}>
+                {v}
+              </dd>
+            </Fragment>
+          ))}
+      </dl>
+      {link && /^https?:\/\//.test(link) && (
+        <a href={link} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
+          <ExternalLink aria-hidden className="size-3.5" />
+          {s.kind === "AD" ? "Ver anuncio" : "Ver landing"}
+        </a>
+      )}
     </div>
   );
 }
