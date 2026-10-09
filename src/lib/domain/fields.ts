@@ -121,7 +121,10 @@ export async function setFieldValueTx(
  * cambios a medias. `values` va por id de campo; un valor vacío borra el dato.
  */
 export async function setContactFields(leadId: string, values: Record<string, string>, by: ActorRef) {
-  const fields = await db.customField.findMany({ where: { id: { in: Object.keys(values) } } });
+  const fields = await db.customField.findMany({
+    where: { id: { in: Object.keys(values) } },
+    orderBy: { position: "asc" },
+  });
   const errors = fields.flatMap((f) => {
     const raw = values[f.id].trim();
     const parsed = raw ? parseFieldValue(f, raw) : null;

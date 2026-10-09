@@ -73,11 +73,15 @@ describe("campos del cliente", () => {
     const values = await db.contactFieldValue.findMany();
     expect(values.map((v) => [v.value, v.updatedBy])).toEqual([["12.345.678-5", "USER"]]);
     // Guardar el mismo RUT con otro formato no deja un evento nuevo.
-    const events = await db.leadEvent.findMany({ where: { type: "FIELD_UPDATED" }, orderBy: { createdAt: "asc" } });
-    expect(events.map((e) => e.data)).toEqual([
-      { field: "RUT", value: "12.345.678-5" },
-      { field: "Comuna", value: "Talca" },
-      { field: "Comuna", value: null },
-    ]);
+    // Los eventos de un mismo guardado comparten la hora, así que no se compara el orden.
+    const events = await db.leadEvent.findMany({ where: { type: "FIELD_UPDATED" } });
+    expect(events.map((e) => e.data)).toHaveLength(3);
+    expect(events.map((e) => e.data)).toEqual(
+      expect.arrayContaining([
+        { field: "RUT", value: "12.345.678-5" },
+        { field: "Comuna", value: "Talca" },
+        { field: "Comuna", value: null },
+      ]),
+    );
   });
 });
