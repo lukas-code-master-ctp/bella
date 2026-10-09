@@ -3,6 +3,7 @@ import { answerLead } from "@/lib/ai/respond";
 import type { MessengerWebhook } from "@/lib/channels/messenger";
 import { validSignature } from "@/lib/channels/whatsapp";
 import { receiveMessenger } from "@/lib/domain/channels";
+import { receiveComments } from "@/lib/domain/comments";
 
 export const dynamic = "force-dynamic";
 // La respuesta de la IA corre después de contestarle a Meta y puede tomar varios pasos.
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ error: "Token de verificación inválido" }, { status: 403 });
 }
 
-/** Mensajes directos de Instagram (object "instagram") y de Messenger (object "page"). */
+/** Mensajes directos y comentarios de Instagram (object "instagram") y de la página (object "page"). */
 export async function POST(request: NextRequest) {
   const raw = await request.text();
   if (!validSignature(raw, request.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
+  await receiveComments(payload);
   const leads = await receiveMessenger(payload);
   if (leads.length) after(() => Promise.all(leads.map((id) => answerLead(id))));
   return NextResponse.json({ ok: true });

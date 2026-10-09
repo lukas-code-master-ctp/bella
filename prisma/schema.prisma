@@ -78,6 +78,7 @@ model User {
 
   notifications     Notification[]
   pushSubscriptions PushSubscription[]
+  comments          SocialComment[]
 }
 
 /// Etapa del funnel de ventas. `requiresHuman` marca la etapa de atención humana:
@@ -394,4 +395,35 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Comentario en una publicación de Instagram o de la página de Facebook. El equipo lo responde
+/// en público o por mensaje privado (ver src/lib/domain/comments.ts).
+model SocialComment {
+  id         String   @id @default(cuid())
+  channel    Channel
+  /// Id del comentario en Meta.
+  externalId String   @unique
+  postId     String?
+  /// Comentario al que responde, si es una respuesta dentro de un hilo.
+  parentId   String?
+  authorId   String?
+  authorName String
+  text       String
+  createdAt  DateTime @default(now())
+
+  /// Respuesta pública del equipo, en el mismo hilo del comentario.
+  reply        String?
+  repliedAt    DateTime?
+  /// Mensaje privado al autor (Meta permite uno por comentario, dentro de 7 días).
+  privateReply String?
+  privateAt    DateTime?
+  repliedById  String?
+  hidden       Boolean   @default(false)
+  /// Lo marcó como resuelto alguien del equipo (respondido o descartado).
+  doneAt       DateTime?
+
+  repliedBy User? @relation(fields: [repliedById], references: [id])
+
+  @@index([doneAt, createdAt])
 }

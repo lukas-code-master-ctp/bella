@@ -83,11 +83,12 @@ export default async function ChannelsSettingsPage() {
           <Webhook
             url={`${base}/meta`}
             where="Webhooks, para los objetos Page e Instagram"
-            fields="messages y messaging_postbacks (y message_reads en Page)"
+            fields="messages, messaging_postbacks y comments en Instagram; messages, messaging_postbacks, message_reads y feed en Page"
           />
           <p className="mt-3 text-xs text-slate-600">
-            Para escribirle a cualquier persona (no solo a quienes administran la app), Meta debe aprobar los permisos
-            pages_messaging e instagram_manage_messages en la revisión de la app.
+            Para atender a cualquier persona (no solo a quienes tienen un rol en la app), Meta debe aprobar en la revisión
+            de la app los permisos pages_messaging, instagram_manage_messages, instagram_manage_comments y
+            pages_manage_engagement. Los comentarios se responden en la pestaña Comentarios.
           </p>
         </Card>
 

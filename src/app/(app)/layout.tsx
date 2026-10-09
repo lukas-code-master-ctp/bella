@@ -1,8 +1,9 @@
-import { Bell, FlaskConical, ListTodo, LogOut, Settings, SquareKanban } from "lucide-react";
+import { Bell, FlaskConical, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
 import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
 import { countUrgentTasks } from "@/lib/domain/tasks";
+import { countPendingComments } from "@/lib/domain/comments";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
@@ -15,7 +16,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Además del cron (cada 15 minutos), mientras el equipo usa la app los seguimientos
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   after(runDueFollowUpsIfStale);
-  const [urgentTasks, unread] = await Promise.all([countUrgentTasks(user.id), unreadNotificationCount(user.id)]);
+  const [urgentTasks, unread, pendingComments] = await Promise.all([
+    countUrgentTasks(user.id),
+    unreadNotificationCount(user.id),
+    countPendingComments(),
+  ]);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <a
@@ -50,6 +55,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <span className="sr-only">, </span>
                 {urgentTasks}
                 <span className="sr-only"> vencidas o para hoy</span>
+              </span>
+            )}
+          </NavLink>
+          <NavLink href="/comments" icon={<MessagesSquare />}>
+            Comentarios
+            {pendingComments > 0 && (
+              <span className="ml-auto rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
+                <span className="sr-only">, </span>
+                {pendingComments}
+                <span className="sr-only"> pendientes</span>
               </span>
             )}
           </NavLink>

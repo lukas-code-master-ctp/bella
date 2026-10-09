@@ -38,7 +38,8 @@ export function describeMessengerError(code: number | undefined, subcode: number
   return fallback;
 }
 
-async function graph<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** Llamada a la Graph API con el token de la página. */
+export async function pageGraph<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = process.env.META_PAGE_ACCESS_TOKEN;
   if (!token) throw new ChannelSendError("Falta META_PAGE_ACCESS_TOKEN en las variables de entorno.");
   const res = await fetch(`${GRAPH}/${path}`, {
@@ -61,7 +62,7 @@ async function graph<T>(path: string, init: RequestInit = {}): Promise<T> {
 async function send(to: string, message: Record<string, unknown>): Promise<string> {
   const pageId = process.env.META_PAGE_ID;
   if (!pageId) throw new ChannelSendError("Falta META_PAGE_ID en las variables de entorno.");
-  const res = await graph<{ message_id?: string }>(`${pageId}/messages`, {
+  const res = await pageGraph<{ message_id?: string }>(`${pageId}/messages`, {
     method: "POST",
     body: JSON.stringify({ recipient: { id: to }, messaging_type: "RESPONSE", message }),
   });
@@ -75,10 +76,10 @@ export const messengerApi: MessengerApi = {
   async profileName(platform, userId) {
     try {
       if (platform === "INSTAGRAM") {
-        const p = await graph<{ name?: string; username?: string }>(`${userId}?fields=name,username`);
+        const p = await pageGraph<{ name?: string; username?: string }>(`${userId}?fields=name,username`);
         return p.name || (p.username ? `@${p.username}` : null);
       }
-      const p = await graph<{ first_name?: string; last_name?: string }>(`${userId}?fields=first_name,last_name`);
+      const p = await pageGraph<{ first_name?: string; last_name?: string }>(`${userId}?fields=first_name,last_name`);
       return [p.first_name, p.last_name].filter(Boolean).join(" ") || null;
     } catch {
       return null;
@@ -111,9 +112,29 @@ export type MsgEvent = {
   read?: { watermark?: number; mid?: string };
 };
 
+/** Comentario nuevo: field "comments" en Instagram y "feed" (item "comment") en la página. */
+export type CommentChange = {
+  field?: string;
+  value?: {
+    // Instagram
+    id?: string;
+    text?: string;
+    media?: { id?: string };
+    // Facebook
+    item?: string;
+    verb?: string;
+    comment_id?: string;
+    post_id?: string;
+    message?: string;
+    // Ambos
+    parent_id?: string;
+    from?: { id?: string; username?: string; name?: string };
+  };
+};
+
 export type MessengerWebhook = {
   object?: string;
-  entry?: { id: string; time?: number; messaging?: MsgEvent[] }[];
+  entry?: { id: string; time?: number; messaging?: MsgEvent[]; changes?: CommentChange[] }[];
 };
 
 /** Plataforma del webhook según su `object` ("page" es Messenger), o null si no es de mensajería. */
