@@ -5,6 +5,7 @@ import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
 import { CHANNEL_LABEL } from "@/lib/labels";
+import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
@@ -75,6 +76,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       orderBy: { position: "asc" },
       include: { values: { where: { contactId: lead.contactId } } },
     }),
+    markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";

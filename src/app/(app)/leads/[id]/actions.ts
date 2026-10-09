@@ -20,6 +20,7 @@ import {
   setAssignee,
 } from "@/lib/domain/leads";
 import { receiveContactAudio } from "@/lib/domain/messages";
+import { notifyContactMessage } from "@/lib/domain/notifications";
 
 async function authorize(leadId: string) {
   const user = await requireUser();
@@ -59,8 +60,10 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
         : "No se pudo guardar el audio. Intenta de nuevo.";
     }
     if (body) await db.message.create({ data: { leadId, author: "CONTACT", body } });
+    await notifyContactMessage(leadId, body || "🎤 Nota de voz");
   } else if (body) {
     await db.message.create({ data: { leadId, author: "CONTACT", body } });
+    await notifyContactMessage(leadId, body);
   } else {
     return null;
   }

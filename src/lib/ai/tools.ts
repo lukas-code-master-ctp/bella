@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { findField, setFieldValueTx } from "../domain/fields";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
+import { deliverPendingPush } from "../push";
 import { searchInventory, syncInventoryIfStale } from "../inventory";
 import { searchKnowledge } from "../knowledge";
 import { normalize } from "../text";
@@ -125,6 +126,7 @@ export async function executeTool(
         };
       }
       await db.$transaction((tx) => moveStageTx(tx, leadId, stage.id, { actor: "AI" }, str("reason")));
+      await deliverPendingPush();
       return {
         content: stage.requiresHuman
           ? `Lead movido a "${stage.name}". Es una etapa de atención humana: quedas pausada y un ejecutivo continuará.`
@@ -142,6 +144,7 @@ export async function executeTool(
         };
       }
       const added = await db.$transaction((tx) => addTagTx(tx, leadId, tag.id, { actor: "AI" }, str("reason")));
+      await deliverPendingPush();
       return { content: added ? `Etiqueta "${tag.category}: ${tag.name}" asignada.` : "El contacto ya tenía esa etiqueta." };
     }
     case "update_contact": {
@@ -185,6 +188,7 @@ export async function executeTool(
     }
     case "handoff_to_human": {
       const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason")));
+      await deliverPendingPush();
       return {
         content:
           `Derivado a un ejecutivo${stage ? ` (etapa "${stage.name}")` : ""}. Quedas pausada: ` +
