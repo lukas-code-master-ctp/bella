@@ -3,8 +3,8 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, BellRing, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
-import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
+import { Activity, BellRing, Bot, CircleX, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
+import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
@@ -48,6 +48,9 @@ export function LeadChat({
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
+  // Optimista: se ve mientras dura el envío y se apaga solo cuando la acción termina.
+  const [typing, setTyping] = useOptimistic(false);
+  const entersAnimated = useEntranceTracker(messages);
   const closeInspector = useCallback(() => setInspected(null), []);
   const pending = (author: ChatMessage["author"], body: string, audio?: ChatMessage["audio"]): ChatMessage => ({
     id: `pending-${author}-${Date.now()}`,
@@ -68,9 +71,15 @@ export function LeadChat({
           </EmptyState>
         )}
         {shown.map((m) => (
-          <Bubble key={m.id} message={m} onInspect={m.author === "AI" && !m.pending ? () => setInspected(m) : undefined} />
+          <Bubble
+            key={m.id}
+            message={m}
+            animate={entersAnimated(m)}
+            onInspect={m.author === "AI" && !m.pending ? () => setInspected(m) : undefined}
+          />
         ))}
-        <ScrollToBottom dep={shown.length} />
+        {typing && <TypingBubble />}
+        <ScrollToBottom dep={shown.length + (typing ? 1 : 0)} />
       </div>
 
       <div className="space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4">
@@ -81,6 +90,7 @@ export function LeadChat({
               // Igual que en el servidor: primero la nota de voz y después el texto que la acompaña.
               if (audioUrl) addPending(pending("CONTACT", "", { url: audioUrl, transcript: null }));
               if (body) addPending(pending("CONTACT", body));
+              setTyping(true);
             }}
           />
         )}
@@ -98,12 +108,38 @@ export function LeadChat({
   );
 }
 
+/** Firma de un mensaje para reconocer al guardado que reemplaza al optimista (cambia el id). */
+const signature = (m: ChatMessage) => `${m.author}:${m.audio ? "audio:" : ""}${m.body}`;
+
+/**
+ * Decide qué burbujas entran animadas: solo las que llegan después de abrir la conversación,
+ * y una sola vez (el mensaje guardado que reemplaza al optimista no se vuelve a animar).
+ * La decisión se fija la primera vez que se ve cada id, para no cortar la animación a medias.
+ */
+function useEntranceTracker(initial: ChatMessage[]) {
+  const [seen] = useState(() => new Set(initial.map(signature)));
+  const [decided] = useState(() => new Map<string, boolean>());
+  return (m: ChatMessage) => {
+    let animate = decided.get(m.id);
+    if (animate === undefined) {
+      animate = !seen.has(signature(m));
+      decided.set(m.id, animate);
+      seen.add(signature(m));
+    }
+    return animate;
+  };
+}
+
 /** Burbuja del chat. Las de la IA se pueden abrir en el monitor de actividad. */
-function Bubble({ message: m, onInspect }: { message: ChatMessage; onInspect?: () => void }) {
+function Bubble({ message: m, animate, onInspect }: { message: ChatMessage; animate?: boolean; onInspect?: () => void }) {
   const fromContact = m.author === "CONTACT";
   const Wrapper = onInspect ? "button" : "div";
   return (
-    <div className={`flex ${fromContact ? "justify-start" : "justify-end"}`}>
+    <div
+      className={`flex ${fromContact ? "justify-start" : "justify-end"} ${
+        animate ? `animate-message-in ${fromContact ? "origin-bottom-left" : "origin-bottom-right"}` : ""
+      }`}
+    >
       <Wrapper
         {...(onInspect
           ? { type: "button" as const, onClick: onInspect, title: "Ver cómo la IA construyó este mensaje" }
@@ -136,6 +172,18 @@ function Bubble({ message: m, onInspect }: { message: ChatMessage; onInspect?: (
   );
 }
 
+/** Burbuja de la asistente con los tres puntos mientras prepara su respuesta. */
+function TypingBubble() {
+  return (
+    <div role="status" className="flex origin-bottom-right animate-message-in justify-end">
+      <span className="sr-only">La asistente está escribiendo…</span>
+      <span className="flex h-10 items-center rounded-2xl rounded-br-md bg-brand-600 px-4 text-white/90 shadow-xs">
+        <TypingDots />
+      </span>
+    </div>
+  );
+}
+
 /** Nota de voz (del cliente o del ejecutivo): reproductor y su transcripción. */
 function VoiceNote({ audio, pending }: { audio: NonNullable<ChatMessage["audio"]>; pending?: boolean }) {
   return (
@@ -163,18 +211,11 @@ function VoiceNote({ audio, pending }: { audio: NonNullable<ChatMessage["audio"]
 function ContactSubmit({ busy }: { busy: boolean }) {
   const { pending: submitting } = useFormStatus();
   const pending = submitting || busy;
+  // El aviso "escribiendo…" va como burbuja en la conversación (TypingBubble).
   return (
-    <>
-      {pending && (
-        <p role="status" className="flex items-center gap-1.5 text-xs text-brand-800">
-          <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-          La asistente está escribiendo…
-        </p>
-      )}
-      <Button type="submit" variant="secondary" disabled={pending} aria-busy={pending}>
-        Enviar como cliente
-      </Button>
-    </>
+    <Button type="submit" variant="secondary" disabled={pending} aria-busy={pending}>
+      Enviar como cliente
+    </Button>
   );
 }
 

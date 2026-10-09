@@ -123,7 +123,7 @@ export function ActivityPanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="activity-title"
-        className="relative flex h-full w-full max-w-md flex-col bg-white shadow-xl animate-fade-in"
+        className="relative flex h-full w-full max-w-md flex-col bg-white shadow-xl animate-slide-in-right"
       >
         <header className="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
           <Activity aria-hidden className="size-5 text-brand-600" />
@@ -210,7 +210,8 @@ function RunDetail({ run, body, time }: { run: RunView; body: string; time: stri
         </dl>
       )}
 
-      <ol className="relative space-y-3">
+      {/* Los pasos aparecen uno tras otro, en el orden en que la IA los hizo. */}
+      <ol className="stagger relative space-y-3">
         <span aria-hidden className="absolute bottom-3 left-[5px] top-3 w-px bg-slate-200" />
 
         <Item dot="bg-brand-500" icon={<FileText />} title="Contexto" subtitle="Lo que la IA recibió en este turno">

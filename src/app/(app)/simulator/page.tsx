@@ -47,7 +47,7 @@ export default async function SimulatorPage() {
               Crea la primera con el formulario.
             </EmptyState>
           ) : (
-            <ul className="divide-y divide-slate-100 border-t border-slate-100">
+            <ul className="stagger divide-y divide-slate-100 border-t border-slate-100">
               {leads.map((l) => (
                 <li key={l.id}>
                   <Link

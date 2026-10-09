@@ -63,8 +63,8 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
               if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null);
             }}
             onDrop={(e) => onDrop(e, stage.id)}
-            className={`flex w-[288px] shrink-0 snap-start flex-col rounded-xl border transition-colors duration-150 ${
-              isOver ? "border-brand-300 bg-brand-50" : "border-transparent bg-slate-100"
+            className={`flex w-[288px] shrink-0 snap-start flex-col rounded-xl border transition-[background-color,border-color,box-shadow] duration-200 ${
+              isOver ? "border-brand-300 bg-brand-50 shadow-[0_0_0_4px_var(--color-brand-100)]" : "border-transparent bg-slate-100"
             }`}
           >
             <header className="flex items-center gap-2 px-3 pb-2 pt-3">
@@ -76,11 +76,11 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                   Humano
                 </Badge>
               )}
-              <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-inset ring-slate-200">
+              <span key={items.length} className="ml-auto animate-pop rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-inset ring-slate-200">
                 {items.length}
               </span>
             </header>
-            <div className="flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1">
+            <div className="stagger flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1">
               {items.length === 0 && (
                 <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">
                   {isOver ? "Suelta aquí" : "Sin leads"}
@@ -99,8 +99,8 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                     setDragging(null);
                     setOver(null);
                   }}
-                  className={`group relative block cursor-grab overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity] duration-150 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
-                    dragging === lead.id ? "opacity-50" : ""
+                  className={`group relative block cursor-grab overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
+                    dragging === lead.id ? "scale-[0.97] opacity-50" : ""
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">

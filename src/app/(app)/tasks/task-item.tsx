@@ -45,7 +45,7 @@ export function TaskItem({
               isDone ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-400 bg-white"
             }`}
           >
-            {isDone && <Check className="!size-3.5" strokeWidth={3} />}
+            {isDone && <Check className="!size-3.5 animate-pop" strokeWidth={3} />}
           </span>
         </SubmitButton>
       </form>

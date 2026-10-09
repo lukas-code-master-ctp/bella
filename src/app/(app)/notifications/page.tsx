@@ -49,7 +49,7 @@ export default async function NotificationsPage() {
               Te avisaremos aquí cuando un lead necesite a un ejecutivo.
             </EmptyState>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="stagger divide-y divide-slate-100">
               {notifications.map((n) => (
                 <li key={n.id}>
                   <Link

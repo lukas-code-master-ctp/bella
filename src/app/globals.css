@@ -25,6 +25,21 @@
   --animate-progress: progress 1.1s ease-in-out infinite;
   --animate-fade-in: fade-in 200ms ease-out both;
 
+  /*
+   * Motion de la interfaz: entradas cortas (≤ 360 ms) con una curva que frena suave al final.
+   * Usan relleno "backwards" para no dejar transform al terminar (no rompe sticky ni fixed).
+   */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-page-in: page-in 320ms var(--ease-out-soft) backwards;
+  --animate-rise: rise 360ms var(--ease-out-soft) backwards;
+  --animate-message-in: message-in 280ms var(--ease-out-soft) backwards;
+  --animate-slide-in-right: slide-in-right 320ms var(--ease-out-soft) backwards;
+  --animate-pop: pop 320ms var(--ease-spring) backwards;
+  --animate-indicator: indicator 280ms var(--ease-out-soft) backwards;
+  --animate-float: float 14s ease-in-out infinite alternate;
+  --animate-typing: typing 1.2s ease-in-out infinite;
+
   @keyframes shimmer {
     from {
       background-position: 100% 0;
@@ -50,6 +65,93 @@
       opacity: 1;
       transform: none;
     }
+  }
+  @keyframes page-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+  }
+  @keyframes message-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.92);
+    }
+  }
+  @keyframes slide-in-right {
+    from {
+      opacity: 0.4;
+      transform: translateX(100%);
+    }
+  }
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+  }
+  @keyframes indicator {
+    from {
+      opacity: 0;
+      transform: scaleY(0);
+    }
+  }
+  @keyframes float {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(-40px, 30px, 0) scale(1.12);
+    }
+  }
+  @keyframes typing {
+    0%,
+    60%,
+    100% {
+      opacity: 0.45;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-3px);
+    }
+  }
+}
+
+/*
+ * Entrada escalonada de una lista: cada hijo directo sube y aparece un poco después del anterior.
+ * Solo se anima al montar, así que refrescar la página con los mismos elementos no repite el efecto.
+ */
+@utility stagger {
+  & > * {
+    animation: var(--animate-rise);
+  }
+  & > :nth-child(2) {
+    animation-delay: 40ms;
+  }
+  & > :nth-child(3) {
+    animation-delay: 80ms;
+  }
+  & > :nth-child(4) {
+    animation-delay: 120ms;
+  }
+  & > :nth-child(5) {
+    animation-delay: 160ms;
+  }
+  & > :nth-child(6) {
+    animation-delay: 200ms;
+  }
+  & > :nth-child(7) {
+    animation-delay: 240ms;
+  }
+  & > :nth-child(n + 8) {
+    animation-delay: 280ms;
   }
 }
 
@@ -83,6 +185,7 @@
   ::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
