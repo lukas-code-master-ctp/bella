@@ -65,6 +65,9 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
    - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
    - `CRON_SECRET`: un texto largo al azar; Vercel lo usa para llamar la sincronización diaria del
      inventario (`vercel.json`)
+   - `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` (opcional): activan los avisos push al navegador.
+     Genéralas una vez con `npx web-push generate-vapid-keys`. Sin ellas los avisos quedan solo en
+     la página **Avisos**.
 3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
 
 ## Inventario desde Google Sheets

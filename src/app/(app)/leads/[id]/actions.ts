@@ -16,6 +16,7 @@ import {
   setAiEnabled,
   setAssignee,
 } from "@/lib/domain/leads";
+import { notifyContactMessage } from "@/lib/domain/notifications";
 
 async function authorize(leadId: string) {
   const user = await requireUser();
@@ -36,6 +37,7 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
   const body = String(form.get("body") ?? "").trim();
   if (!body) return null;
   await db.message.create({ data: { leadId, author: "CONTACT", body } });
+  await notifyContactMessage(leadId, body);
   if (lead.aiEnabled && lead.status === "OPEN") {
     const missing = missingKeyMessage((await getAiConfig()).provider);
     if (missing) {
