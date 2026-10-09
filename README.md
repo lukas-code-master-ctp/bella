@@ -69,7 +69,7 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
      Genéralas una vez con `npx web-push generate-vapid-keys`. Sin ellas los avisos quedan solo en
      la página **Avisos**.
    - Notas de voz: en *Storage → Create → Blob* crea un Blob store y conéctalo al proyecto; Vercel
-     agrega solo `BLOB_READ_WRITE_TOKEN`. Los audios se transcriben con OpenRouter
+     agrega solo `BLOB_STORE_ID` (o `BLOB_READ_WRITE_TOKEN` en conexiones antiguas). Los audios se transcriben con OpenRouter
      (`OPENROUTER_API_KEY`; el modelo se puede cambiar con `TRANSCRIPTION_MODEL`, por defecto
      `google/gemini-2.5-flash`).
 3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.

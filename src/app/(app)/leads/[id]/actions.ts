@@ -23,6 +23,7 @@ import {
 } from "@/lib/domain/leads";
 import { receiveContactAudio } from "@/lib/domain/messages";
 import { notifyContactMessage } from "@/lib/domain/notifications";
+import { BLOB_MISSING } from "@/lib/media";
 
 async function authorize(leadId: string) {
   const user = await requireUser();
@@ -57,7 +58,7 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
     } catch (e) {
       if (e instanceof DomainError) return e.message;
       console.error(e);
-      return e instanceof Error && e.message.includes("BLOB_READ_WRITE_TOKEN")
+      return e instanceof Error && e.message === BLOB_MISSING
         ? e.message
         : "No se pudo guardar el audio. Intenta de nuevo.";
     }
