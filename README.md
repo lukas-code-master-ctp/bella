@@ -130,11 +130,17 @@ misma app de Meta:
 2. En Vercel define `META_PAGE_ACCESS_TOKEN` (token permanente de la página), `META_PAGE_ID` y,
    opcional, `META_IG_ACCOUNT_ID`. `META_APP_SECRET` y `META_VERIFY_TOKEN` son los mismos de WhatsApp.
 3. En Webhooks registra `https://<tu-dominio>/api/webhooks/meta` para los objetos Page e Instagram y
-   suscribe `messages`, `messaging_postbacks` y `message_reads`; suscribe la página a la app.
+   suscribe `messages`, `messaging_postbacks`, `message_reads`, `comments` (Instagram) y `feed`
+   (Page); suscribe la página a la app.
 4. En Configuración → Canales enciende la asistente por canal cuando quieras.
 
-Hasta que Meta apruebe `pages_messaging` e `instagram_manage_messages` en la revisión de la app,
-solo funciona con personas que tengan un rol en la app.
+Los comentarios nuevos en publicaciones de Instagram (campo `comments`) y de la página (campo
+`feed`) llegan a la pestaña Comentarios: se responden en público, por mensaje privado (uno por
+comentario, dentro de 7 días; si la persona contesta, entra como lead) o se ocultan.
+
+Hasta que Meta apruebe `pages_messaging`, `instagram_manage_messages`, `instagram_manage_comments`
+y `pages_manage_engagement` en la revisión de la app, solo funciona con personas que tengan un rol
+en la app.
 
 ## Cómo está construido
 
