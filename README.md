@@ -97,8 +97,28 @@ ejecutivo escribió último, no hay seguimiento automático.
 
 Los seguimientos vencidos se revisan con Vercel Cron cada 15 minutos (`/api/cron/follow-ups`,
 protegido con `CRON_SECRET`; requiere el plan Pro, en Hobby los cron corren solo una vez al día) y,
-mientras alguien usa la app, cada 5 minutos como máximo. Mientras no haya un canal real, los seguimientos aparecen en
-el chat del lead como cualquier mensaje de la IA.
+mientras alguien usa la app, cada 5 minutos como máximo. En WhatsApp solo salen si la IA del canal
+está encendida (Configuración → Canales).
+
+## WhatsApp
+
+Bella usa la API oficial de WhatsApp Cloud, directa con Meta. Pasos:
+
+1. En [developers.facebook.com](https://developers.facebook.com) crea una app tipo "Empresa" con el
+   producto WhatsApp y agrega el número.
+2. En Vercel define `WHATSAPP_TOKEN` (token permanente de un usuario del sistema del Business
+   Manager con `whatsapp_business_messaging` y `whatsapp_business_management`),
+   `WHATSAPP_PHONE_NUMBER_ID`, `META_APP_SECRET` y `META_VERIFY_TOKEN` (un texto que inventas).
+3. En la app de Meta, WhatsApp → Configuración → Webhook: URL `https://<tu-dominio>/api/webhooks/whatsapp`,
+   el mismo `META_VERIFY_TOKEN`, y suscribe el campo `messages`.
+4. En Configuración → Canales revisa que todo esté en verde y, cuando quieras, enciende "La
+   asistente responde sola en WhatsApp" (viene apagado: el equipo responde a mano).
+
+Cada mensaje entrante crea o reutiliza el contacto (por su número) y su lead abierto; si el último
+lead está cerrado, abre uno nuevo. Las notas de voz se descargan y transcriben como en el
+simulador; imágenes, documentos y ubicaciones llegan como texto descriptivo. Las respuestas de la
+IA y del equipo salen por WhatsApp y en el chat se ve si se enviaron, entregaron o leyeron, o por
+qué fallaron (por ejemplo, la ventana de 24 horas de WhatsApp).
 
 ## Cómo está construido
 

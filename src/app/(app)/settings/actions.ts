@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
+import { saveChannelSettings } from "@/lib/domain/channels";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
 
@@ -195,6 +196,14 @@ export async function saveInventoryAction(_prev: string | null, form: FormData):
     revalidatePath("/settings/inventory");
     return e instanceof Error ? e.message : "No se pudo sincronizar.";
   }
+}
+
+// Canales
+
+export async function saveChannelsAction(form: FormData) {
+  await requireAdmin();
+  await saveChannelSettings({ whatsappAi: form.get("whatsappAi") === "on" });
+  revalidatePath("/settings/channels");
 }
 
 // Cierre automático

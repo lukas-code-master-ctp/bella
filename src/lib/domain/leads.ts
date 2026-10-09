@@ -11,25 +11,26 @@ type Tx = Prisma.TransactionClient;
 
 export class DomainError extends Error {}
 
-/** Crea contacto + lead en la primera etapa del funnel. */
-export async function createLead(input: {
-  name: string;
-  channel: Channel;
-  phone?: string;
-  externalId?: string;
-}) {
+/**
+ * Crea contacto + lead en la primera etapa del funnel. Con `contactId`, el lead es una nueva
+ * oportunidad de un contacto que ya existe (ej. vuelve a escribir después de un cierre).
+ */
+export async function createLead(
+  input: { name: string; channel: Channel; phone?: string; externalId?: string } | { contactId: string },
+  options: { aiEnabled?: boolean } = {},
+) {
   const firstStage = await db.stage.findFirst({ orderBy: { position: "asc" } });
   if (!firstStage) throw new DomainError("No hay etapas configuradas en el funnel.");
   const created = await db.$transaction(async (tx) => {
-    const contact = await tx.contact.create({
-      data: {
-        name: input.name,
-        channel: input.channel,
-        phone: input.phone,
-        externalId: input.externalId,
-      },
+    const contact =
+      "contactId" in input
+        ? await tx.contact.findUniqueOrThrow({ where: { id: input.contactId } })
+        : await tx.contact.create({
+            data: { name: input.name, channel: input.channel, phone: input.phone, externalId: input.externalId },
+          });
+    const lead = await tx.lead.create({
+      data: { contactId: contact.id, stageId: firstStage.id, ...(options.aiEnabled === false ? { aiEnabled: false } : {}) },
     });
-    const lead = await tx.lead.create({ data: { contactId: contact.id, stageId: firstStage.id } });
     await tx.leadEvent.create({
       data: { leadId: lead.id, type: "CREATED", actor: "SYSTEM", data: { stage: firstStage.name } },
     });
