@@ -131,6 +131,14 @@ model Lead {
   updatedAt  DateTime   @updatedAt
   closedAt   DateTime?
 
+  /// Resumen de una línea de dónde quedó la conversación, hecho por la IA (ver src/lib/ai/insights.ts).
+  aiSummary   String?
+  /// Puntaje 0-100 de qué tan probable es que compre, con su motivo; lo calcula la IA.
+  score       Int?
+  scoreReason String?
+  /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
+  insightsAt  DateTime?
+
   contact    Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
   stage      Stage            @relation(fields: [stageId], references: [id])
   assignee   User?            @relation("Assignee", fields: [assigneeId], references: [id])

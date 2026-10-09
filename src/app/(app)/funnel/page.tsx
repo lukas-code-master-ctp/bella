@@ -7,9 +7,10 @@ import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
 import { Board } from "./board";
 
-export default async function FunnelPage({ searchParams }: { searchParams: Promise<{ executive?: string }> }) {
+export default async function FunnelPage({ searchParams }: { searchParams: Promise<{ executive?: string; sort?: string }> }) {
   const user = await requireUser();
-  const { executive } = await searchParams;
+  const { executive, sort } = await searchParams;
+  const byScore = sort === "score";
   const scope: Prisma.LeadWhereInput =
     user.role === "ADMIN" ? (executive ? { assigneeId: executive === "none" ? null : executive } : {}) : { assigneeId: user.id };
 
@@ -22,7 +23,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
         assignee: true,
         messages: { orderBy: { createdAt: "desc" }, take: 1 },
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: byScore ? [{ score: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }] : { updatedAt: "desc" },
     }),
     db.lead.groupBy({ by: ["status"], where: { ...scope, status: { not: "OPEN" } }, _count: { _all: true } }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -42,23 +43,32 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
         <Stat icon={<Inbox />} label="Abiertos" value={leads.length} tone="text-brand-700 bg-brand-50" />
         <Stat icon={<Trophy />} label="Ganados" value={count("WON")} tone="text-emerald-700 bg-emerald-50" />
         <Stat icon={<CircleX />} label="Perdidos" value={count("LOST")} tone="text-rose-700 bg-rose-50" />
-        {user.role === "ADMIN" && (
-          <form className="ml-auto flex w-full items-center gap-2 sm:w-auto">
-            <label htmlFor="executive" className="sr-only">
-              Ejecutivo
-            </label>
-            <select id="executive" name="executive" defaultValue={executive ?? ""} className={`${inputClass} sm:w-56`}>
-              <option value="">Todos los ejecutivos</option>
-              <option value="none">Sin asignar</option>
-              {executives.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-            <button className={buttonClass("secondary")}>Filtrar</button>
-          </form>
-        )}
+        <form className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+          {user.role === "ADMIN" && (
+            <>
+              <label htmlFor="executive" className="sr-only">
+                Ejecutivo
+              </label>
+              <select id="executive" name="executive" defaultValue={executive ?? ""} className={`${inputClass} sm:w-56`}>
+                <option value="">Todos los ejecutivos</option>
+                <option value="none">Sin asignar</option>
+                {executives.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          <label htmlFor="sort" className="sr-only">
+            Orden
+          </label>
+          <select id="sort" name="sort" defaultValue={byScore ? "score" : ""} className={`${inputClass} sm:w-48`}>
+            <option value="">Más recientes</option>
+            <option value="score">Mayor puntaje</option>
+          </select>
+          <button className={buttonClass("secondary")}>Aplicar</button>
+        </form>
       </div>
 
       {stages.length === 0 ? (
@@ -82,6 +92,9 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
             assignee: l.assignee?.name ?? null,
             aiEnabled: l.aiEnabled,
             lastMessage: l.messages[0]?.body ?? null,
+            summary: l.aiSummary,
+            score: l.score,
+            scoreReason: l.scoreReason,
             tags: l.contact.tags.map((ct) => ({ label: ct.tag.name, color: ct.tag.color })),
             updatedAt: l.updatedAt.toISOString(),
           }))}

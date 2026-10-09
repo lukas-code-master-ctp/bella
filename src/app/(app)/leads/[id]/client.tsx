@@ -3,10 +3,10 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, Send, Trophy } from "lucide-react";
+import { Activity, Bot, CircleX, FlaskConical, LoaderCircle, MessageCircle, RefreshCw, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { closeLeadAction, sendAsContactAction, sendAsUserAction } from "./actions";
+import { closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
 
 export type ChatMessage = {
@@ -217,6 +217,20 @@ function UserComposer({ leadId, onSend }: { leadId: string; onSend: (body: strin
         <Send aria-hidden />
         <span className="hidden sm:inline">Enviar</span>
       </SubmitButton>
+    </form>
+  );
+}
+
+/** Recalcula a pedido el resumen y el puntaje del lead. */
+export function RefreshInsightsForm({ leadId, hasSummary }: { leadId: string; hasSummary: boolean }) {
+  const [error, action] = useActionState(refreshInsightsAction.bind(null, leadId), null);
+  return (
+    <form action={action} className="mt-3 space-y-2">
+      <SubmitButton variant="secondary" size="sm" pendingText="Analizando…">
+        <RefreshCw aria-hidden />
+        {hasSummary ? "Actualizar" : "Generar resumen"}
+      </SubmitButton>
+      {error && <FormMessage>{error}</FormMessage>}
     </form>
   );
 }

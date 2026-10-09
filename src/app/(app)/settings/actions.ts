@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { AssignStrategy, Role, RuleTrigger } from "@prisma/client";
 import { hashPassword, requireAdmin } from "@/lib/auth";
-import type { AiConfig, AiEffort, AiProvider } from "@/lib/ai/config";
+import { DEFAULT_SUMMARY_MODEL, type AiConfig, type AiEffort, type AiProvider } from "@/lib/ai/config";
 import { listOpenRouterModels } from "@/lib/ai/models";
 import { db } from "@/lib/db";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
@@ -28,14 +28,23 @@ export async function saveAiAction(_prev: string | null, form: FormData): Promis
   const provider = str(form, "provider") as AiProvider;
   const model = str(form, "model");
   if (provider !== "openrouter" && provider !== "anthropic") return "Proveedor inválido.";
+  const summaryModel = str(form, "summaryModel") || DEFAULT_SUMMARY_MODEL[provider];
   if (!model) return "Elige un modelo.";
   if (provider === "openrouter") {
     const models = await listOpenRouterModels();
     if (models && !models.some((m) => m.id === model)) {
       return `"${model}" no está entre los modelos de OpenRouter que aceptan herramientas.`;
     }
+    if (models && !models.some((m) => m.id === summaryModel)) {
+      return `"${summaryModel}" no está entre los modelos de OpenRouter.`;
+    }
   }
-  await setSetting<AiConfig>("ai", { provider, model, effort: (str(form, "effort") as AiEffort) || "medium" });
+  await setSetting<AiConfig>("ai", {
+    provider,
+    model,
+    effort: (str(form, "effort") as AiEffort) || "medium",
+    summaryModel,
+  });
   revalidatePath("/settings");
   return "Guardado.";
 }

@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
+import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
 import {
   addTag,
@@ -29,6 +31,11 @@ function done(leadId: string) {
   revalidatePath("/funnel");
 }
 
+/** Recalcula el resumen y el puntaje después de responder, sin demorar la respuesta. */
+function refreshInsightsLater(leadId: string) {
+  after(() => refreshLeadInsights(leadId));
+}
+
 /** Simulador: escribe como si fueras el cliente y deja que la IA responda. */
 export async function sendAsContactAction(leadId: string, _prev: string | null, form: FormData) {
   const { lead } = await authorize(leadId);
@@ -44,6 +51,7 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
     }
     await runAgent(leadId);
   }
+  refreshInsightsLater(leadId);
   done(leadId);
   return null;
 }
@@ -55,6 +63,7 @@ export async function sendAsUserAction(leadId: string, form: FormData) {
   if (!body) return;
   await db.message.create({ data: { leadId, author: "USER", userId: user.id, body } });
   if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
+  refreshInsightsLater(leadId);
   done(leadId);
 }
 
@@ -74,7 +83,10 @@ export async function setAssigneeAction(leadId: string, form: FormData) {
 export async function toggleAiAction(leadId: string, enabled: boolean) {
   const { by } = await authorize(leadId);
   await setAiEnabled(leadId, enabled, by);
-  if (enabled) await runAgent(leadId).catch((e) => console.error(e));
+  if (enabled) {
+    await runAgent(leadId).catch((e) => console.error(e));
+    refreshInsightsLater(leadId);
+  }
   done(leadId);
 }
 
@@ -112,6 +124,14 @@ export async function reopenLeadAction(leadId: string) {
   const { by } = await authorize(leadId);
   await reopenLead(leadId, by);
   done(leadId);
+}
+
+/** Recalcula a pedido el resumen y el puntaje del lead. */
+export async function refreshInsightsAction(leadId: string): Promise<string | null> {
+  await authorize(leadId);
+  const ok = await refreshLeadInsights(leadId, { force: true });
+  done(leadId);
+  return ok ? null : "No se pudo generar el resumen. Revisa el modelo en Configuración → Asistente IA.";
 }
 
 /** Monitor de actividad: cómo la IA construyó uno de sus mensajes. */
