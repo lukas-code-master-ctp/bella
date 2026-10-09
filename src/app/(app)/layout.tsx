@@ -12,7 +12,7 @@ import { UnreadBadge } from "./notifications/unread-badge";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  // El cron de Vercel Hobby corre una vez al día: mientras el equipo usa la app, los seguimientos
+  // Además del cron (cada 15 minutos), mientras el equipo usa la app los seguimientos
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   after(runDueFollowUpsIfStale);
   const urgentTasks = await countUrgentTasks(user.id);

@@ -7,7 +7,7 @@ import type { ProviderClients } from "./providers";
 
 /** Seguimientos por revisión: cada uno es una llamada a la IA, así que se acota el tiempo. */
 const BATCH = 10;
-/** Cada cuánto se revisan los seguimientos al usar la app (además del cron diario). */
+/** Cada cuánto se revisan los seguimientos al usar la app (además del cron cada 15 minutos). */
 export const FOLLOW_UP_CHECK_MS = 5 * 60 * 1000;
 
 export type FollowUpRun = { sent: number; skipped: number; failed: number; reason?: string };

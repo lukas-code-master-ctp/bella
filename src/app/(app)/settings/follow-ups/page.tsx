@@ -31,7 +31,7 @@ export default async function FollowUpsPage() {
           instructions={s.instructions}
         />
         <p className="mt-4 text-xs text-slate-600">
-          Los seguimientos vencidos se envían una vez al día con el cron de Vercel y, mientras alguien del equipo usa
+          Los seguimientos vencidos se revisan cada 15 minutos con el cron de Vercel y, mientras alguien del equipo usa
           Bella, cada {FOLLOW_UP_CHECK_MS / 60_000} minutos. Si la asistente decide que no corresponde escribir (por
           ejemplo, el cliente se despidió), no insiste.
         </p>
