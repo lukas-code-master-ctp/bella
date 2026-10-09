@@ -81,7 +81,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
             channel: CHANNEL_LABEL[l.contact.channel],
             assignee: l.assignee?.name ?? null,
             aiEnabled: l.aiEnabled,
-            lastMessage: l.messages[0]?.body ?? null,
+            lastMessage: l.messages[0] ? l.messages[0].body || (l.messages[0].mediaUrl ? "🎤 Nota de voz" : "") : null,
             tags: l.contact.tags.map((ct) => ({ label: ct.tag.name, color: ct.tag.color })),
             updatedAt: l.updatedAt.toISOString(),
           }))}

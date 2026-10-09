@@ -16,6 +16,7 @@ import {
   setAiEnabled,
   setAssignee,
 } from "@/lib/domain/leads";
+import { receiveContactAudio } from "@/lib/domain/messages";
 
 async function authorize(leadId: string) {
   const user = await requireUser();
@@ -29,13 +30,32 @@ function done(leadId: string) {
   revalidatePath("/funnel");
 }
 
-/** Simulador: escribe como si fueras el cliente y deja que la IA responda. */
+/** Simulador: escribe (o manda una nota de voz) como si fueras el cliente y deja que la IA responda. */
 export async function sendAsContactAction(leadId: string, _prev: string | null, form: FormData) {
   const { lead } = await authorize(leadId);
   if (lead.contact.channel !== "SIMULATOR") return "Solo disponible en leads del simulador.";
   const body = String(form.get("body") ?? "").trim();
-  if (!body) return null;
-  await db.message.create({ data: { leadId, author: "CONTACT", body } });
+  const audio = form.get("audio");
+  if (audio instanceof File && audio.size > 0) {
+    try {
+      await receiveContactAudio(leadId, {
+        bytes: new Uint8Array(await audio.arrayBuffer()),
+        mimeType: audio.type,
+        fileName: audio.name,
+      });
+    } catch (e) {
+      if (e instanceof DomainError) return e.message;
+      console.error(e);
+      return e instanceof Error && e.message.includes("BLOB_READ_WRITE_TOKEN")
+        ? e.message
+        : "No se pudo guardar el audio. Intenta de nuevo.";
+    }
+    if (body) await db.message.create({ data: { leadId, author: "CONTACT", body } });
+  } else if (body) {
+    await db.message.create({ data: { leadId, author: "CONTACT", body } });
+  } else {
+    return null;
+  }
   if (lead.aiEnabled && lead.status === "OPEN") {
     const missing = missingKeyMessage((await getAiConfig()).provider);
     if (missing) {
