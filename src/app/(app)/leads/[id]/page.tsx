@@ -166,7 +166,8 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
         />
       </Card>
 
-      <aside className="space-y-4">
+      {/* En pantallas anchas la página no hace scroll: el chat y el sidebar quedan fijos y solo este panel se desplaza. */}
+      <aside className="relative space-y-4 xl:h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1.5">
         <Card className="divide-y divide-slate-100">
           <section className="p-4">
             <div className="mb-2.5 flex items-center gap-2">
