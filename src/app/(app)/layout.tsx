@@ -1,4 +1,4 @@
-import { Bell, FlaskConical, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
+import { Bell, ChartNoAxesColumn, FlaskConical, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
 import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
@@ -71,6 +71,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/notifications" icon={<Bell />}>
             Avisos
             <UnreadBadge initial={unread} />
+          </NavLink>
+          <NavLink href="/metrics" icon={<ChartNoAxesColumn />}>
+            Métricas
           </NavLink>
           <NavLink href="/simulator" icon={<FlaskConical />}>
             Simulador
