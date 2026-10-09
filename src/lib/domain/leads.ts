@@ -1,6 +1,7 @@
 import type { Actor, Channel, Prisma } from "@prisma/client";
 import { db } from "../db";
 import { applyAssignment } from "./assignment";
+import { moveOpenTasksTx } from "./tasks";
 
 export type ActorRef = { actor: Actor; userId?: string | null };
 
@@ -175,7 +176,9 @@ export async function reopenLead(leadId: string, by: ActorRef) {
 export async function setAssignee(leadId: string, assigneeId: string | null, by: ActorRef) {
   return db.$transaction(async (tx) => {
     const user = assigneeId ? await tx.user.findUniqueOrThrow({ where: { id: assigneeId } }) : null;
+    const before = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
     await tx.lead.update({ where: { id: leadId }, data: { assigneeId } });
+    await moveOpenTasksTx(tx, leadId, before.assigneeId, assigneeId);
     await tx.leadEvent.create({
       data: {
         leadId,

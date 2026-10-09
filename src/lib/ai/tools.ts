@@ -1,7 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
+import { parseLocalDateTime } from "../dates";
 import { findField, setFieldValueTx } from "../domain/fields";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
+import { createTask } from "../domain/tasks";
 import { searchInventory, syncInventoryIfStale } from "../inventory";
 import { searchKnowledge } from "../knowledge";
 import { normalize } from "../text";
@@ -72,6 +74,22 @@ export const AGENT_TOOLS: Tool[] = [
         "Valor tal como lo dijo el cliente. En campos de opciones, una de las opciones; en campos " +
           "numéricos, un solo monto en pesos (si da un rango, el mayor)",
       ),
+    },
+  ),
+  tool(
+    "create_task",
+    "Crea una tarea con plazo para el ejecutivo del lead: algo concreto que una persona del equipo " +
+      "debe hacer (llamar, enviar documentos, confirmar una visita, verificar disponibilidad). " +
+      "El ejecutivo la ve en \"Mis tareas\" y en la ficha del lead. No la uses para lo que tú " +
+      "misma puedes resolver en el chat.",
+    {
+      title: text("Qué hay que hacer, en una frase corta que empiece con un verbo"),
+      due: text(
+        "Vencimiento en hora de Chile, formato AAAA-MM-DD HH:MM (ej. 2026-10-12 10:00). Usa la fecha " +
+          "y hora actual del estado del CRM como referencia. Si el cliente no dio un plazo, usa el " +
+          "siguiente día hábil.",
+      ),
+      notes: text("Contexto para el ejecutivo: datos del cliente y lo acordado, o vacío"),
     },
   ),
   tool(
@@ -181,6 +199,25 @@ export async function executeTool(
       } catch (err) {
         if (err instanceof DomainError) return { isError: true, content: err.message };
         throw err;
+      }
+    }
+    case "create_task": {
+      const dueAt = parseLocalDateTime(str("due"));
+      if (!dueAt) return { isError: true, content: "Fecha inválida. Usa el formato AAAA-MM-DD HH:MM." };
+      if (dueAt.getTime() < Date.now() - 5 * 60_000) {
+        return { isError: true, content: "Esa fecha ya pasó: revisa la fecha y hora actual del estado del CRM." };
+      }
+      try {
+        const task = await createTask(leadId, { title: str("title"), dueAt, notes: str("notes") }, { actor: "AI" });
+        const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { assignee: true } });
+        return {
+          content: lead.assignee
+            ? `Tarea creada para ${lead.assignee.name}: "${task.title}".`
+            : `Tarea creada: "${task.title}". El lead aún no tiene ejecutivo; la tomará quien se le asigne.`,
+        };
+      } catch (e) {
+        if (e instanceof DomainError) return { isError: true, content: e.message };
+        throw e;
       }
     }
     case "handoff_to_human": {
