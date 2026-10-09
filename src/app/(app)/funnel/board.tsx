@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
-import { Bot, BotOff, UserRound } from "lucide-react";
+import { Bot, BotOff, Sparkles, UserRound } from "lucide-react";
 import { Avatar, Badge, TagPill } from "@/components/ui";
 import { LinkPending } from "@/components/link-pending";
+import { ScoreBadge } from "@/components/score-badge";
 import { moveLeadAction } from "./actions";
 
 export type BoardLead = {
@@ -15,6 +16,10 @@ export type BoardLead = {
   assignee: string | null;
   aiEnabled: boolean;
   lastMessage: string | null;
+  /** Resumen de una línea hecho por la IA; si aún no hay, se muestra el último mensaje. */
+  summary: string | null;
+  score: number | null;
+  scoreReason: string | null;
   tags: { label: string; color: string }[];
   updatedAt: string;
 };
@@ -112,7 +117,14 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                       </Badge>
                     )}
                   </div>
-                  {lead.lastMessage && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-600">{lead.lastMessage}</p>}
+                  {lead.summary ? (
+                    <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-700">
+                      <Sparkles aria-label="Resumen IA:" className="mr-1 inline size-3 -translate-y-px text-brand-500" />
+                      {lead.summary}
+                    </p>
+                  ) : (
+                    lead.lastMessage && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-600">{lead.lastMessage}</p>
+                  )}
                   {lead.tags.length > 0 && (
                     <div className="mt-2.5 flex flex-wrap gap-1">
                       {lead.tags.map((t) => (
@@ -123,7 +135,10 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                   <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 text-xs text-slate-600">
                     {lead.assignee ? <Avatar name={lead.assignee} size="sm" /> : <UserRound aria-hidden className="size-4 text-slate-400" />}
                     <span className="truncate">{lead.assignee ?? "Sin asignar"}</span>
-                    <span className="ml-auto shrink-0 text-slate-500">{lead.channel}</span>
+                    <span className="ml-auto flex shrink-0 items-center gap-2">
+                      {lead.score !== null && <ScoreBadge score={lead.score} reason={lead.scoreReason} />}
+                      <span className="text-slate-500">{lead.channel}</span>
+                    </span>
                   </div>
                   <LinkPending />
                 </Link>
