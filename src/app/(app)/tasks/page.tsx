@@ -21,7 +21,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const pendingCount = tasks.overdue.length + tasks.today.length + tasks.upcoming.length;
 
   const list = (items: TaskWithLead[]) => (
-    <ul className="divide-y divide-slate-100 px-4">
+    <ul className="stagger divide-y divide-slate-100 px-4">
       {items.map((t) => (
         <TaskItem
           key={t.id}
@@ -66,7 +66,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           </EmptyState>
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="stagger grid gap-4 lg:grid-cols-3">
           <Group title="Vencidas" icon={<AlarmClock />} tone="bg-rose-50 text-rose-700" count={tasks.overdue.length} empty="Nada vencido.">
             {list(tasks.overdue)}
           </Group>
