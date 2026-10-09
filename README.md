@@ -95,11 +95,9 @@ Chile y cómo escribir los mensajes. La IA también agenda un recontacto para un
 cliente lo pide (`schedule_follow_up`). Solo aplica a leads abiertos con la IA activa; si un
 ejecutivo escribió último, no hay seguimiento automático.
 
-Los seguimientos vencidos se envían con Vercel Cron una vez al día (`/api/cron/follow-ups`,
-protegido con `CRON_SECRET`) y, mientras alguien usa la app, cada 5 minutos como máximo. En el plan
-Hobby, para que salgan a la hora exacta sin que nadie use la app, un servicio externo (por ejemplo
-cron-job.org) puede llamar esa ruta cada 15 minutos con el encabezado
-`Authorization: Bearer $CRON_SECRET`. Mientras no haya un canal real, los seguimientos aparecen en
+Los seguimientos vencidos se revisan con Vercel Cron cada 15 minutos (`/api/cron/follow-ups`,
+protegido con `CRON_SECRET`; requiere el plan Pro, en Hobby los cron corren solo una vez al día) y,
+mientras alguien usa la app, cada 5 minutos como máximo. Mientras no haya un canal real, los seguimientos aparecen en
 el chat del lead como cualquier mensaje de la IA.
 
 ## Cómo está construido
