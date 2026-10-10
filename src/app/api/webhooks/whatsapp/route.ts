@@ -1,5 +1,5 @@
 import { after, NextResponse, type NextRequest } from "next/server";
-import { answerLead } from "@/lib/ai/respond";
+import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import { validSignature, type WaWebhook } from "@/lib/channels/whatsapp";
 import { logWhatsAppWebhook, logWhatsAppWebhookError, receiveWhatsApp } from "@/lib/domain/channels";
 
@@ -42,6 +42,6 @@ export async function POST(request: NextRequest) {
     await logWhatsAppWebhookError(err).catch(() => null);
     throw err;
   }
-  if (leads.length) after(() => Promise.all(leads.map((id) => answerLead(id))));
+  if (leads.length) after(() => Promise.all(leads.map((id) => answerLeadWhenQuiet(id))));
   return NextResponse.json({ ok: true });
 }

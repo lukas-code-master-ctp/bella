@@ -36,9 +36,21 @@ export type ChannelSettings = {
   whatsappAi: boolean;
   instagramAi: boolean;
   facebookAi: boolean;
+  /**
+   * Segundos de silencio del cliente antes de que la IA responda: si manda varios mensajes
+   * seguidos, se contestan todos juntos (Meta no avisa cuando alguien está escribiendo).
+   */
+  replyDelaySeconds: number;
 };
 
-export const DEFAULT_CHANNELS: ChannelSettings = { whatsappAi: false, instagramAi: false, facebookAi: false };
+export const MAX_REPLY_DELAY_SECONDS = 120;
+
+export const DEFAULT_CHANNELS: ChannelSettings = {
+  whatsappAi: false,
+  instagramAi: false,
+  facebookAi: false,
+  replyDelaySeconds: 15,
+};
 
 const AI_KEY = { WHATSAPP: "whatsappAi", INSTAGRAM: "instagramAi", FACEBOOK: "facebookAi" } as const;
 

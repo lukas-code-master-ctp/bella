@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ArrowUpRight, CircleCheck, CircleDashed, Plus, Smartphone, Sparkles, SquareKanban } from "lucide-react";
 import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
-import { getChannelSettings, openLeadsByChannel } from "@/lib/domain/channels";
+import { getChannelSettings, MAX_REPLY_DELAY_SECONDS, openLeadsByChannel } from "@/lib/domain/channels";
 import { db } from "@/lib/db";
 import { getLegalSettings } from "@/lib/domain/privacy";
 import { Badge, buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
@@ -267,6 +267,20 @@ export default async function ChannelsSettingsPage() {
               Encendido, la asistente contesta y hace los seguimientos (si están activos). Meta solo deja escribir
               libremente hasta 24 horas después del último mensaje del cliente.
             </p>
+            <Field
+              label="Espera antes de responder (segundos)"
+              hint="La asistente responde cuando el cliente lleva este tiempo sin escribir, así contesta varios mensajes seguidos de una vez. 0 responde al instante."
+            >
+              <input
+                name="replyDelaySeconds"
+                type="number"
+                min={0}
+                max={MAX_REPLY_DELAY_SECONDS}
+                required
+                defaultValue={s.replyDelaySeconds}
+                className={`${inputClass} max-w-32`}
+              />
+            </Field>
             <SubmitButton>Guardar</SubmitButton>
           </form>
         </Card>
