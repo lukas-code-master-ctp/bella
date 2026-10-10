@@ -1,9 +1,8 @@
-import { Archive, Crosshair, Sparkles, Target, BellRing, BookOpen, Bot, ClipboardList, MessagesSquare, Package, Shuffle, SquareKanban, Users } from "lucide-react";
+import { Archive, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, MessagesSquare, Package, Shuffle, SquareKanban, Users } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 
 const TABS = [
-  ["/settings/claude", "Configurar con Claude", <Sparkles key="i" />],
   ["/settings/assistant", "Asistente", <Bot key="i" />],
   ["/settings/channels", "Canales", <MessagesSquare key="i" />],
   ["/settings/attribution", "Origen de leads", <Target key="i" />],
