@@ -113,7 +113,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
             aiEnabled: l.aiEnabled,
             attention,
             waitingFor: waitingSince ? formatAgo(waitingSince, now) : null,
-            lastMessage: last ? last.body || (last.mediaUrl ? "🎤 Nota de voz" : "") : null,
+            lastMessage: last ? last.body || (last.mediaUrl ? (last.mediaType?.startsWith("audio/") ? "🎤 Nota de voz" : "📎 Archivo") : "") : null,
             summary: l.aiSummary,
             score: l.score,
             scoreReason: l.scoreReason,

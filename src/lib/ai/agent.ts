@@ -13,6 +13,7 @@ import {
 import { aiBlocked, getAiOperation, previousTicketLines, replyOutOfHours } from "../domain/ai-operation";
 import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
+import { filesForPrompt, type FileForPrompt } from "../domain/files";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
@@ -32,7 +33,11 @@ type KnowledgeDoc = { title: string; content: string };
  * Las instrucciones son iguales en todos los turnos (quedan en caché). Con `knowledge`, la base
  * de conocimiento va completa al final; sin ella, la asistente la consulta con search_knowledge.
  */
-export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[] | null = null): string {
+export function buildSystemPrompt(
+  s: AssistantSettings,
+  knowledge: KnowledgeDoc[] | null = null,
+  files: FileForPrompt[] = [],
+): string {
   const lines = [
     `Eres ${s.assistantName}, asistente de ventas de ${s.companyName}. Conversas por chat con ` +
       "personas interesadas (leads) para resolver sus dudas, entender qué necesitan y llevarlas " +
@@ -60,6 +65,12 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "- Cuando una persona del equipo deba hacer algo con plazo (llamar, enviar documentos, " +
       "confirmar una visita), créale una tarea con create_task. Revisa en <crm_state> las tareas " +
       "pendientes para no repetirlas.",
+    ...(files.length
+      ? [
+          "- Puedes enviarle al cliente los archivos de <archivos> con send_file (por ejemplo cuando " +
+            "pide un plano, una ficha o fotos). Envía solo esos archivos; nunca inventes enlaces.",
+        ]
+      : []),
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
       "compra, esté molesto, o necesite algo que no puedes resolver.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
@@ -68,6 +79,14 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "Instrucciones de la empresa:",
     s.instructions,
   ];
+  if (files.length) {
+    lines.push(
+      "",
+      "<archivos>",
+      ...files.map((f) => `- ${f.title} (${f.kind})${f.description ? `: ${f.description}` : ""}`),
+      "</archivos>",
+    );
+  }
   if (knowledge?.length) {
     lines.push(
       "",
@@ -165,7 +184,7 @@ function formatPending(messages: (Message & { user: { name: string } | null })[]
       m.author === "CONTACT"
         ? contactText(m)
         : m.author === "AI"
-          ? `${assistantName} (tú): ${m.body}`
+          ? `${assistantName} (tú): ${m.mediaUrl ? `[enviaste el archivo ${m.mediaName ?? ""}] ` : ""}${m.body}`
           : userText(m),
     )
     .join("\n");
@@ -280,7 +299,8 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   }
   const context = blocks.join("\n\n");
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
-  const system = buildSystemPrompt(settings, await knowledgeForPrompt());
+  const [knowledge, files] = await Promise.all([knowledgeForPrompt(), filesForPrompt()]);
+  const system = buildSystemPrompt(settings, knowledge, files);
 
   // Línea de tiempo del turno para el monitor de actividad.
   const trace: TraceStep[] = [];
@@ -402,6 +422,10 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     return message;
   });
 
+  // Los archivos que envió la IA salen aunque el turno termine sin texto (ej. un seguimiento omitido).
+  if (!sent && trace.some((t) => t.type === "tool" && t.name === "send_file" && !t.isError)) {
+    await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío de archivos, lead ${leadId}:`, err));
+  }
   // Fuera de la transacción: si falla el registro del monitor, la respuesta igual queda guardada.
   if (sent) {
     await db.agentRun

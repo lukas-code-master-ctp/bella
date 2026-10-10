@@ -57,6 +57,7 @@ function fakeAds() {
 const messenger: MessengerApi = {
   sendText: async () => "m",
   sendAudio: async () => "m",
+  sendFile: async () => "m",
   profileName: async () => "Camila",
   download: async () => ({ bytes: new Uint8Array(), mimeType: "audio/mp4" }),
 };

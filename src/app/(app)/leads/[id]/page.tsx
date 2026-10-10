@@ -1,3 +1,4 @@
+import { fileKind } from "@/lib/media";
 import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
@@ -188,7 +189,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             authorName:
               m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
             body: m.body,
-            ...(m.mediaUrl ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
+            ...(m.mediaUrl && fileKind(m.mediaType) === "audio" ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
+            ...(m.mediaUrl && fileKind(m.mediaType) !== "audio"
+              ? { file: { url: m.mediaUrl, name: m.mediaName ?? "Archivo", kind: fileKind(m.mediaType) } }
+              : {}),
             ...(m.deliveryStatus ? { delivery: { status: m.deliveryStatus, error: m.deliveryError } } : {}),
             time: time(m.createdAt),
           }))}

@@ -24,7 +24,7 @@ const msg = (mid: string, text: string, from = "user-1"): MsgEvent => ({
 });
 
 function fakeMessenger(fail?: ChannelSendError) {
-  const sent: { platform: MetaPlatform; to: string; text?: string; audio?: string }[] = [];
+  const sent: { platform: MetaPlatform; to: string; text?: string; audio?: string; file?: { kind: string; url: string } }[] = [];
   let n = 0;
   const lookups: string[] = [];
   const api: MessengerApi = {
@@ -35,6 +35,10 @@ function fakeMessenger(fail?: ChannelSendError) {
     },
     sendAudio: async (platform, to, audio) => {
       sent.push({ platform, to, audio });
+      return `m_out${++n}`;
+    },
+    sendFile: async (platform, to, file) => {
+      sent.push({ platform, to, file });
       return `m_out${++n}`;
     },
     profileName: async (platform, id) => {
