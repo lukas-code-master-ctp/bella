@@ -7,6 +7,7 @@ import {
   cloudApi,
   describeMessage,
   describeMetaError,
+  webhookPhoneIds,
   webhookValues,
   type WaMessage,
   type WaStatus,
@@ -76,6 +77,60 @@ export type InboundDeps = { api?: WhatsAppApi; messenger?: MessengerApi; media?:
  * Meta reintente) y actualiza el estado de entrega de los enviados. Devuelve los leads a los
  * que la IA debe responder.
  */
+/**
+ * Último aviso de WhatsApp que llegó al webhook y qué pasó con él. Se muestra en Configuración →
+ * Canales para saber, sin revisar los logs de Vercel, si Meta está mandando los mensajes.
+ */
+export type WhatsAppWebhookLog = {
+  at: string;
+  result: "ok" | "firma" | "otro-numero" | "error";
+  detail: string;
+  /** Cuándo llegó el último mensaje de un cliente (los avisos de entrega no cuentan). */
+  lastMessageAt?: string;
+};
+
+export async function getWhatsAppWebhookLog(): Promise<WhatsAppWebhookLog | null> {
+  return getSetting<WhatsAppWebhookLog | null>("whatsappWebhook", null);
+}
+
+/** Anota que guardar el aviso falló (Meta lo reintenta, pero el error queda a la vista). */
+export async function logWhatsAppWebhookError(err: unknown, now = new Date()) {
+  const prev = await getWhatsAppWebhookLog();
+  const detail = `Bella no pudo guardar el aviso: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300);
+  await setSetting("whatsappWebhook", { at: now.toISOString(), result: "error", detail, lastMessageAt: prev?.lastMessageAt });
+}
+
+/** Anota el aviso recibido. `payload` es null cuando la firma no calzó con META_APP_SECRET. */
+export async function logWhatsAppWebhook(payload: WaWebhook | null, now = new Date()) {
+  const prev = await getWhatsAppWebhookLog();
+  const at = now.toISOString();
+  let entry: WhatsAppWebhookLog;
+  if (!payload) {
+    entry = { at, result: "firma", detail: "La firma no coincide con META_APP_SECRET: el aviso se rechazó." };
+  } else {
+    const values = webhookValues(payload);
+    const others = webhookPhoneIds(payload).filter((id) => id !== process.env.WHATSAPP_PHONE_NUMBER_ID);
+    const messages = values.reduce((n, v) => n + (v.messages?.length ?? 0), 0);
+    const statuses = values.reduce((n, v) => n + (v.statuses?.length ?? 0), 0);
+    if (!values.length && others.length) {
+      entry = {
+        at,
+        result: "otro-numero",
+        detail: `El aviso es del número con id ${others.join(", ")}, distinto de WHATSAPP_PHONE_NUMBER_ID: se ignoró.`,
+      };
+    } else {
+      const parts = [
+        messages && `${messages} ${messages === 1 ? "mensaje" : "mensajes"}`,
+        statuses && `${statuses} ${statuses === 1 ? "estado de entrega" : "estados de entrega"}`,
+      ].filter(Boolean);
+      entry = { at, result: "ok", detail: parts.length ? `Recibido: ${parts.join(" y ")}.` : "Aviso sin mensajes." };
+      if (messages) entry.lastMessageAt = at;
+    }
+  }
+  entry.lastMessageAt ??= prev?.lastMessageAt;
+  await setSetting("whatsappWebhook", entry);
+}
+
 export async function receiveWhatsApp(payload: WaWebhook, deps: InboundDeps = {}): Promise<string[]> {
   const toAnswer = new Set<string>();
   const { whatsappAi } = await getChannelSettings();

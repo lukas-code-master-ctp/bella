@@ -10,6 +10,7 @@ import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
+import { subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
 import { saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { saveLegalSettings } from "@/lib/domain/privacy";
@@ -210,6 +211,13 @@ export async function saveChannelsAction(form: FormData) {
     instagramAi: form.get("instagramAi") === "on",
     facebookAi: form.get("facebookAi") === "on",
   });
+  revalidatePath("/settings/channels");
+}
+
+export async function subscribeWhatsAppAction(form: FormData) {
+  await requireAdmin();
+  const wabaId = str(form, "wabaId");
+  if (wabaId) await subscribeWhatsAppApp(wabaId);
   revalidatePath("/settings/channels");
 }
 
