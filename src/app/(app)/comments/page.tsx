@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, EyeOff, MessageCircle, MessagesSquare, RotateCcw } from "lucide-react";
+import { Bot, Check, EyeOff, MessageCircle, MessagesSquare, RotateCcw, Trash2 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { formatChileDateTime } from "@/lib/domain/follow-ups";
 import { canPrivateReply, listComments } from "@/lib/domain/comments";
@@ -53,6 +53,18 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                   <span className="font-semibold text-slate-900">{c.authorName}</span>
                   <Badge tone="brand">{CHANNEL_LABEL[c.channel]}</Badge>
                   {c.parentId && <Badge>Respuesta en un hilo</Badge>}
+                  {c.rule && (
+                    <Badge tone="brand">
+                      <Bot aria-hidden />
+                      Regla: {c.rule.name}
+                    </Badge>
+                  )}
+                  {c.removedAt && (
+                    <Badge tone="warning">
+                      <Trash2 aria-hidden />
+                      Borrado
+                    </Badge>
+                  )}
                   {c.hidden && (
                     <Badge tone="warning">
                       <EyeOff aria-hidden />
@@ -82,7 +94,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
                   </div>
                 )}
 
-                {!showDone && <CommentReply commentId={c.id} canPrivate={canPrivateReply(c, now)} hidden={c.hidden} />}
+                {!showDone && !c.removedAt && <CommentReply commentId={c.id} canPrivate={canPrivateReply(c, now)} hidden={c.hidden} />}
 
                 <form action={doneCommentAction.bind(null, c.id, !showDone)} className="mt-2">
                   <SubmitButton size="sm" variant="ghost" pendingText="">
