@@ -3,6 +3,7 @@ import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import type { MessengerWebhook } from "@/lib/channels/messenger";
 import { validSignature } from "@/lib/channels/whatsapp";
 import { receiveMessenger } from "@/lib/domain/channels";
+import { applyCommentRules } from "@/lib/domain/comment-rules";
 import { receiveComments } from "@/lib/domain/comments";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,8 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
-  await receiveComments(payload);
+  const comments = await receiveComments(payload);
+  if (comments.length) after(() => applyCommentRules(comments));
   const leads = await receiveMessenger(payload);
   if (leads.length) after(() => Promise.all(leads.map((id) => answerLeadWhenQuiet(id))));
   return NextResponse.json({ ok: true });
