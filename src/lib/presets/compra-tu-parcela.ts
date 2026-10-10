@@ -98,8 +98,8 @@ Con las respuestas asigna una etiqueta de cada categoría:
 - Uso: Inversión, Construcción, Agrícola o Descanso.
 Luego ofrece agendar una visita al terreno o conectar al cliente con un ejecutivo.
 
-MOVER A INTERESADO - CALIFICACIÓN
-Cuando ya tienes nombre y teléfono, y al menos 2 de estas 3 etiquetas: Plazo, Forma de pago y Uso (no hacen falta las 3), mueve el lead a "Interesado - Calificación". Después confirma al cliente que un ejecutivo se pondrá en contacto a la brevedad y ofrece agendar una visita al terreno si aún no lo ha hecho.
+AL PASAR A INTERESADO - CALIFICACIÓN
+Cuándo mover el lead lo dicen las reglas de avance del estado del CRM. Al moverlo a "Interesado - Calificación", confirma al cliente que un ejecutivo se pondrá en contacto a la brevedad y ofrece agendar una visita al terreno si aún no lo ha hecho.
 
 INFORMACIÓN DE PARCELAS
 Toda la información específica de proyectos (nombre, ubicación, precio, disponibilidad, promociones, financiamiento, landing page, topografía, distancias) sale EXCLUSIVAMENTE del inventario (search_inventory).
@@ -157,8 +157,8 @@ Si hay una condición especial (pago contado, preventa, plazo limitado o stock l
 Si el cliente pregunta si el precio es negociable: los precios no son negociables.
 Al final pregunta si alguno de esos proyectos le llama la atención para contarle más.
 
-MOVER A AGENDAMIENTO
-Cuando el cliente exprese interés en visitar un proyecto, ir a terreno o conocer una parcela en persona, mueve el lead a "Agendamiento". Después confirma que coordinarás la visita y pregunta su disponibilidad de fecha y hora.
+AL PASAR A AGENDAMIENTO
+Al mover el lead a "Agendamiento" (según las reglas de avance), confirma que coordinarás la visita y pregunta su disponibilidad de fecha y hora.
 
 AGENDAR VISITA AL TERRENO
 Horario de visitas: lunes a domingo, de 9:00 a 16:30 hrs, todos los días del año, incluidos feriados.
@@ -336,7 +336,7 @@ Sitio web: https://compratuparcela.cl`;
 
 export const COMPRA_TU_PARCELA: Preset = {
   id: "compra-tu-parcela",
-  version: 3,
+  version: 4,
   assistant: {
     assistantName: "Valentina",
     companyName: "Compra Tu Parcela",
@@ -352,9 +352,27 @@ export const COMPRA_TU_PARCELA: Preset = {
   // Asistencia Humana en adelante la IA se pausa y sigue un ejecutivo. Asistencia Humana va
   // antes de las etapas de visita porque la derivación usa la primera etapa de atención humana.
   stages: [
-    { name: "Inicial", color: "#64748b", replaces: ["Nuevo"] },
-    { name: "Interesado - Calificación", color: "#0ea5e9", replaces: ["Calificado"] },
-    { name: "Agendamiento", color: "#8b5cf6", replaces: ["Interesado"] },
+    {
+      name: "Inicial",
+      color: "#64748b",
+      replaces: ["Nuevo"],
+      exitCriteria:
+        'Cuando tengas nombre y teléfono, y al menos 2 de estas 3 etiquetas: Plazo, Forma de pago y Uso, mover a "Interesado - Calificación". Si antes de eso el cliente quiere visitar un proyecto, ir a terreno o conocer una parcela en persona, mover directo a "Agendamiento".',
+    },
+    {
+      name: "Interesado - Calificación",
+      color: "#0ea5e9",
+      replaces: ["Calificado"],
+      exitCriteria:
+        'Cuando el cliente exprese interés en visitar un proyecto, ir a terreno o conocer una parcela en persona, mover a "Agendamiento".',
+    },
+    {
+      name: "Agendamiento",
+      color: "#8b5cf6",
+      replaces: ["Interesado"],
+      exitCriteria:
+        'Cuando el cliente confirme la visita y tengas nombre, teléfono, fecha, hora y su medio y horario de contacto preferidos, mover a "Visita Agendada" siguiendo la ruta CONFIRMAR Y MOVER A VISITA AGENDADA.',
+    },
     { name: "Asistencia Humana", color: "#f59e0b", requiresHuman: true, replaces: ["Atención humana"] },
     { name: "Visita Agendada", color: "#6366f1", requiresHuman: true },
     { name: "Visita realizada", color: "#14b8a6", requiresHuman: true },

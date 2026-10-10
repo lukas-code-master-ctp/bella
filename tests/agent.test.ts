@@ -103,6 +103,37 @@ describe("asistente IA (Anthropic)", () => {
     ]);
   });
 
+  it("recibe las reglas de avance de las etapas que atiende la IA", async () => {
+    const [nuevo, calificado, , humana] = await seedFunnel();
+    await db.stage.update({ where: { id: nuevo.id }, data: { exitCriteria: "Cuando diga qué producto busca." } });
+    await db.stage.update({
+      where: { id: calificado.id },
+      data: { exitCriteria: '  Si pide cotización formal, mover a "Atención humana".  ' },
+    });
+    // Las etapas de atención humana no llevan regla para la IA aunque tengan texto guardado.
+    await db.stage.update({ where: { id: humana.id }, data: { exitCriteria: "No debería aparecer" } });
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola");
+
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(lead.id, client);
+
+    const state = (requests[0].messages[0].content as { text: string }[])[0].text;
+    expect(state).toContain('- Desde "Nuevo" (siguiente: "Calificado"): Cuando diga qué producto busca.');
+    expect(state).toContain('- Desde "Calificado" (siguiente: "Cotización"): Si pide cotización formal, mover a "Atención humana".');
+    expect(state).not.toContain("Cotización\" (siguiente");
+    expect(state).not.toContain("No debería aparecer");
+  });
+
+  it("sin reglas de avance no agrega la sección al estado del CRM", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola");
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(lead.id, client);
+    expect((requests[0].messages[0].content as { text: string }[])[0].text).not.toContain("Reglas de avance");
+  });
+
   it("ve los campos del cliente en el estado del CRM y los completa", async () => {
     await seedFunnel();
     await db.customField.create({

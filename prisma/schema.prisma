@@ -89,6 +89,9 @@ model Stage {
   position      Int
   requiresHuman Boolean @default(false)
   color         String  @default("#64748b")
+  /// Etapas que atiende la IA: cuándo debe sacar al lead de esta etapa y hacia cuál. Texto libre
+  /// que la asistente recibe en <crm_state>; sin destino nombrado, avanza a la siguiente.
+  exitCriteria  String?
 
   leads Lead[]
   rules AssignmentRule[]
