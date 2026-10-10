@@ -5,6 +5,7 @@ import { applyAssignment } from "./assignment";
 import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
 import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
 import { moveOpenTasksTx } from "./tasks";
+import { deliverPendingWebhooks, queueStageWebhooksTx } from "./webhooks";
 
 export type ActorRef = { actor: Actor; userId?: string | null };
 
@@ -37,9 +38,11 @@ export async function createLead(
     });
     await applyAssignment(tx, lead.id, { type: "STAGE_ENTERED", stageId: firstStage.id });
     if (firstStage.requiresHuman) await notifyHumanStageTx(tx, lead.id);
+    await queueStageWebhooksTx(tx, lead.id, firstStage, null);
     return lead;
   });
   await deliverPendingPush();
+  await deliverPendingWebhooks();
   return created;
 }
 
@@ -47,6 +50,7 @@ export async function moveStage(leadId: string, stageId: string, by: ActorRef, r
   const lead = await db.$transaction((tx) => moveStageTx(tx, leadId, stageId, by, reason));
   await deliverPendingPush();
   await deliverPendingConversions();
+  await deliverPendingWebhooks();
   return lead;
 }
 
@@ -78,6 +82,7 @@ export async function moveStageTx(
   await applyAssignment(tx, leadId, { type: "STAGE_ENTERED", stageId });
   if (stage.requiresHuman) await notifyHumanStageTx(tx, leadId, reason, by.userId);
   await queueQualifiedTx(tx, leadId, stageId);
+  await queueStageWebhooksTx(tx, leadId, stage, lead.stage);
   return updated;
 }
 

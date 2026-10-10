@@ -93,8 +93,9 @@ model Stage {
   /// que la asistente recibe en <crm_state>; sin destino nombrado, avanza a la siguiente.
   exitCriteria  String?
 
-  leads Lead[]
-  rules AssignmentRule[]
+  leads    Lead[]
+  rules    AssignmentRule[]
+  webhooks Webhook[]
 }
 
 /// Etiqueta de contacto agrupada por categoría (ej. "Producto" / "Interés").
@@ -203,9 +204,9 @@ model Lead {
   /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
   insightsAt DateTime?
 
-  contact       Contact          @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  stage         Stage            @relation(fields: [stageId], references: [id])
-  assignee      User?            @relation("Assignee", fields: [assigneeId], references: [id])
+  contact       Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage         Stage             @relation(fields: [stageId], references: [id])
+  assignee      User?             @relation("Assignee", fields: [assigneeId], references: [id])
   messages      Message[]
   events        LeadEvent[]
   transcript    AgentTranscript?
@@ -214,6 +215,7 @@ model Lead {
   notifications Notification[]
   source        LeadSource?
   conversions   ConversionEvent[]
+  webhookCalls  WebhookDelivery[]
 
   @@index([stageId])
   @@index([assigneeId])
@@ -569,4 +571,44 @@ model AiUsage {
   createdAt    DateTime @default(now())
 
   @@index([createdAt])
+}
+
+/// Webhook saliente (ver src/lib/domain/webhooks.ts): cuando un lead entra a la etapa, Bella envía un
+/// POST con los datos del lead a la URL (ej. Zapier, Make, n8n o el sistema del cliente).
+model Webhook {
+  id        String   @id @default(cuid())
+  name      String
+  url       String
+  stageId   String
+  /// Clave con que se firma el cuerpo (HMAC SHA-256 en la cabecera X-Bella-Signature).
+  secret    String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  stage      Stage             @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([stageId])
+}
+
+/// Envío de un webhook: el cuerpo se arma al entrar a la etapa y se reintenta si la URL falla.
+model WebhookDelivery {
+  id         String    @id @default(cuid())
+  webhookId  String
+  leadId     String
+  payload    Json
+  /// PENDING, SENDING, SENT o FAILED (se reintenta hasta 5 veces).
+  status     String    @default("PENDING")
+  attempts   Int       @default(0)
+  /// Código HTTP de la última respuesta, si hubo.
+  httpStatus Int?
+  error      String?
+  createdAt  DateTime  @default(now())
+  sentAt     DateTime?
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([webhookId, createdAt])
 }

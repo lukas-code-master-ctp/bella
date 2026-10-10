@@ -6,6 +6,7 @@ import { scheduleFollowUpTx } from "../domain/follow-ups";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
 import { createTask } from "../domain/tasks";
 import { deliverPendingConversions } from "../domain/conversions";
+import { deliverPendingWebhooks } from "../domain/webhooks";
 import { deliverPendingPush } from "../push";
 import { searchInventory, syncInventoryIfStale } from "../inventory";
 import { searchKnowledge } from "../knowledge";
@@ -159,6 +160,7 @@ export async function executeTool(
       await db.$transaction((tx) => moveStageTx(tx, leadId, stage.id, { actor: "AI" }, str("reason")));
       await deliverPendingPush();
       await deliverPendingConversions();
+      await deliverPendingWebhooks();
       return {
         content: stage.requiresHuman
           ? `Lead movido a "${stage.name}". Es una etapa de atención humana: quedas pausada y un ejecutivo continuará.`
@@ -242,6 +244,8 @@ export async function executeTool(
     case "handoff_to_human": {
       const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason")));
       await deliverPendingPush();
+      await deliverPendingConversions();
+      await deliverPendingWebhooks();
       return {
         content:
           `Derivado a un ejecutivo${stage ? ` (etapa "${stage.name}")` : ""}. Quedas pausada: ` +
