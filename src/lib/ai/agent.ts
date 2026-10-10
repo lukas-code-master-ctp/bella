@@ -14,6 +14,7 @@ import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
+import { assistantFor, funnelStages } from "../domain/funnels";
 import { getAiConfig } from "./config";
 import { providerFor, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
@@ -88,7 +89,7 @@ async function buildCrmState(leadId: string, now = new Date()) {
     },
   });
   const [stages, catalog, fields] = await Promise.all([
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    funnelStages(db, lead.stage.funnelId),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     fieldsForCrmState(lead.contactId),
   ]);
@@ -216,11 +217,13 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   const startedAt = new Date();
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
-    include: { transcript: true, stage: true, contact: { select: { blockedAt: true } } },
+    include: { transcript: true, stage: { include: { funnel: true } }, contact: { select: { blockedAt: true } } },
   });
   if (!lead.aiEnabled || lead.status !== "OPEN" || lead.contact.blockedAt) return "skipped";
 
-  const [settings, config, followUps] = await Promise.all([getAssistantSettings(), getAiConfig(), getFollowUpSettings()]);
+  const [base, config, followUps] = await Promise.all([getAssistantSettings(), getAiConfig(), getFollowUpSettings()]);
+  // Cada embudo puede tener su propia asistente (nombre e instrucciones).
+  const settings = assistantFor(base, lead.stage.funnel);
   const provider = providerFor(config, clients);
 
   const transcript =

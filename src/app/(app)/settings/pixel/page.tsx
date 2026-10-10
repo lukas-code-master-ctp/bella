@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CircleCheck, CircleDashed, RotateCcw } from "lucide-react";
+import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { getPixelSettings, pixelToken } from "@/lib/domain/conversions";
 import { Badge, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
@@ -23,7 +24,7 @@ const time = (d: Date) =>
 export default async function PixelSettingsPage() {
   const [s, stages, events] = await Promise.all([
     getPixelSettings(),
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
     db.conversionEvent.findMany({
       orderBy: { createdAt: "desc" },
       take: 20,
@@ -78,7 +79,7 @@ export default async function PixelSettingsPage() {
                 <option value="">No enviar lead calificado</option>
                 {stages.map((st) => (
                   <option key={st.id} value={st.id}>
-                    {st.name}
+                    {st.label}
                   </option>
                 ))}
               </select>

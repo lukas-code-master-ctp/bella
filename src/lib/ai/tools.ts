@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { parseLocalDateTime } from "../dates";
 import { findField, setFieldValueTx } from "../domain/fields";
+import { funnelStages } from "../domain/funnels";
 import { scheduleFollowUpTx } from "../domain/follow-ups";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
 import { createTask } from "../domain/tasks";
@@ -149,7 +150,9 @@ export async function executeTool(
       };
     }
     case "move_stage": {
-      const stages = await db.stage.findMany({ orderBy: { position: "asc" } });
+      // Solo dentro del embudo del lead: pasarlo a otra línea de negocio lo decide el equipo.
+      const current = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { stage: true } });
+      const stages = await funnelStages(db, current.stage.funnelId);
       const stage = findByName(stages, str("stage"));
       if (!stage) {
         return {

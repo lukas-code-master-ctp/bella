@@ -8,7 +8,8 @@ import { campaignOf } from "./attribution";
  * cómo terminaron. Los leads del simulador no cuentan.
  */
 
-export type MetricsFilter = { from: Date; to: Date; assigneeId?: string };
+/** Con `funnelId`, solo los leads de ese embudo (y el gráfico de embudo con sus etapas). */
+export type MetricsFilter = { from: Date; to: Date; assigneeId?: string; funnelId?: string };
 
 export type Row = { key: string; label: string; leads: number; won: number; lost: number; amount: number };
 export type ExecRow = Row & { firstReplyMs: number | null };
@@ -64,6 +65,7 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
     createdAt: { gte: filter.from, lt: filter.to },
     contact: { channel: { not: "SIMULATOR" as const } },
     ...(filter.assigneeId ? { assigneeId: filter.assigneeId } : {}),
+    ...(filter.funnelId ? { stage: { funnelId: filter.funnelId } } : {}),
   };
   const [leads, stages] = await Promise.all([
     db.lead.findMany({
@@ -81,7 +83,7 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
         events: { where: { type: { in: ["CREATED", "STAGE_CHANGED"] } }, select: { data: true } },
       },
     }),
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    db.stage.findMany({ where: filter.funnelId ? { funnelId: filter.funnelId } : {}, orderBy: { position: "asc" } }),
   ]);
   const ids = leads.map((l) => l.id);
   // Solo lo necesario para los tiempos de respuesta, en orden.
@@ -130,7 +132,9 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
   const reachedCount = new Array(stages.length).fill(0) as number[];
   const currentCount = new Array(stages.length).fill(0) as number[];
   for (const l of leads) {
-    let max = positionById.get(l.stageId) ?? 0;
+    const at = positionById.get(l.stageId);
+    if (at === undefined) continue;
+    let max = at;
     currentCount[max]++;
     for (const e of l.events) {
       const d = e.data as { stage?: string; to?: string };

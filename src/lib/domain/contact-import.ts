@@ -4,6 +4,7 @@ import { db } from "../db";
 import { CHANNEL_LABEL } from "../labels";
 import { normalize } from "../text";
 import { displayFieldValue, findField, parseFieldValue } from "./fields";
+import { entryStage, stageOptions } from "./funnels";
 import { DomainError, type ActorRef } from "./leads";
 
 type Tx = Prisma.TransactionClient;
@@ -30,12 +31,12 @@ export async function exportContactsCsv(): Promise<string> {
       include: {
         tags: { include: { tag: true } },
         fields: true,
-        leads: { orderBy: { createdAt: "desc" }, take: 1, include: { stage: true, assignee: true } },
+        leads: { orderBy: { createdAt: "desc" }, take: 1, include: { stage: { include: { funnel: true } }, assignee: true } },
       },
     }),
     db.customField.findMany({ orderBy: { position: "asc" } }),
   ]);
-  const header = ["Nombre", "Teléfono", "Correo", "Canal", "Etiquetas", "Etapa", "Estado", "Ejecutivo", ...fields.map((f) => f.name), "Creado", "Bloqueado"];
+  const header = ["Nombre", "Teléfono", "Correo", "Canal", "Etiquetas", "Embudo", "Etapa", "Estado", "Ejecutivo", ...fields.map((f) => f.name), "Creado", "Bloqueado"];
   const rows = contacts.map((c) => {
     const lead = c.leads[0];
     const values = new Map(c.fields.map((v) => [v.fieldId, v.value]));
@@ -45,6 +46,7 @@ export async function exportContactsCsv(): Promise<string> {
       c.email ?? "",
       CHANNEL_LABEL[c.channel],
       c.tags.map((t) => `${t.tag.category}: ${t.tag.name}`).join("; "),
+      lead?.stage.funnel.name ?? "",
       lead?.stage.name ?? "",
       lead ? STATUS_LABEL[lead.status] : "",
       lead?.assignee?.email ?? "",
@@ -73,6 +75,7 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   email: ["correo", "email", "e mail", "mail", "correo electronico"],
   tags: ["etiquetas", "tags", "etiqueta"],
   stage: ["etapa", "stage", "etapa del funnel"],
+  funnel: ["embudo", "funnel", "pipeline"],
   assignee: ["ejecutivo", "asignado", "vendedor", "responsable"],
 };
 
@@ -108,17 +111,20 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
     email: column("email"),
     tags: column("tags"),
     stage: column("stage"),
+    funnel: column("funnel"),
     assignee: column("assignee"),
   };
   if (!cols.phone && !cols.email) throw new DomainError("El archivo necesita una columna de teléfono o de correo.");
   if (parsed.data.length > MAX_ROWS) throw new DomainError(`El archivo tiene más de ${MAX_ROWS.toLocaleString("es-CL")} filas: divídelo en partes.`);
 
   const [stages, fields, users] = await Promise.all([
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
     db.customField.findMany(),
     db.user.findMany({ where: { active: true } }),
   ]);
   if (!stages.length) throw new DomainError("No hay etapas configuradas en el funnel.");
+  // Sin etapa en el archivo, el contacto entra como si escribiera por WhatsApp.
+  const entry = await entryStage(db, "WHATSAPP");
   const known = new Set(Object.values(cols).filter(Boolean));
   const fieldCols = headers.flatMap((h) => {
     const f = known.has(h) ? undefined : findField(fields, h);
@@ -147,8 +153,15 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
       continue;
     }
     const stageName = get(cols.stage);
-    const stage = stageName ? stages.find((s) => normalize(s.name) === normalize(stageName)) : stages[0];
-    if (!stage) fail(line, `no existe la etapa "${stageName}"; quedó en ${stages[0].name}.`);
+    const funnelName = normalize(get(cols.funnel));
+    const inFunnel = funnelName ? stages.filter((s) => normalize(s.funnelName) === funnelName) : stages;
+    if (funnelName && !inFunnel.length) fail(line, `no existe el embudo "${get(cols.funnel)}".`);
+    const stage = stageName
+      ? inFunnel.find((s) => normalize(s.name) === normalize(stageName))
+      : funnelName
+        ? inFunnel[0]
+        : entry;
+    if (!stage && (stageName || inFunnel.length)) fail(line, `no existe la etapa "${stageName}"; quedó en ${entry.name}.`);
     const assigneeRaw = normalize(get(cols.assignee));
     const assignee = assigneeRaw ? users.find((u) => normalize(u.email) === assigneeRaw || normalize(u.name) === assigneeRaw) : undefined;
     if (assigneeRaw && !assignee) fail(line, `no hay un usuario activo "${get(cols.assignee)}"; quedó sin asignar.`);
@@ -191,7 +204,7 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
         }
         const open = await tx.lead.findFirst({ where: { contactId: contact.id, status: "OPEN" } });
         if (!open && !contact.blockedAt) {
-          const target = stage ?? stages[0];
+          const target = stage ?? entry;
           const lead = await tx.lead.create({
             data: { contactId: contact.id, stageId: target.id, assigneeId: assignee?.id ?? null, ...(target.requiresHuman ? { aiEnabled: false } : {}) },
           });

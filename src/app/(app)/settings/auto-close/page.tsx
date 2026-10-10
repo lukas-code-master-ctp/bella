@@ -1,3 +1,4 @@
+import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { effectiveDays, getAutoCloseSettings, type AutoCloseRun } from "@/lib/domain/auto-close";
@@ -11,7 +12,7 @@ export default async function AutoCloseSettingsPage() {
   const [s, lastRun, stages] = await Promise.all([
     getAutoCloseSettings(),
     getSetting<AutoCloseRun | null>("autoCloseRun", null),
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
   ]);
   const days = await effectiveDays(s.days);
   return (
@@ -53,7 +54,7 @@ export default async function AutoCloseSettingsPage() {
                     defaultChecked={s.lostStageIds.includes(st.id)}
                     className={checkClass}
                   />
-                  {st.name}
+                  {st.label}
                 </label>
               ))}
             </div>

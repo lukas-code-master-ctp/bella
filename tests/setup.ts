@@ -12,4 +12,6 @@ beforeEach(async () => {
   await db.$executeRawUnsafe(
     `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`,
   );
+  // Como en la base real después de la migración de embudos.
+  await db.$executeRawUnsafe(`INSERT INTO "Funnel" ("id", "name", "position") VALUES ('default', 'Principal', 0)`);
 });

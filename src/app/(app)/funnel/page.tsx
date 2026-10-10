@@ -7,20 +7,29 @@ import { formatAgo } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
 import { formatDue } from "@/lib/dates";
 import { bucketOf } from "@/lib/domain/tasks";
+import { listFunnels } from "@/lib/domain/funnels";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
 import { Board } from "./board";
 
-export default async function FunnelPage({ searchParams }: { searchParams: Promise<{ executive?: string; sort?: string }> }) {
+export default async function FunnelPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ executive?: string; sort?: string; funnel?: string }>;
+}) {
   const user = await requireUser();
-  const { executive, sort } = await searchParams;
+  const { executive, sort, funnel: funnelParam } = await searchParams;
+  const funnels = await listFunnels();
+  const funnel = funnels.find((f) => f.id === funnelParam) ?? funnels[0];
   const byScore = sort === "score";
   const waitingFirst = sort === "waiting";
-  const scope: Prisma.LeadWhereInput =
-    user.role === "ADMIN" ? (executive ? { assigneeId: executive === "none" ? null : executive } : {}) : { assigneeId: user.id };
+  const scope: Prisma.LeadWhereInput = {
+    ...(user.role === "ADMIN" ? (executive ? { assigneeId: executive === "none" ? null : executive } : {}) : { assigneeId: user.id }),
+    ...(funnel ? { stage: { funnelId: funnel.id } } : {}),
+  };
 
   const [stages, leads, closed, executives] = await Promise.all([
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    db.stage.findMany({ where: funnel ? { funnelId: funnel.id } : {}, orderBy: { position: "asc" } }),
     db.lead.findMany({
       where: { ...scope, status: "OPEN" },
       include: {
@@ -50,7 +59,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <PageHeader title="Funnel de ventas" description="Arrastra los leads entre etapas o abre uno para ver la conversación.">
+      <PageHeader title={funnels.length > 1 && funnel ? `Funnel: ${funnel.name}` : "Funnel de ventas"} description="Arrastra los leads entre etapas o abre uno para ver la conversación.">
         <Link href="/simulator" className={buttonClass("primary")}>
           <FlaskConical aria-hidden />
           Probar en simulador
@@ -63,6 +72,20 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
         <Stat icon={<CircleX />} label="Perdidos" value={count("LOST")} tone="text-rose-700 bg-rose-50" />
         {waiting > 0 && <Stat icon={<MessageCircleWarning />} label="Sin atender" value={waiting} tone="text-amber-700 bg-amber-50" />}
         <form className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+          {funnels.length > 1 && (
+            <>
+              <label htmlFor="funnel" className="sr-only">
+                Embudo
+              </label>
+              <select id="funnel" name="funnel" defaultValue={funnel?.id} className={`${inputClass} sm:w-48`}>
+                {funnels.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           {user.role === "ADMIN" && (
             <>
               <label htmlFor="executive" className="sr-only">

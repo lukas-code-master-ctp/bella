@@ -1,4 +1,5 @@
 import { Shuffle, Trash2 } from "lucide-react";
+import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Badge, Button, Card, CardHeader, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -10,7 +11,7 @@ export default async function RulesPage() {
       include: { stage: true, tag: true, executives: true },
       orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
     }),
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     db.user.findMany({ where: { role: "EXECUTIVE", active: true }, orderBy: { name: "asc" } }),
   ]);
@@ -68,7 +69,7 @@ export default async function RulesPage() {
               <optgroup label="Entra a la etapa">
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.label}
                   </option>
                 ))}
               </optgroup>
