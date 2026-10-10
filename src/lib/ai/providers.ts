@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type * as Beta from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import type { AiConfig } from "./config";
+import { recordAiUsage } from "../domain/ai-usage";
 import { AGENT_TOOLS } from "./tools";
 
 /**
@@ -135,6 +136,8 @@ export type ChatResponse = {
     prompt_tokens?: number;
     completion_tokens?: number;
     prompt_tokens_details?: { cached_tokens?: number };
+    /** Dólares que cobró OpenRouter por la llamada. */
+    cost?: number;
   };
   error?: { message?: string; code?: number | string };
 };
@@ -158,11 +161,20 @@ export const openRouterClient: ChatClient = {
         "HTTP-Referer": APP_URL,
         "X-Title": "Bella CRM",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, usage: { include: true } }),
     });
     const json = (await res.json().catch(() => ({}))) as ChatResponse;
     if (!res.ok || json.error) {
       throw new Error(`OpenRouter ${res.status}: ${json.error?.message ?? res.statusText}`);
+    }
+    // Todas las llamadas (respuestas, resumen y puntaje, transcripciones) pasan por aquí.
+    if (typeof json.usage?.cost === "number") {
+      await recordAiUsage({
+        model: json.model ?? String(body.model),
+        inputTokens: json.usage.prompt_tokens ?? 0,
+        outputTokens: json.usage.completion_tokens ?? 0,
+        cost: json.usage.cost,
+      });
     }
     return json;
   },

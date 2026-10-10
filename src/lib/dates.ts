@@ -101,3 +101,15 @@ export function formatDue(dueAt: Date, now: Date): string {
   if (dueAt < startOfLocalDay(now, 2)) return `Mañana ${hourOf(dueAt)}`;
   return formatLocal(dueAt);
 }
+
+/** Inicio (día 1, 00:00 de Chile) del mes que está `months` meses después del mes de `at`. */
+export function startOfLocalMonth(at: Date, months = 0): Date {
+  const p = localParts(at);
+  return fromLocalMs(Date.UTC(p.year, p.month - 1 + months, 1));
+}
+
+/** Nombre del mes de `at` en Chile, con mayúscula: "Septiembre". */
+export function localMonthName(at: Date): string {
+  const name = at.toLocaleString("es-CL", { timeZone: TIME_ZONE, month: "long" });
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}

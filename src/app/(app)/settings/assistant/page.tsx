@@ -6,14 +6,17 @@ import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
 import { buttonClass, Card, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAssistantAction } from "../actions";
+import { aiSpendSummary } from "@/lib/domain/ai-usage";
 import { AiForm } from "./ai-form";
+import { AiSpend } from "./ai-spend";
 
 export default async function AssistantSettingsPage() {
-  const [s, config, models, keyInfo] = await Promise.all([
+  const [s, config, models, keyInfo, spend] = await Promise.all([
     getAssistantSettings(),
     getAiConfig(),
     listOpenRouterModels(),
     getOpenRouterKeyInfo(),
+    aiSpendSummary(),
   ]);
   const keys = {
     openrouter: Boolean(process.env[API_KEY_ENV.openrouter]),
@@ -56,6 +59,7 @@ export default async function AssistantSettingsPage() {
           keys={keys}
           keyInfo={keyInfo}
         />
+        <AiSpend rows={spend} />
       </Card>
     </>
   );
