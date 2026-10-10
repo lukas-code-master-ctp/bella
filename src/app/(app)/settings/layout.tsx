@@ -1,9 +1,10 @@
-import { Archive, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, MessagesSquare, Package, Shuffle, SquareKanban, Users } from "lucide-react";
+import { Archive, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, MessagesSquare, Package, Shuffle, SquareKanban, Users } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 
 const TABS = [
   ["/settings/assistant", "Asistente", <Bot key="i" />],
+  ["/settings/ai-operation", "Funcionamiento IA", <Power key="i" />],
   ["/settings/channels", "Canales", <MessagesSquare key="i" />],
   ["/settings/attribution", "Origen de leads", <Target key="i" />],
   ["/settings/pixel", "Píxel de Meta", <Crosshair key="i" />],

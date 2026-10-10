@@ -10,6 +10,7 @@ import {
   scheduleAfterAiTurnTx,
   type FollowUpSettings,
 } from "../domain/follow-ups";
+import { aiBlocked, getAiOperation, previousTicketLines, replyOutOfHours } from "../domain/ai-operation";
 import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
 import { knowledgeForPrompt } from "../knowledge";
@@ -78,7 +79,7 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
   return lines.join("\n");
 }
 
-async function buildCrmState(leadId: string, now = new Date()) {
+async function buildCrmState(leadId: string, now = new Date(), { previousTickets = false } = {}) {
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
     include: {
@@ -87,10 +88,11 @@ async function buildCrmState(leadId: string, now = new Date()) {
       tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" } },
     },
   });
-  const [stages, catalog, fields] = await Promise.all([
+  const [stages, catalog, fields, previous] = await Promise.all([
     db.stage.findMany({ orderBy: { position: "asc" } }),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     fieldsForCrmState(lead.contactId),
+    previousTickets ? previousTicketLines(leadId, lead.contactId) : [],
   ]);
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
@@ -116,6 +118,7 @@ async function buildCrmState(leadId: string, now = new Date()) {
         : "ninguna"
     }`,
     ...(agenda ? [agenda] : []),
+    ...previous,
     "</crm_state>",
   ].join("\n");
 }
@@ -214,10 +217,18 @@ function followUpBlock(f: FollowUpTurn, s: FollowUpSettings, silentMs: number) {
 
 async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?: FollowUpTurn): Promise<TurnOutcome> {
   const startedAt = new Date();
-  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { transcript: true, stage: true } });
+  const lead = await db.lead.findUniqueOrThrow({
+    where: { id: leadId },
+    include: { transcript: true, stage: true, contact: { select: { channel: true } } },
+  });
   if (!lead.aiEnabled || lead.status !== "OPEN") return "skipped";
 
-  const [settings, config, followUps] = await Promise.all([getAssistantSettings(), getAiConfig(), getFollowUpSettings()]);
+  const [settings, config, followUps, operation] = await Promise.all([
+    getAssistantSettings(),
+    getAiConfig(),
+    getFollowUpSettings(),
+    getAiOperation(),
+  ]);
   const provider = providerFor(config, clients);
 
   const transcript =
@@ -238,9 +249,31 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   // Un turno normal necesita un mensaje nuevo del cliente; un seguimiento, que no haya ninguno.
   if (followUp ? unanswered : !unanswered) return "skipped";
 
+  // Apagado general: nada. Fuera del horario de atención, a lo más el mensaje automático; lo
+  // pendiente se responde al abrir (ver answerWaitingLeads). Los seguimientos tienen su propio horario.
+  const blocked = aiBlocked(operation, lead.contact.channel, startedAt);
+  if (blocked === "paused") return "skipped";
+  if (blocked === "closed" && !followUp) {
+    if (await replyOutOfHours(leadId, operation, startedAt)) {
+      await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío fuera de horario, lead ${leadId}:`, err));
+    }
+    return "skipped";
+  }
+
   const history = switched ? [] : (transcript.messages as unknown as TranscriptMessage[]);
-  const blocks = [await buildCrmState(leadId, startedAt)];
+  const blocks = [await buildCrmState(leadId, startedAt, { previousTickets: operation.previousTickets })];
   if (pending.length) blocks.push(formatPending(pending, settings.assistantName));
+  const outOfHours = await db.leadEvent.findMany({
+    where: { leadId, type: "OUT_OF_HOURS_REPLY", createdAt: { gt: transcript.syncedUntil } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (outOfHours.length && !switched) {
+    const sent = (outOfHours[outOfHours.length - 1].data as { body?: string }).body ?? "";
+    blocks.push(
+      `(Fuera del horario de atención el sistema le respondió automáticamente: "${sent}". ` +
+        "Ya estás en horario: responde lo que quedó pendiente.)",
+    );
+  }
   if (followUp) {
     const last = await db.message.findFirst({ where: { leadId }, orderBy: { createdAt: "desc" } });
     blocks.push(followUpBlock(followUp, followUps, startedAt.getTime() - (last?.createdAt ?? startedAt).getTime()));
