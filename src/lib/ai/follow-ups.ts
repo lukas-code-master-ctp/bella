@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { getAiOperation } from "../domain/ai-operation";
 import { aiChannels } from "../domain/channels";
 import { getFollowUpSettings, withinSendingHours } from "../domain/follow-ups";
 import { getSetting, setSetting } from "../settings";
@@ -23,6 +24,7 @@ export async function runDueFollowUps(
   const result: FollowUpRun = { sent: 0, skipped: 0, failed: 0 };
   const s = await getFollowUpSettings();
   if (!s.enabled) return { ...result, reason: "Los seguimientos están desactivados." };
+  if ((await getAiOperation()).paused) return { ...result, reason: "La IA está apagada en Configuración → Funcionamiento IA." };
   if (!withinSendingHours(s, now)) return { ...result, reason: "Fuera del horario de envío." };
   const missing = clients.anthropic || clients.openrouter ? null : missingKeyMessage((await getAiConfig()).provider);
   if (missing) return { ...result, reason: missing };
