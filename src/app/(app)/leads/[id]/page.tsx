@@ -97,7 +97,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields, followUps] = await Promise.all([
+  const [stages, tags, executives, fields, followUps, waNumber] = await Promise.all([
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -106,6 +106,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       include: { values: { where: { contactId: lead.contactId } } },
     }),
     getFollowUpSettings(),
+    lead.contact.waPhoneNumberId
+      ? db.whatsAppNumber.findUnique({ where: { phoneNumberId: lead.contact.waPhoneNumberId }, select: { label: true } })
+      : null,
     markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
@@ -136,7 +139,9 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <div className="min-w-0">
             <h1 className="truncate font-semibold text-slate-900">{lead.contact.name}</h1>
             <p className="text-xs text-slate-600">
-              {[CHANNEL_LABEL[lead.contact.channel], lead.contact.phone, lead.stage.name].filter(Boolean).join(" · ")}
+              {[waNumber ? `${CHANNEL_LABEL[lead.contact.channel]} (${waNumber.label})` : CHANNEL_LABEL[lead.contact.channel], lead.contact.phone, lead.stage.name]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">

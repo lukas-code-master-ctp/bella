@@ -118,7 +118,21 @@ model Funnel {
   instructions  String?
   createdAt     DateTime  @default(now())
 
-  stages Stage[]
+  stages          Stage[]
+  whatsAppNumbers WhatsAppNumber[]
+}
+
+/// Número de WhatsApp adicional de la misma app de Meta (usa WHATSAPP_TOKEN). Los leads nuevos
+/// que le escriben entran a su embudo; sin embudo, al del canal WhatsApp.
+model WhatsAppNumber {
+  id            String   @id @default(cuid())
+  phoneNumberId String   @unique
+  label         String
+  displayPhone  String?
+  funnelId      String?
+  createdAt     DateTime @default(now())
+
+  funnel Funnel? @relation(fields: [funnelId], references: [id], onDelete: SetNull)
 }
 
 /// Etiqueta de contacto agrupada por categoría (ej. "Producto" / "Interés").
@@ -146,6 +160,9 @@ model Contact {
   /// descartan y ni la IA ni el equipo le escriben (ver src/lib/domain/contacts.ts).
   blockedAt     DateTime?
   blockedReason String?
+  /// Número de WhatsApp (phone_number_id) al que escribió por última vez; las respuestas salen
+  /// por ese número. Vacío usa WHATSAPP_PHONE_NUMBER_ID.
+  waPhoneNumberId String?
 
   tags   ContactTag[]
   leads  Lead[]

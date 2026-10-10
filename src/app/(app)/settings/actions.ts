@@ -11,7 +11,8 @@ import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
-import { subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
+import { ChannelSendError, subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
+import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { saveLegalSettings } from "@/lib/domain/privacy";
@@ -268,6 +269,30 @@ export async function saveChannelsAction(form: FormData) {
     facebookAi: form.get("facebookAi") === "on",
     replyDelaySeconds: Math.min(Math.max(Math.round(Number(form.get("replyDelaySeconds")) || 0), 0), MAX_REPLY_DELAY_SECONDS),
   });
+  revalidatePath("/settings/channels");
+}
+
+export async function addWhatsAppNumberAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  try {
+    await addWhatsAppNumber({ phoneNumberId: str(form, "phoneNumberId"), label: str(form, "label"), funnelId: str(form, "funnelId") });
+  } catch (e) {
+    if (e instanceof DomainError || e instanceof ChannelSendError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/channels");
+  return null;
+}
+
+export async function updateWhatsAppNumberAction(id: string, form: FormData) {
+  await requireAdmin();
+  await updateWhatsAppNumber(id, { label: str(form, "label"), funnelId: str(form, "funnelId") });
+  revalidatePath("/settings/channels");
+}
+
+export async function deleteWhatsAppNumberAction(id: string) {
+  await requireAdmin();
+  await deleteWhatsAppNumber(id);
   revalidatePath("/settings/channels");
 }
 
