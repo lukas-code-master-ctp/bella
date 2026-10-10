@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, ListTodo, RotateCcw, Sparkles, Target, Trophy } from "lucide-react";
+import { ArrowLeft, Ban, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, ListTodo, RotateCcw, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
@@ -24,8 +24,9 @@ import {
   reopenLeadAction,
   setAssigneeAction,
   toggleAiAction,
+  unblockContactAction,
 } from "./actions";
-import { CloseLeadForm, FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
+import { BlockContactForm, CloseLeadForm, FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
 import { TaskItem } from "../../tasks/task-item";
@@ -45,6 +46,8 @@ const EVENT_LABEL: Record<string, string> = {
   WON: "Ganado",
   LOST: "Perdido",
   REOPENED: "Reabierto",
+  BLOCKED: "Contacto bloqueado",
+  UNBLOCKED: "Contacto desbloqueado",
   FOLLOW_UP_SENT: "Seguimiento enviado",
   FOLLOW_UP_SKIPPED: "Seguimiento omitido",
   FOLLOW_UP_SCHEDULED: "Recontacto agendado",
@@ -133,6 +136,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {lead.contact.blockedAt && (
+              <Badge tone="danger">
+                <Ban aria-hidden />
+                Bloqueado
+              </Badge>
+            )}
             {lead.status === "WON" && (
               <Badge tone="success">
                 <Trophy aria-hidden />
@@ -170,6 +179,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           contactName={lead.contact.name}
           userName={user.name}
           simulator={lead.contact.channel === "SIMULATOR"}
+          blocked={Boolean(lead.contact.blockedAt)}
           messages={lead.messages.map((m) => ({
             id: m.id,
             author: m.author,
@@ -360,6 +370,24 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                   </Button>
                 </form>
               </div>
+            )}
+          </Section>
+
+          <Section title="Bloqueo">
+            {lead.contact.blockedAt ? (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-800">
+                  Bloqueado el {formatChileDateTime(lead.contact.blockedAt)}
+                  {lead.contact.blockedReason && ` · ${lead.contact.blockedReason}`}
+                </p>
+                <form action={unblockContactAction.bind(null, lead.id)}>
+                  <SubmitButton variant="secondary" className="w-full" pendingText="Desbloqueando…">
+                    Desbloquear contacto
+                  </SubmitButton>
+                </form>
+              </div>
+            ) : (
+              <BlockContactForm leadId={lead.id} />
             )}
           </Section>
         </Card>
