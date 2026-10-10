@@ -59,6 +59,11 @@ export function startOfLocalDay(at: Date, days = 0): Date {
   return fromLocalMs(localDayMs(at) + days * DAY_MS);
 }
 
+/** Día de la semana (0 = domingo … 6 = sábado) y hora en Chile. */
+export function localWeekdayHour(at: Date): { weekday: number; hour: number } {
+  return { weekday: new Date(localDayMs(at)).getUTCDay(), hour: localParts(at).hour };
+}
+
 /** "AAAA-MM-DDTHH:MM" en hora de Chile (valor para un input datetime-local). */
 export function toLocalInput(at: Date): string {
   const p = localParts(at);

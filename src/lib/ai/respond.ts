@@ -1,5 +1,6 @@
 import { db } from "../db";
-import { getChannelSettings, MAX_REPLY_DELAY_SECONDS } from "../domain/channels";
+import { aiBlocked, getAiOperation } from "../domain/ai-operation";
+import { aiChannels, getChannelSettings, MAX_REPLY_DELAY_SECONDS } from "../domain/channels";
 import { runAgent } from "./agent";
 import { refreshLeadInsights } from "./insights";
 import type { ProviderClients } from "./providers";
@@ -7,7 +8,7 @@ import type { ProviderClients } from "./providers";
 /** Lo que dura como máximo un turno de la IA antes de que otro servidor pueda tomar el lead. */
 const BUSY_MS = 3 * 60 * 1000;
 
-async function hasUnanswered(leadId: string) {
+export async function hasUnanswered(leadId: string) {
   const [last, transcript] = await Promise.all([
     db.message.findFirst({ where: { leadId, author: "CONTACT" }, orderBy: { createdAt: "desc" } }),
     db.agentTranscript.findUnique({ where: { leadId } }),
@@ -22,6 +23,8 @@ async function hasUnanswered(leadId: string) {
  * lo pudo tomar no hace nada (lo suyo lo responde el otro).
  */
 export async function answerLead(leadId: string, clients: ProviderClients = {}) {
+  // Con la IA apagada en toda la plataforma no hay respuesta (ni resumen) en los canales reales.
+  if ((await getAiOperation()).paused) return;
   for (let attempt = 0; attempt < 2; attempt++) {
     const now = new Date();
     const claimed = await db.lead.updateMany({
@@ -65,4 +68,41 @@ export async function answerLeadWhenQuiet(
     if (last && Date.now() - last.createdAt.getTime() < delayMs - 1000) return;
   }
   await answerLead(leadId, clients);
+}
+
+/** Cuánto hacia atrás se buscan mensajes sin responder al abrir el horario o encender la IA. */
+const WAITING_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const WAITING_BATCH = 10;
+
+/**
+ * Responde a los clientes que escribieron mientras la IA estaba apagada o fuera de horario. La
+ * llama el cron cada 15 minutos y el botón de encender la IA. Devuelve cuántos leads respondió.
+ */
+export async function answerWaitingLeads(
+  { now = new Date(), clients = {} as ProviderClients, limit = WAITING_BATCH } = {},
+): Promise<number> {
+  const operation = await getAiOperation();
+  if (aiBlocked(operation, "WHATSAPP", now)) return 0;
+  const channels = (await aiChannels()).filter((c) => c !== "SIMULATOR");
+  if (!channels.length) return 0;
+  const candidates = await db.lead.findMany({
+    where: {
+      status: "OPEN",
+      aiEnabled: true,
+      agentBusyUntil: null,
+      contact: { channel: { in: channels } },
+      messages: { some: { author: "CONTACT", createdAt: { gt: new Date(now.getTime() - WAITING_WINDOW_MS) } } },
+    },
+    select: { id: true },
+    orderBy: { updatedAt: "asc" },
+    take: 200,
+  });
+  let answered = 0;
+  for (const { id } of candidates) {
+    if (answered >= limit) break;
+    if (!(await hasUnanswered(id))) continue;
+    await answerLead(id, clients);
+    answered++;
+  }
+  return answered;
 }

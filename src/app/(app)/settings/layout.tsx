@@ -1,9 +1,10 @@
-import { Archive, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Package, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
+import { Archive, Paperclip, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Package, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 
 const TABS = [
   ["/settings/assistant", "Asistente", <Bot key="i" />],
+  ["/settings/ai-operation", "Funcionamiento IA", <Power key="i" />],
   ["/settings/channels", "Canales", <MessagesSquare key="i" />],
   ["/settings/comment-rules", "Reglas de comentarios", <MessageSquareReply key="i" />],
   ["/settings/attribution", "Origen de leads", <Target key="i" />],
@@ -16,6 +17,7 @@ const TABS = [
   ["/settings/auto-close", "Cierre automático", <Archive key="i" />],
   ["/settings/webhooks", "Webhooks", <Webhook key="i" />],
   ["/settings/knowledge", "Base de conocimiento", <BookOpen key="i" />],
+  ["/settings/files", "Archivos", <Paperclip key="i" />],
   ["/settings/inventory", "Inventario", <Package key="i" />],
   ["/settings/users", "Usuarios", <Users key="i" />],
 ] as const;

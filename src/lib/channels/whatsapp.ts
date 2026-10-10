@@ -1,3 +1,4 @@
+import type { FileKind } from "../media";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
@@ -30,6 +31,8 @@ export class ChannelSendError extends Error {
 export type WhatsAppApi = {
   sendText(to: string, body: string): Promise<string>;
   sendAudio(to: string, url: string): Promise<string>;
+  /** Imagen, video o documento por URL pública; `caption` va como texto del archivo. */
+  sendFile(to: string, file: { kind: FileKind; url: string; fileName?: string; caption?: string }): Promise<string>;
   downloadMedia(mediaId: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
 };
 
@@ -86,6 +89,15 @@ async function send(to: string, payload: Record<string, unknown>): Promise<strin
 export const cloudApi: WhatsAppApi = {
   sendText: (to, body) => send(to, { type: "text", text: { body, preview_url: false } }),
   sendAudio: (to, url) => send(to, { type: "audio", audio: { link: url } }),
+  sendFile: (to, { kind, url, fileName, caption }) =>
+    send(to, {
+      type: kind,
+      [kind]: {
+        link: url,
+        ...(caption ? { caption } : {}),
+        ...(kind === "document" && fileName ? { filename: fileName } : {}),
+      },
+    }),
   async downloadMedia(mediaId) {
     const meta = await graph<{ url: string; mime_type: string }>(mediaId);
     const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });

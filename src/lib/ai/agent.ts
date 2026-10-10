@@ -10,8 +10,10 @@ import {
   scheduleAfterAiTurnTx,
   type FollowUpSettings,
 } from "../domain/follow-ups";
+import { aiBlocked, getAiOperation, previousTicketLines, replyOutOfHours } from "../domain/ai-operation";
 import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
+import { filesForPrompt, type FileForPrompt } from "../domain/files";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { assistantFor, funnelStages } from "../domain/funnels";
@@ -32,7 +34,11 @@ type KnowledgeDoc = { title: string; content: string };
  * Las instrucciones son iguales en todos los turnos (quedan en caché). Con `knowledge`, la base
  * de conocimiento va completa al final; sin ella, la asistente la consulta con search_knowledge.
  */
-export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[] | null = null): string {
+export function buildSystemPrompt(
+  s: AssistantSettings,
+  knowledge: KnowledgeDoc[] | null = null,
+  files: FileForPrompt[] = [],
+): string {
   const lines = [
     `Eres ${s.assistantName}, asistente de ventas de ${s.companyName}. Conversas por chat con ` +
       "personas interesadas (leads) para resolver sus dudas, entender qué necesitan y llevarlas " +
@@ -60,6 +66,12 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "- Cuando una persona del equipo deba hacer algo con plazo (llamar, enviar documentos, " +
       "confirmar una visita), créale una tarea con create_task. Revisa en <crm_state> las tareas " +
       "pendientes para no repetirlas.",
+    ...(files.length
+      ? [
+          "- Puedes enviarle al cliente los archivos de <archivos> con send_file (por ejemplo cuando " +
+            "pide un plano, una ficha o fotos). Envía solo esos archivos; nunca inventes enlaces.",
+        ]
+      : []),
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
       "compra, esté molesto, o necesite algo que no puedes resolver.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
@@ -68,6 +80,14 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
     "Instrucciones de la empresa:",
     s.instructions,
   ];
+  if (files.length) {
+    lines.push(
+      "",
+      "<archivos>",
+      ...files.map((f) => `- ${f.title} (${f.kind})${f.description ? `: ${f.description}` : ""}`),
+      "</archivos>",
+    );
+  }
   if (knowledge?.length) {
     lines.push(
       "",
@@ -79,7 +99,7 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
   return lines.join("\n");
 }
 
-async function buildCrmState(leadId: string, now = new Date()) {
+async function buildCrmState(leadId: string, now = new Date(), { previousTickets = false } = {}) {
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
     include: {
@@ -88,10 +108,11 @@ async function buildCrmState(leadId: string, now = new Date()) {
       tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" } },
     },
   });
-  const [stages, catalog, fields] = await Promise.all([
+  const [stages, catalog, fields, previous] = await Promise.all([
     funnelStages(db, lead.stage.funnelId),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     fieldsForCrmState(lead.contactId),
+    previousTickets ? previousTicketLines(leadId, lead.contactId) : [],
   ]);
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
@@ -117,6 +138,7 @@ async function buildCrmState(leadId: string, now = new Date()) {
         : "ninguna"
     }`,
     ...(agenda ? [agenda] : []),
+    ...previous,
     "</crm_state>",
   ].join("\n");
 }
@@ -163,7 +185,7 @@ function formatPending(messages: (Message & { user: { name: string } | null })[]
       m.author === "CONTACT"
         ? contactText(m)
         : m.author === "AI"
-          ? `${assistantName} (tú): ${m.body}`
+          ? `${assistantName} (tú): ${m.mediaUrl ? `[enviaste el archivo ${m.mediaName ?? ""}] ` : ""}${m.body}`
           : userText(m),
     )
     .join("\n");
@@ -217,11 +239,16 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   const startedAt = new Date();
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
-    include: { transcript: true, stage: { include: { funnel: true } }, contact: { select: { blockedAt: true } } },
+    include: { transcript: true, stage: { include: { funnel: true } }, contact: { select: { channel: true, blockedAt: true } } },
   });
   if (!lead.aiEnabled || lead.status !== "OPEN" || lead.contact.blockedAt) return "skipped";
 
-  const [base, config, followUps] = await Promise.all([getAssistantSettings(), getAiConfig(), getFollowUpSettings()]);
+  const [base, config, followUps, operation] = await Promise.all([
+    getAssistantSettings(),
+    getAiConfig(),
+    getFollowUpSettings(),
+    getAiOperation(),
+  ]);
   // Cada embudo puede tener su propia asistente (nombre e instrucciones).
   const settings = assistantFor(base, lead.stage.funnel);
   const provider = providerFor(config, clients);
@@ -244,16 +271,39 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   // Un turno normal necesita un mensaje nuevo del cliente; un seguimiento, que no haya ninguno.
   if (followUp ? unanswered : !unanswered) return "skipped";
 
+  // Apagado general: nada. Fuera del horario de atención, a lo más el mensaje automático; lo
+  // pendiente se responde al abrir (ver answerWaitingLeads). Los seguimientos tienen su propio horario.
+  const blocked = aiBlocked(operation, lead.contact.channel, startedAt);
+  if (blocked === "paused") return "skipped";
+  if (blocked === "closed" && !followUp) {
+    if (await replyOutOfHours(leadId, operation, startedAt)) {
+      await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío fuera de horario, lead ${leadId}:`, err));
+    }
+    return "skipped";
+  }
+
   const history = switched ? [] : (transcript.messages as unknown as TranscriptMessage[]);
-  const blocks = [await buildCrmState(leadId, startedAt)];
+  const blocks = [await buildCrmState(leadId, startedAt, { previousTickets: operation.previousTickets })];
   if (pending.length) blocks.push(formatPending(pending, settings.assistantName));
+  const outOfHours = await db.leadEvent.findMany({
+    where: { leadId, type: "OUT_OF_HOURS_REPLY", createdAt: { gt: transcript.syncedUntil } },
+    orderBy: { createdAt: "asc" },
+  });
+  if (outOfHours.length && !switched) {
+    const sent = (outOfHours[outOfHours.length - 1].data as { body?: string }).body ?? "";
+    blocks.push(
+      `(Fuera del horario de atención el sistema le respondió automáticamente: "${sent}". ` +
+        "Ya estás en horario: responde lo que quedó pendiente.)",
+    );
+  }
   if (followUp) {
     const last = await db.message.findFirst({ where: { leadId }, orderBy: { createdAt: "desc" } });
     blocks.push(followUpBlock(followUp, followUps, startedAt.getTime() - (last?.createdAt ?? startedAt).getTime()));
   }
   const context = blocks.join("\n\n");
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
-  const system = buildSystemPrompt(settings, await knowledgeForPrompt());
+  const [knowledge, files] = await Promise.all([knowledgeForPrompt(), filesForPrompt()]);
+  const system = buildSystemPrompt(settings, knowledge, files);
 
   // Línea de tiempo del turno para el monitor de actividad.
   const trace: TraceStep[] = [];
@@ -375,6 +425,10 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     return message;
   });
 
+  // Los archivos que envió la IA salen aunque el turno termine sin texto (ej. un seguimiento omitido).
+  if (!sent && trace.some((t) => t.type === "tool" && t.name === "send_file" && !t.isError)) {
+    await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío de archivos, lead ${leadId}:`, err));
+  }
   // Fuera de la transacción: si falla el registro del monitor, la respuesta igual queda guardada.
   if (sent) {
     await db.agentRun

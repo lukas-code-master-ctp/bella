@@ -3,6 +3,19 @@ import { put } from "@vercel/blob";
 export const BLOB_MISSING =
   "Falta conectar un Blob store de Vercel al proyecto (Storage → Blob) para guardar las notas de voz.";
 
+/** Archivo que la IA envía: imagen, video o documento (las notas de voz van aparte). */
+export type FileKind = "image" | "video" | "document";
+
+/** Cómo se envía un archivo por WhatsApp y Messenger, según su tipo MIME. */
+export function fileKind(mimeType: string | null): FileKind | "audio" {
+  const mime = (mimeType ?? "").split(";")[0].trim().toLowerCase();
+  if (mime.startsWith("audio/")) return "audio";
+  // WhatsApp solo acepta JPEG y PNG como imagen, y MP4 o 3GPP como video; lo demás va como documento.
+  if (mime === "image/jpeg" || mime === "image/png") return "image";
+  if (mime === "video/mp4" || mime === "video/3gpp") return "video";
+  return "document";
+}
+
 /** Tope de una nota de voz: Vercel no acepta cuerpos de más de 4,5 MB en una función. */
 export const AUDIO_MAX_BYTES = 4 * 1024 * 1024;
 
