@@ -7,6 +7,7 @@
     { "path": "/api/cron/auto-close", "schedule": "0 11 * * *" },
     { "path": "/api/cron/conversions", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/task-reminders", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/webhooks", "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/webhooks", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/weekly-insights", "schedule": "0 12 * * 1" }
   ]
 }
