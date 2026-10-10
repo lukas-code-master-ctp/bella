@@ -5,6 +5,7 @@ import { applyAssignment } from "./assignment";
 import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
 import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
 import { entryStage } from "./funnels";
+import { pickVariant } from "./ab-tests";
 import { moveOpenTasksTx } from "./tasks";
 import { deliverPendingWebhooks, queueStageWebhooksTx } from "./webhooks";
 
@@ -31,8 +32,15 @@ export async function createLead(
           });
     // Entra al embudo de su canal (o al indicado, ej. desde el simulador).
     const firstStage = await entryStage(tx, contact.channel, options.funnelId);
+    // Si el canal tiene una prueba A/B activa, el lead recibe una variante de la asistente.
+    const variantId = await pickVariant(tx, contact.channel);
     const lead = await tx.lead.create({
-      data: { contactId: contact.id, stageId: firstStage.id, ...(options.aiEnabled === false ? { aiEnabled: false } : {}) },
+      data: {
+        contactId: contact.id,
+        stageId: firstStage.id,
+        variantId,
+        ...(options.aiEnabled === false ? { aiEnabled: false } : {}),
+      },
     });
     await tx.leadEvent.create({
       data: { leadId: lead.id, type: "CREATED", actor: "SYSTEM", data: { stage: firstStage.name } },

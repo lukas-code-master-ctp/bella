@@ -17,6 +17,7 @@ import { filesForPrompt, type FileForPrompt } from "../domain/files";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { assistantFor, funnelStages } from "../domain/funnels";
+import { applyVariant } from "../domain/ab-tests";
 import { getAiConfig } from "./config";
 import { providerFor, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
@@ -239,7 +240,12 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   const startedAt = new Date();
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
-    include: { transcript: true, stage: { include: { funnel: true } }, contact: { select: { channel: true, blockedAt: true } } },
+    include: {
+      transcript: true,
+      stage: { include: { funnel: true } },
+      contact: { select: { channel: true, blockedAt: true } },
+      variant: true,
+    },
   });
   if (!lead.aiEnabled || lead.status !== "OPEN" || lead.contact.blockedAt) return "skipped";
 
@@ -249,8 +255,9 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     getFollowUpSettings(),
     getAiOperation(),
   ]);
-  // Cada embudo puede tener su propia asistente (nombre e instrucciones).
-  const settings = assistantFor(base, lead.stage.funnel);
+  // Cada embudo puede tener su propia asistente (nombre e instrucciones), y en una prueba A/B la
+  // variante del lead suma lo suyo.
+  const settings = applyVariant(assistantFor(base, lead.stage.funnel), lead.variant);
   const provider = providerFor(config, clients);
 
   const transcript =
