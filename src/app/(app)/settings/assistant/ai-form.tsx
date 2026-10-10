@@ -68,10 +68,7 @@ export function AiForm({
       </div>
       <Field
         label="Modelo para resumen y puntaje"
-        hint={
-          "Resume cada conversación en una línea y le pone puntaje al lead después de cada respuesta. Conviene uno chico y barato." +
-          (provider === "openrouter" && summarySelected ? ` ${summarySelected.name}: ${summarySelected.price} USD por millón de tokens.` : "")
-        }
+        hint={provider === "openrouter" && summarySelected ? `${summarySelected.name} · USD por millón de tokens (entrada / salida): ${summarySelected.price}` : undefined}
       >
         <input
           name="summaryModel"
@@ -96,8 +93,7 @@ export function AiForm({
       )}
       {provider === "openrouter" && keyInfo && (
         <p className="text-sm text-slate-600">
-          Clave en uso: <span className="font-medium">{keyInfo.label}</span> · gasto acumulado US$
-          {keyInfo.usage.toFixed(2)}. Los registros quedan en la cuenta de OpenRouter dueña de esta clave.
+          Clave en uso: <span className="font-medium">{keyInfo.label}</span>. Los registros quedan en la cuenta de OpenRouter dueña de esta clave.
         </p>
       )}
       {!keys[provider] && (
