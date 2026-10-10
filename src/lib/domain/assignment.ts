@@ -1,12 +1,18 @@
 import type { AssignmentRule, Prisma, User } from "@prisma/client";
+import { db } from "../db";
+import { deliverPendingPush } from "../push";
 import { notifyAssignedTx } from "./notifications";
 import { moveOpenTasksTx } from "./tasks";
 
 export type AssignmentTrigger =
   | { type: "STAGE_ENTERED"; stageId: string }
-  | { type: "TAG_ADDED"; tagId: string };
+  | { type: "TAG_ADDED"; tagId: string }
+  | { type: "TEMPLATE_REPLY"; buttonText: string };
 
 type Tx = Prisma.TransactionClient;
+
+/** Valor del selector de Configuración → Asignación para "Responde a un botón de plantilla". */
+export const TEMPLATE_REPLY_TARGET = "template-reply";
 type RuleWithExecutives = AssignmentRule & { executives: User[] };
 
 /** Elige el siguiente ejecutivo después del último asignado (orden estable por id). */
@@ -40,11 +46,22 @@ async function openLeadCounts(tx: Tx, userIds: string[]) {
   return new Map(rows.map((r) => [r.assigneeId as string, r._count._all]));
 }
 
+/** Compara textos de botón sin importar mayúsculas, tildes ni espacios de más. */
+export function sameButtonText(a: string, b: string) {
+  const norm = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
+  return norm(a) === norm(b);
+}
+
 function ruleMatches(rule: AssignmentRule, trigger: AssignmentTrigger) {
   if (rule.trigger !== trigger.type) return false;
-  return trigger.type === "STAGE_ENTERED"
-    ? rule.stageId === trigger.stageId
-    : rule.tagId === trigger.tagId;
+  switch (trigger.type) {
+    case "STAGE_ENTERED":
+      return rule.stageId === trigger.stageId;
+    case "TAG_ADDED":
+      return rule.tagId === trigger.tagId;
+    case "TEMPLATE_REPLY":
+      return !rule.buttonText?.trim() || sameButtonText(rule.buttonText, trigger.buttonText);
+  }
 }
 
 /**
@@ -69,6 +86,12 @@ export async function applyAssignment(
   const rule = rules.find((r) => ruleMatches(r, trigger));
 
   if (rule) {
+    if (rule.trigger === "TEMPLATE_REPLY" && rule.pauseAi && lead.aiEnabled) {
+      await tx.lead.update({ where: { id: leadId }, data: { aiEnabled: false } });
+      await tx.leadEvent.create({
+        data: { leadId, type: "AI_PAUSED", actor: "SYSTEM", reason: `Regla: ${rule.name}` },
+      });
+    }
     if (lead.assigneeId && !rule.reassign) return null;
     const candidates = await activeExecutives(tx, rule);
     const chosen =
@@ -91,6 +114,16 @@ export async function applyAssignment(
     return chosen;
   }
   return null;
+}
+
+/**
+ * El cliente tocó un botón de una plantilla de WhatsApp: aplica la primera regla activa de
+ * "Responde a un botón de plantilla" que calce con el texto del botón.
+ */
+export async function applyTemplateReply(leadId: string, buttonText: string): Promise<User | null> {
+  const chosen = await db.$transaction((tx) => applyAssignment(tx, leadId, { type: "TEMPLATE_REPLY", buttonText }));
+  await deliverPendingPush();
+  return chosen;
 }
 
 async function assign(tx: Tx, leadId: string, user: User, reason: string) {

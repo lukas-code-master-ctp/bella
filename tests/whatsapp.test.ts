@@ -17,7 +17,7 @@ import {
 import { closeLead } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
 import type { MediaStore } from "@/lib/media";
-import { seedFunnel } from "./factories";
+import { executive, seedFunnel } from "./factories";
 
 const PHONE_ID = "1234567890";
 
@@ -165,6 +165,47 @@ describe("WhatsApp: mensajes entrantes", () => {
     const m = await db.message.findFirstOrThrow();
     expect([m.externalId, m.transcript, m.mediaType]).toEqual(["wamid.a", "Quiero visitar el sábado", "audio/ogg; codecs=opus"]);
     expect(m.mediaUrl).toMatch(/audio\.ogg$/);
+  });
+});
+
+describe("WhatsApp: respuesta a un botón de plantilla", () => {
+  const button = (id: string, label: string): WaMessage => ({ from: "56911112222", id, type: "button", button: { text: label } });
+
+  it("asigna un ejecutivo y pausa la IA cuando el cliente toca el botón de la regla", async () => {
+    await seedFunnel();
+    await saveChannelSettings({ whatsappAi: true });
+    const ana = await executive("Ana");
+    await db.assignmentRule.create({
+      data: { name: "Quiere llamada", trigger: "TEMPLATE_REPLY", buttonText: "Quiero que me llamen", pauseAi: true, executives: { connect: [{ id: ana.id }] } },
+    });
+
+    // Un texto normal no dispara la regla aunque diga lo mismo.
+    expect(await receiveWhatsApp(webhook([text("wamid.1", "Quiero que me llamen")]))).toHaveLength(1);
+    expect((await db.lead.findFirstOrThrow()).assigneeId).toBeNull();
+
+    const toAnswer = await receiveWhatsApp(webhook([button("wamid.2", "quiero que me LLAMEN ")]));
+    const lead = await db.lead.findFirstOrThrow({ include: { events: true } });
+    expect(toAnswer).toEqual([]);
+    expect([lead.assigneeId, lead.aiEnabled]).toEqual([ana.id, false]);
+    expect(lead.events.filter((e) => e.reason === "Regla: Quiere llamada").map((e) => e.type).sort()).toEqual(["AI_PAUSED", "ASSIGNED"]);
+  });
+
+  it("otro botón no calza con la regla; una regla sin texto calza con cualquiera", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const beto = await executive("Beto");
+    await db.assignmentRule.create({
+      data: { name: "Llamada", trigger: "TEMPLATE_REPLY", buttonText: "Llámenme", priority: 1, executives: { connect: [{ id: ana.id }] } },
+    });
+    await receiveWhatsApp(webhook([button("wamid.1", "No me interesa")]));
+    expect((await db.lead.findFirstOrThrow()).assigneeId).toBeNull();
+
+    await db.assignmentRule.create({
+      data: { name: "Cualquiera", trigger: "TEMPLATE_REPLY", executives: { connect: [{ id: beto.id }] } },
+    });
+    await receiveWhatsApp(webhook([button("wamid.2", "No me interesa")]));
+    const lead = await db.lead.findFirstOrThrow();
+    expect(lead.assigneeId).toBe(beto.id);
   });
 });
 

@@ -45,6 +45,8 @@ enum Actor {
 enum RuleTrigger {
   STAGE_ENTERED
   TAG_ADDED
+  /// El cliente respondió tocando un botón de una plantilla de WhatsApp.
+  TEMPLATE_REPLY
 }
 
 /// Tipo de un campo del cliente: define cómo se valida y se muestra el valor.
@@ -408,6 +410,10 @@ model AssignmentRule {
   trigger            RuleTrigger
   stageId            String?
   tagId              String?
+  /// Solo TEMPLATE_REPLY: texto del botón que dispara la regla (sin texto, cualquier botón).
+  buttonText         String?
+  /// Solo TEMPLATE_REPLY: pausa la IA para que el ejecutivo siga la conversación.
+  pauseAi            Boolean        @default(false)
   strategy           AssignStrategy @default(ROUND_ROBIN)
   /// Si es true, reasigna aunque el lead ya tenga ejecutivo.
   reassign           Boolean        @default(false)

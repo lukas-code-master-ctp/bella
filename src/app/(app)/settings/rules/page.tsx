@@ -1,4 +1,5 @@
 import { Shuffle, Trash2 } from "lucide-react";
+import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Badge, Button, Card, CardHeader, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
@@ -20,7 +21,7 @@ export default async function RulesPage() {
     <>
       <PageHeader
         title="Asignación automática"
-        description="Cuando un lead entra a una etapa o recibe una etiqueta, se aplica la primera regla activa que coincida (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla aplica, se asigna al ejecutivo con menos leads abiertos."
+        description="Cuando un lead entra a una etapa, recibe una etiqueta o responde tocando un botón de una plantilla de WhatsApp, se aplica la primera regla activa que coincida (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla aplica, se asigna al ejecutivo con menos leads abiertos."
       />
       <Card className="mb-6 divide-y divide-slate-100">
         {rules.length === 0 && (
@@ -36,11 +37,18 @@ export default async function RulesPage() {
                 {r.active ? <Badge tone="success">Activa</Badge> : <Badge>Inactiva</Badge>}
               </div>
               <div className="mt-0.5 text-slate-600">
-                {r.trigger === "STAGE_ENTERED" ? `Entra a etapa "${r.stage?.name}"` : `Recibe etiqueta "${r.tag?.category}: ${r.tag?.name}"`}
+                {r.trigger === "STAGE_ENTERED"
+                  ? `Entra a etapa "${r.stage?.name}"`
+                  : r.trigger === "TAG_ADDED"
+                    ? `Recibe etiqueta "${r.tag?.category}: ${r.tag?.name}"`
+                    : r.buttonText
+                      ? `Toca el botón "${r.buttonText}" de una plantilla`
+                      : "Toca cualquier botón de una plantilla"}
                 {" → "}
                 {r.strategy === "ROUND_ROBIN" ? "rotación" : "menor carga"} entre{" "}
                 {r.executives.length ? r.executives.map((e) => e.name).join(", ") : "todos los ejecutivos"}
-                {r.reassign && " · reasigna"} · prioridad {r.priority}
+                {r.reassign && " · reasigna"}
+                {r.pauseAi && " · pausa la IA"} · prioridad {r.priority}
               </div>
             </div>
             <form action={toggleRuleAction.bind(null, r.id, !r.active)}>
@@ -64,7 +72,7 @@ export default async function RulesPage() {
           <Field label="Prioridad" hint="Mayor número se evalúa primero">
             <input name="priority" type="number" defaultValue={0} className={inputClass} />
           </Field>
-          <Field label="Cuando el lead entra a la etapa o recibe la etiqueta" hint="La regla se dispara según lo que elijas">
+          <Field label="Cuándo se aplica" hint="La regla se dispara según lo que elijas">
             <select name="target" required className={inputClass}>
               <optgroup label="Entra a la etapa">
                 {stages.map((s) => (
@@ -80,8 +88,19 @@ export default async function RulesPage() {
                   </option>
                 ))}
               </optgroup>
+              <optgroup label="Responde a una plantilla de WhatsApp">
+                <option value={TEMPLATE_REPLY_TARGET}>Toca un botón de la plantilla</option>
+              </optgroup>
             </select>
           </Field>
+          <div className="space-y-4">
+            <Field label="Texto del botón" hint="Solo para botones de plantilla. Vacío = cualquier botón">
+              <input name="buttonText" placeholder="Ej. Quiero que me llamen" className={inputClass} />
+            </Field>
+            <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" name="pauseAi" defaultChecked className="size-4 rounded border-slate-300 accent-brand-600" /> Pausar la IA para que siga el ejecutivo (botón de plantilla)
+            </label>
+          </div>
           <Field label="Ejecutivos" hint="Sin selección = todos los ejecutivos activos">
             <select name="executives" multiple className={`${inputClass} h-28`}>
               {executives.map((e) => (
