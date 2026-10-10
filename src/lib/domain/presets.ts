@@ -16,9 +16,10 @@ export type Preset = {
   /**
    * Etapas del funnel en orden. Una etapa existente se reutiliza si tiene el mismo nombre
    * o uno de `replaces` (así los leads que ya estaban en ella se conservan). Las etapas que
-   * no están en el preset no se borran: quedan al final.
+   * no están en el preset no se borran: quedan al final. `exitCriteria` es la regla de avance
+   * de las etapas que atiende la IA.
    */
-  stages?: { name: string; color: string; requiresHuman?: boolean; replaces?: string[] }[];
+  stages?: { name: string; color: string; requiresHuman?: boolean; replaces?: string[]; exitCriteria?: string }[];
   tags?: { category: string; color: string; names: string[] }[];
   /** Campos del cliente que completa la IA. Se agregan los que falten por nombre; no se editan. */
   fields?: { name: string; type: FieldType; options?: string[]; description: string }[];
@@ -104,7 +105,13 @@ async function applyStages(tx: Prisma.TransactionClient, stages: NonNullable<Pre
     const match =
       existing.find((e) => e.name === s.name) ??
       existing.find((e) => !used.has(e.id) && s.replaces?.includes(e.name) && !stages.some((o) => o.name === e.name));
-    const data = { name: s.name, color: s.color, requiresHuman: s.requiresHuman ?? false, position };
+    const data = {
+      name: s.name,
+      color: s.color,
+      requiresHuman: s.requiresHuman ?? false,
+      position,
+      ...(s.exitCriteria ? { exitCriteria: s.exitCriteria } : {}),
+    };
     if (match) {
       used.add(match.id);
       await tx.stage.update({ where: { id: match.id }, data });

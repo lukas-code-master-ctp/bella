@@ -82,6 +82,8 @@ describe("presets de configuración", () => {
     await applyPreset(db, COMPRA_TU_PARCELA);
     const stages = await db.stage.findMany({ orderBy: { position: "asc" } });
     expect(stages.map((s) => s.name)).toEqual(COMPRA_TU_PARCELA.stages!.map((s) => s.name));
+    expect(stages[0].exitCriteria).toContain('"Interesado - Calificación"');
+    expect(stages.filter((s) => s.exitCriteria).every((s) => !s.requiresHuman)).toBe(true);
     const firstHuman = stages.find((s) => s.requiresHuman);
     expect(firstHuman?.name).toBe("Asistencia Humana");
     expect(await db.assignmentRule.count()).toBe(2);

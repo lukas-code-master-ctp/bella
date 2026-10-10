@@ -27,7 +27,7 @@ export default async function FunnelSettingsPage() {
     <>
       <PageHeader
         title="Etapas del funnel"
-        description="Al entrar a una etapa de atención humana, la IA se pausa y se asigna un ejecutivo automáticamente."
+        description="En las etapas que atiende la IA, escribe cuándo debe mover al lead y a qué etapa; si no nombras otra, avanza a la siguiente. Al entrar a una etapa de atención humana, la IA se pausa y se asigna un ejecutivo automáticamente."
       />
       <Card className="divide-y divide-slate-100">
         {stages.map((s, i) => (
@@ -58,6 +58,22 @@ export default async function FunnelSettingsPage() {
               <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" name="requiresHuman" defaultChecked={s.requiresHuman} className={checkClass} /> Atención humana
               </label>
+              {!s.requiresHuman && (
+                <label className="basis-full text-sm text-slate-700">
+                  <span className="mb-1 block font-medium">Cuándo la IA saca al lead de esta etapa</span>
+                  <textarea
+                    name="exitCriteria"
+                    rows={3}
+                    defaultValue={s.exitCriteria ?? ""}
+                    placeholder={
+                      stages[i + 1]
+                        ? `Ej.: cuando el cliente entregue su nombre y diga para qué lo quiere, mover a "${stages[i + 1].name}". Si pide hablar con alguien, derivar a un ejecutivo.`
+                        : "Ej.: cuando el cliente pida hablar con alguien, derivar a un ejecutivo."
+                    }
+                    className={inputClass}
+                  />
+                </label>
+              )}
               <SubmitButton variant="secondary">Guardar</SubmitButton>
             </form>
             <span className="text-xs tabular-nums text-slate-600">{leadsIn(s.id)} leads</span>

@@ -83,6 +83,8 @@ export async function updateStageAction(id: string, form: FormData) {
       name: str(form, "name"),
       color: str(form, "color"),
       requiresHuman: form.get("requiresHuman") === "on",
+      // Solo las etapas que atiende la IA muestran el campo; las demás conservan lo que tenían.
+      ...(form.has("exitCriteria") ? { exitCriteria: str(form, "exitCriteria") || null } : {}),
     },
   });
   revalidatePath("/settings/funnel");

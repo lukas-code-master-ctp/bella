@@ -1,4 +1,4 @@
-import type { Message } from "@prisma/client";
+import type { Message, Stage } from "@prisma/client";
 import { toLocalInput } from "../dates";
 import { db } from "../db";
 import {
@@ -49,7 +49,8 @@ export function buildSystemPrompt(s: AssistantSettings, knowledge: KnowledgeDoc[
       : "- Consulta search_knowledge antes de responder preguntas sobre la empresa, y search_inventory ") +
       "antes de mencionar cualquier producto, precio o stock. Si no encuentras el dato, dilo y " +
       "ofrece derivar a un ejecutivo; nunca lo inventes.",
-    "- Mantén el CRM al día mientras conversas: mueve el lead de etapa cuando avance en el proceso " +
+    "- Mantén el CRM al día mientras conversas: mueve el lead de etapa cuando avance en el proceso, " +
+      "siguiendo las reglas de avance de <crm_state> cuando la etapa actual tenga una, " +
       "y etiqueta su producto de interés y nivel de interés en cuanto lo sepas. Cuando el cliente " +
       "entregue un dato que corresponde a un campo del cliente, guárdalo con set_contact_field.",
     "- Si el cliente pide que lo contacten más adelante o acuerdan hablar en una fecha, agéndalo " +
@@ -105,6 +106,7 @@ async function buildCrmState(leadId: string, now = new Date()) {
     `Etapas del funnel (en orden): ${stages
       .map((s) => (s.requiresHuman ? `${s.name} [atención humana]` : s.name))
       .join(" → ")}`,
+    ...stageRules(stages),
     `Etiquetas actuales: ${currentTags.length ? currentTags.join(", ") : "ninguna"}`,
     `Catálogo de etiquetas: ${[...byCategory].map(([c, names]) => `${c}: ${names.join(" | ")}`).join("; ") || "vacío"}`,
     ...fields,
@@ -116,6 +118,25 @@ async function buildCrmState(leadId: string, now = new Date()) {
     ...(agenda ? [agenda] : []),
     "</crm_state>",
   ].join("\n");
+}
+
+/**
+ * Criterios que la empresa definió en Configuración para sacar al lead de cada etapa que atiende
+ * la IA. Sin destino nombrado en el criterio, el lead avanza a la etapa siguiente.
+ */
+export function stageRules(stages: Stage[]): string[] {
+  const rules = stages.flatMap((s, i) => {
+    const criteria = s.exitCriteria?.trim();
+    if (s.requiresHuman || !criteria) return [];
+    const next = stages[i + 1];
+    return [`- Desde "${s.name}"${next ? ` (siguiente: "${next.name}")` : ""}: ${criteria}`];
+  });
+  if (!rules.length) return [];
+  return [
+    "Reglas de avance entre etapas (definidas por la empresa; síguelas al usar move_stage o " +
+      "handoff_to_human, y si la regla no nombra otra etapa, mueve a la siguiente):",
+    ...rules,
+  ];
 }
 
 /** Texto del cliente tal como lo ve la IA. Las notas de voz llegan transcritas. */
