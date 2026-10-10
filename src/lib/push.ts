@@ -70,3 +70,26 @@ export async function deliverPendingPush() {
     console.error("No se pudieron enviar los avisos push", e);
   }
 }
+
+/**
+ * Push directo a los navegadores de unos usuarios, para avisos que no son de un lead (ej. el
+ * resumen semanal). Nunca lanza.
+ */
+export async function pushToUsers(userIds: string[], payload: PushPayload) {
+  try {
+    if (!userIds.length || !configure()) return;
+    const subs = await db.pushSubscription.findMany({ where: { userId: { in: userIds } } });
+    await Promise.all(
+      subs.map((s) =>
+        webpush
+          .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), { TTL: 24 * 60 * 60 })
+          .catch(async (e: { statusCode?: number }) => {
+            if (e.statusCode === 404 || e.statusCode === 410) await db.pushSubscription.deleteMany({ where: { id: s.id } });
+            else console.error("Web Push falló", e);
+          }),
+      ),
+    );
+  } catch (e) {
+    console.error("No se pudo enviar el push", e);
+  }
+}

@@ -612,3 +612,21 @@ model WebhookDelivery {
   @@index([status, createdAt])
   @@index([webhookId, createdAt])
 }
+
+/// Resumen semanal de las conversaciones hecho por la IA (ver src/lib/ai/weekly-insights.ts): qué
+/// piden los clientes, dónde se traba el embudo, fortalezas y oportunidades. Se ve en Métricas.
+model WeeklyInsight {
+  id          String   @id @default(cuid())
+  periodStart DateTime
+  periodEnd   DateTime @unique
+  /// Secciones del informe (WeeklyReport en weekly-insights.ts).
+  report      Json
+  /// Números del período: leads, abiertos, ganados, perdidos y monto.
+  stats       Json
+  model       String
+  /// Admins que ya lo abrieron; a los demás se les marca "nuevo" en el menú.
+  seenBy      String[] @default([])
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}

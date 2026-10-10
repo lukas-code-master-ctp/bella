@@ -1,9 +1,11 @@
-import { ChartNoAxesColumn, Clock, Trophy, UserRound } from "lucide-react";
+import Link from "next/link";
+import { ChartNoAxesColumn, Clock, Sparkles, Trophy, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { startOfLocalDay } from "@/lib/dates";
 import { CHANNEL_LABEL } from "@/lib/labels";
+import { hasUnseenInsight } from "@/lib/ai/weekly-insights";
 import { formatDuration, getMetrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
 
@@ -26,9 +28,10 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   // El ejecutivo ve solo sus leads; el admin, todos o los de un ejecutivo.
   const assigneeId = isAdmin ? params.executive || undefined : user.id;
   const now = new Date();
-  const [m, executives] = await Promise.all([
+  const [m, executives, newInsight] = await Promise.all([
     getMetrics({ from: startOfLocalDay(now, -(days - 1)), to: now, assigneeId }),
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
+    isAdmin && hasUnseenInsight(user.id),
   ]);
   const t = m.totals;
   const closed = t.won + t.lost;
@@ -43,6 +46,13 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             : "Cómo van tus leads, sobre los que entraron en el período."
         }
       >
+        {isAdmin && (
+          <Link href="/metrics/insights" className={buttonClass("secondary")}>
+            <Sparkles aria-hidden />
+            Resumen semanal
+            {newInsight && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">Nuevo</span>}
+          </Link>
+        )}
         <form className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <label htmlFor="d" className="sr-only">
             Período
