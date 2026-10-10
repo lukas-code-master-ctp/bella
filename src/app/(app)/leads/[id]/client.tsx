@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, CircleX, Clock, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, CircleX, Clock, FileText, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { blockContactAction, closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
@@ -17,6 +17,8 @@ export type ChatMessage = {
   body: string;
   /** Nota de voz: archivo y transcripción (null si no se pudo transcribir). */
   audio?: { url: string; transcript: string | null };
+  /** Imagen, video o documento enviado por la IA. */
+  file?: { url: string; name: string; kind: "image" | "video" | "document" | "audio" };
   /** Hora ya formateada en el servidor (evita diferencias de zona horaria al hidratar). */
   time: string;
   pending?: boolean;
@@ -177,6 +179,7 @@ function Bubble({ message: m, animate, onInspect }: { message: ChatMessage; anim
           )}
         </span>
         {m.audio && <VoiceNote audio={m.audio} pending={m.pending} />}
+        {m.file && <Attachment file={m.file} light={fromContact} />}
         {m.body && <span className="block whitespace-pre-wrap">{m.body}</span>}
         <span className={`mt-1 flex items-center justify-end gap-1 text-[11px] tabular-nums ${fromContact ? "text-slate-500" : "text-white/80"}`}>
           {m.time}
@@ -222,6 +225,35 @@ function TypingBubble() {
         <TypingDots />
       </span>
     </div>
+  );
+}
+
+/** Archivo enviado: la imagen o el video se ven en el chat; un documento, como enlace. */
+function Attachment({ file, light }: { file: NonNullable<ChatMessage["file"]>; light: boolean }) {
+  if (file.kind === "image") {
+    return (
+      <a href={file.url} target="_blank" rel="noreferrer" className="mb-1 block" onClick={(e) => e.stopPropagation()}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={file.url} alt={file.name} loading="lazy" className="max-h-64 w-64 max-w-full rounded-lg bg-white/10 object-cover" />
+      </a>
+    );
+  }
+  if (file.kind === "video") {
+    return <video controls preload="none" src={file.url} className="mb-1 max-h-64 w-64 max-w-full rounded-lg" />;
+  }
+  return (
+    <a
+      href={file.url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className={`mb-1 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] font-medium ${
+        light ? "bg-slate-50 text-slate-800 hover:bg-slate-100" : "bg-white/15 text-white hover:bg-white/25"
+      }`}
+    >
+      <FileText aria-hidden className="size-4 shrink-0" />
+      <span className="min-w-0 truncate">{file.name}</span>
+    </a>
   );
 }
 

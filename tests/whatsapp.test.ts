@@ -46,7 +46,7 @@ const text = (id: string, body: string, from = "56911112222"): WaMessage => ({ f
 
 /** WhatsApp falso: registra los envíos y devuelve ids correlativos. */
 function fakeApi(fail?: ChannelSendError) {
-  const sent: { to: string; text?: string; audio?: string }[] = [];
+  const sent: { to: string; text?: string; audio?: string; file?: object }[] = [];
   let n = 0;
   const api: WhatsAppApi = {
     sendText: async (to, body) => {
@@ -56,6 +56,10 @@ function fakeApi(fail?: ChannelSendError) {
     },
     sendAudio: async (to, url) => {
       sent.push({ to, audio: url });
+      return `wamid.out${++n}`;
+    },
+    sendFile: async (to, file) => {
+      sent.push({ to, file });
       return `wamid.out${++n}`;
     },
     downloadMedia: async () => ({ bytes: new Uint8Array([1, 2, 3]), mimeType: "audio/ogg; codecs=opus" }),

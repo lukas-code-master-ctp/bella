@@ -1,3 +1,4 @@
+import type { FileKind } from "../media";
 import { GRAPH_VERSION, ChannelSendError } from "./whatsapp";
 
 /**
@@ -22,6 +23,8 @@ export type MetaPlatform = "INSTAGRAM" | "FACEBOOK";
 export type MessengerApi = {
   sendText(platform: MetaPlatform, to: string, body: string): Promise<string>;
   sendAudio(platform: MetaPlatform, to: string, url: string): Promise<string>;
+  /** Imagen, video o documento por URL pública (Meta no admite texto junto al archivo). */
+  sendFile(platform: MetaPlatform, to: string, file: { kind: FileKind; url: string }): Promise<string>;
   /** Nombre visible de quien escribe (null si Meta no lo entrega). */
   profileName(platform: MetaPlatform, userId: string): Promise<string | null>;
   download(url: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
@@ -73,6 +76,8 @@ async function send(to: string, message: Record<string, unknown>): Promise<strin
 export const messengerApi: MessengerApi = {
   sendText: (_platform, to, body) => send(to, { text: body }),
   sendAudio: (_platform, to, url) => send(to, { attachment: { type: "audio", payload: { url, is_reusable: false } } }),
+  sendFile: (_platform, to, { kind, url }) =>
+    send(to, { attachment: { type: kind === "document" ? "file" : kind, payload: { url, is_reusable: true } } }),
   async profileName(platform, userId) {
     try {
       if (platform === "INSTAGRAM") {

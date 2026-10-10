@@ -28,6 +28,7 @@ import {
 import type { AdsApi } from "../channels/ads";
 import { attachAdSource, attachLinkSource, takeRefCode } from "./attribution";
 import { isBlocked } from "./contacts";
+import { fileKind, type FileKind } from "../media";
 import { createLead } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
 import { notifyContactMessage } from "./notifications";
@@ -380,12 +381,25 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
   }
   const wa = apis.whatsapp ?? cloudApi;
   const meta = apis.messenger ?? messengerApi;
+  // `file` devuelve si el texto ya salió junto al archivo (WhatsApp lo manda como pie).
   const sender =
     channel === "WHATSAPP"
-      ? { text: (body: string) => wa.sendText(to, body), audio: (url: string) => wa.sendAudio(to, url), name: "WhatsApp" }
+      ? {
+          text: (body: string) => wa.sendText(to, body),
+          audio: (url: string) => wa.sendAudio(to, url),
+          file: async (file: { kind: FileKind; url: string; fileName?: string; caption?: string }) => ({
+            id: await wa.sendFile(to, file),
+            captioned: Boolean(file.caption),
+          }),
+          name: "WhatsApp",
+        }
       : {
           text: (body: string) => meta.sendText(channel, to, body),
           audio: (url: string) => meta.sendAudio(channel, to, url),
+          file: async ({ kind, url }: { kind: FileKind; url: string }) => ({
+            id: await meta.sendFile(channel, to, { kind, url }),
+            captioned: false,
+          }),
           name: channel === "INSTAGRAM" ? "Instagram" : "Messenger",
         };
 
@@ -399,13 +413,24 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
     if (!claimed.count) continue;
     try {
       let externalId: string | null = null;
-      if (m.mediaUrl) {
+      let textSent = false;
+      const kind = m.mediaUrl ? fileKind(m.mediaType) : null;
+      if (m.mediaUrl && kind === "audio") {
         if (channel === "WHATSAPP" && !canSendAudio(m.mediaType)) {
           throw new ChannelSendError("WhatsApp no acepta este formato de audio. Graba desde Chrome o Safari actualizados.");
         }
         externalId = await sender.audio(m.mediaUrl);
+      } else if (m.mediaUrl && kind && kind !== "audio") {
+        const sent = await sender.file({
+          kind,
+          url: m.mediaUrl,
+          ...(m.mediaName ? { fileName: m.mediaName } : {}),
+          ...(m.body ? { caption: m.body } : {}),
+        });
+        externalId = sent.id;
+        textSent = sent.captioned;
       }
-      if (m.body) externalId = await sender.text(m.body);
+      if (m.body && !textSent) externalId = await sender.text(m.body);
       await db.message.update({ where: { id: m.id }, data: { deliveryStatus: "SENT", externalId, deliveryError: null } });
     } catch (err) {
       lastError = err instanceof ChannelSendError ? err.message : `No se pudo enviar por ${sender.name}.`;

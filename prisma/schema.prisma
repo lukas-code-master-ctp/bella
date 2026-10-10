@@ -232,6 +232,8 @@ model Message {
   /// Archivo adjunto (por ahora, notas de voz del cliente): URL en Vercel Blob y tipo MIME.
   mediaUrl       String?
   mediaType      String?
+  /// Nombre del archivo enviado como documento (ej. "masterplan.pdf").
+  mediaName      String?
   /// Transcripción de la nota de voz; null si no se pudo transcribir.
   transcript     String?
   createdAt      DateTime      @default(now())
@@ -352,6 +354,20 @@ model AssignmentRule {
   stage      Stage? @relation(fields: [stageId], references: [id], onDelete: Cascade)
   tag        Tag?   @relation(fields: [tagId], references: [id], onDelete: Cascade)
   executives User[] @relation("RuleExecutives")
+}
+
+/// Archivo que la IA puede enviar a los leads (masterplan, ficha técnica, fotos), cargado en
+/// Configuración → Archivos. `description` le dice a la IA cuándo enviarlo.
+model MediaFile {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  url         String
+  mimeType    String
+  fileName    String
+  size        Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model KnowledgeDoc {

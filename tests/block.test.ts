@@ -36,6 +36,7 @@ function fakeWa() {
       return `wamid.out${sent.length}`;
     },
     sendAudio: async () => "wamid.audio",
+    sendFile: async () => "wamid.file",
     downloadMedia: async () => ({ bytes: new Uint8Array(), mimeType: "audio/ogg" }),
   };
   return { api, sent };

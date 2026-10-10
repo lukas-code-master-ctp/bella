@@ -4,6 +4,7 @@ import { parseLocalDateTime } from "../dates";
 import { findField, setFieldValueTx } from "../domain/fields";
 import { scheduleFollowUpTx } from "../domain/follow-ups";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
+import { sendMediaFile } from "../domain/files";
 import { createTask } from "../domain/tasks";
 import { deliverPendingConversions } from "../domain/conversions";
 import { deliverPendingWebhooks } from "../domain/webhooks";
@@ -105,6 +106,16 @@ export const AGENT_TOOLS: Tool[] = [
           "siguiente día hábil.",
       ),
       notes: text("Contexto para el ejecutivo: datos del cliente y lo acordado, o vacío"),
+    },
+  ),
+  tool(
+    "send_file",
+    "Envía al cliente uno de los archivos de <archivos> (planos, fichas, fotos, documentos) por el " +
+      "chat. Úsala cuando el cliente lo pida o cuando la descripción del archivo diga que corresponde. " +
+      "El archivo sale antes de tu respuesta final, así que no repitas su contenido.",
+    {
+      file: text("Nombre exacto del archivo, tal como aparece en <archivos>"),
+      caption: text("Texto corto que acompaña al archivo, o vacío"),
     },
   ),
   tool(
@@ -236,6 +247,15 @@ export async function executeTool(
             ? `Tarea creada para ${lead.assignee.name}: "${task.title}".`
             : `Tarea creada: "${task.title}". El lead aún no tiene ejecutivo; la tomará quien se le asigne.`,
         };
+      } catch (e) {
+        if (e instanceof DomainError) return { isError: true, content: e.message };
+        throw e;
+      }
+    }
+    case "send_file": {
+      try {
+        const file = await sendMediaFile(leadId, str("file"), str("caption"));
+        return { content: `Archivo "${file.title}" enviado al cliente.` };
       } catch (e) {
         if (e instanceof DomainError) return { isError: true, content: e.message };
         throw e;
