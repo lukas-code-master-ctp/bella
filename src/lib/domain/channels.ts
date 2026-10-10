@@ -32,6 +32,7 @@ import { fileKind, type FileKind } from "../media";
 import { createLead } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
 import { notifyContactMessage } from "./notifications";
+import { funnelForNumber, whatsappPhoneIds } from "./whatsapp-numbers";
 
 /** Por canal, si la IA responde sola a sus leads. Apagado: el equipo responde a mano. */
 export type ChannelSettings = {
@@ -122,15 +123,16 @@ export async function logWhatsAppWebhook(payload: WaWebhook | null, now = new Da
   if (!payload) {
     entry = { at, result: "firma", detail: "La firma no coincide con META_APP_SECRET: el aviso se rechazó." };
   } else {
-    const values = webhookValues(payload);
-    const others = webhookPhoneIds(payload).filter((id) => id !== process.env.WHATSAPP_PHONE_NUMBER_ID);
+    const ids = await whatsappPhoneIds();
+    const values = webhookValues(payload, ids);
+    const others = webhookPhoneIds(payload).filter((id) => !ids.includes(id));
     const messages = values.reduce((n, v) => n + (v.messages?.length ?? 0), 0);
     const statuses = values.reduce((n, v) => n + (v.statuses?.length ?? 0), 0);
     if (!values.length && others.length) {
       entry = {
         at,
         result: "otro-numero",
-        detail: `El aviso es del número con id ${others.join(", ")}, distinto de WHATSAPP_PHONE_NUMBER_ID: se ignoró.`,
+        detail: `El aviso es del número con id ${others.join(", ")}, que no está conectado en Bella: se ignoró.`,
       };
     } else {
       const parts = [
@@ -148,10 +150,10 @@ export async function logWhatsAppWebhook(payload: WaWebhook | null, now = new Da
 export async function receiveWhatsApp(payload: WaWebhook, deps: InboundDeps = {}): Promise<string[]> {
   const toAnswer = new Set<string>();
   const { whatsappAi } = await getChannelSettings();
-  for (const value of webhookValues(payload)) {
+  for (const value of webhookValues(payload, await whatsappPhoneIds())) {
     const names = new Map((value.contacts ?? []).map((c) => [c.wa_id, c.profile?.name]));
     for (const m of value.messages ?? []) {
-      const leadId = await receiveWhatsAppMessage(m, names.get(m.from), whatsappAi, deps);
+      const leadId = await receiveWhatsAppMessage(m, names.get(m.from), whatsappAi, deps, value.metadata?.phone_number_id);
       if (!leadId) continue;
       const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
       if (whatsappAi && lead.aiEnabled && lead.status === "OPEN") toAnswer.add(leadId);
@@ -171,15 +173,17 @@ async function openLeadFor(
   name: () => Promise<string>,
   aiEnabled: boolean,
   phone?: string,
+  funnelId?: () => Promise<string | null>,
 ) {
   const contact = await db.contact.findUnique({
     where: { channel_externalId: { channel, externalId } },
     include: { leads: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1 } },
   });
   if (contact?.leads[0]) return contact.leads[0].id;
+  const options = { aiEnabled, funnelId: (await funnelId?.()) ?? null };
   const lead = contact
-    ? await createLead({ contactId: contact.id }, { aiEnabled })
-    : await createLead({ name: await name(), channel, phone, externalId }, { aiEnabled });
+    ? await createLead({ contactId: contact.id }, options)
+    : await createLead({ name: await name(), channel, phone, externalId }, options);
   return lead.id;
 }
 
@@ -221,13 +225,33 @@ async function receiveWhatsAppMessage(
   profileName: string | undefined,
   aiEnabled: boolean,
   deps: InboundDeps,
+  phoneNumberId?: string,
 ): Promise<string | null> {
   if (await db.message.findUnique({ where: { externalId: m.id } })) return null;
   const body = m.type === "audio" ? "" : describeMessage(m);
   if (body === null) return null;
   // Un contacto bloqueado no crea leads ni avisos: su mensaje se descarta.
   if (await isBlocked("WHATSAPP", m.from)) return null;
-  const leadId = await openLeadFor("WHATSAPP", m.from, async () => profileName?.trim() || `+${m.from}`, aiEnabled, `+${m.from}`);
+  // Un lead nuevo entra al embudo del número al que escribió (si tiene uno).
+  const leadId = await openLeadFor(
+    "WHATSAPP",
+    m.from,
+    async () => profileName?.trim() || `+${m.from}`,
+    aiEnabled,
+    `+${m.from}`,
+    () => funnelForNumber(phoneNumberId),
+  );
+  // Las respuestas salen por el último número al que escribió.
+  if (phoneNumberId) {
+    await db.contact.updateMany({
+      where: {
+        channel: "WHATSAPP",
+        externalId: m.from,
+        OR: [{ waPhoneNumberId: null }, { waPhoneNumberId: { not: phoneNumberId } }],
+      },
+      data: { waPhoneNumberId: phoneNumberId },
+    });
+  }
   const r = m.referral;
   if (r) {
     await attachAdSource(
@@ -380,15 +404,16 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
     return BLOCKED_SEND_ERROR;
   }
   const wa = apis.whatsapp ?? cloudApi;
+  const from = lead.contact.waPhoneNumberId ?? undefined;
   const meta = apis.messenger ?? messengerApi;
   // `file` devuelve si el texto ya salió junto al archivo (WhatsApp lo manda como pie).
   const sender =
     channel === "WHATSAPP"
       ? {
-          text: (body: string) => wa.sendText(to, body),
-          audio: (url: string) => wa.sendAudio(to, url),
+          text: (body: string) => wa.sendText(to, body, from),
+          audio: (url: string) => wa.sendAudio(to, url, from),
           file: async (file: { kind: FileKind; url: string; fileName?: string; caption?: string }) => ({
-            id: await wa.sendFile(to, file),
+            id: await wa.sendFile(to, file, from),
             captioned: Boolean(file.caption),
           }),
           name: "WhatsApp",

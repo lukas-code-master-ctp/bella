@@ -29,10 +29,11 @@ export class ChannelSendError extends Error {
 
 /** Lo que Bella necesita de WhatsApp. Se reemplaza en pruebas. */
 export type WhatsAppApi = {
-  sendText(to: string, body: string): Promise<string>;
-  sendAudio(to: string, url: string): Promise<string>;
+  /** `from` es el phone_number_id que envía; sin él, WHATSAPP_PHONE_NUMBER_ID. */
+  sendText(to: string, body: string, from?: string): Promise<string>;
+  sendAudio(to: string, url: string, from?: string): Promise<string>;
   /** Imagen, video o documento por URL pública; `caption` va como texto del archivo. */
-  sendFile(to: string, file: { kind: FileKind; url: string; fileName?: string; caption?: string }): Promise<string>;
+  sendFile(to: string, file: { kind: FileKind; url: string; fileName?: string; caption?: string }, from?: string): Promise<string>;
   downloadMedia(mediaId: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
 };
 
@@ -74,8 +75,8 @@ async function graph<T>(path: string, init: RequestInit = {}, what = "el envío"
   return json;
 }
 
-async function send(to: string, payload: Record<string, unknown>): Promise<string> {
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+async function send(to: string, payload: Record<string, unknown>, from?: string): Promise<string> {
+  const phoneId = from || process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!phoneId) throw new ChannelSendError("Falta WHATSAPP_PHONE_NUMBER_ID en las variables de entorno.");
   const res = await graph<{ messages?: { id: string }[] }>(`${phoneId}/messages`, {
     method: "POST",
@@ -87,9 +88,9 @@ async function send(to: string, payload: Record<string, unknown>): Promise<strin
 }
 
 export const cloudApi: WhatsAppApi = {
-  sendText: (to, body) => send(to, { type: "text", text: { body, preview_url: false } }),
-  sendAudio: (to, url) => send(to, { type: "audio", audio: { link: url } }),
-  sendFile: (to, { kind, url, fileName, caption }) =>
+  sendText: (to, body, from) => send(to, { type: "text", text: { body, preview_url: false } }, from),
+  sendAudio: (to, url, from) => send(to, { type: "audio", audio: { link: url } }, from),
+  sendFile: (to, { kind, url, fileName, caption }, from) =>
     send(to, {
       type: kind,
       [kind]: {
@@ -97,7 +98,7 @@ export const cloudApi: WhatsAppApi = {
         ...(caption ? { caption } : {}),
         ...(kind === "document" && fileName ? { filename: fileName } : {}),
       },
-    }),
+    }, from),
   async downloadMedia(mediaId) {
     const meta = await graph<{ url: string; mime_type: string }>(mediaId);
     const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
@@ -172,14 +173,32 @@ export type WaWebhook = {
   entry?: { changes?: { field?: string; value?: WaValue }[] }[];
 };
 
-/** Cambios de mensajes del número configurado (ignora otros números de la misma cuenta). */
-export function webhookValues(payload: WaWebhook, phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID): WaValue[] {
+/**
+ * Cambios de mensajes de los números configurados (ignora otros números de la misma cuenta).
+ * Sin números configurados no filtra.
+ */
+export function webhookValues(
+  payload: WaWebhook,
+  phoneNumberIds: string | string[] | undefined = process.env.WHATSAPP_PHONE_NUMBER_ID,
+): WaValue[] {
   if (payload.object !== "whatsapp_business_account") return [];
+  const allowed = (Array.isArray(phoneNumberIds) ? phoneNumberIds : [phoneNumberIds]).filter((id): id is string => Boolean(id));
   return (payload.entry ?? [])
     .flatMap((e) => e.changes ?? [])
     .filter((c) => c.field === "messages" && c.value)
     .map((c) => c.value!)
-    .filter((v) => !phoneNumberId || !v.metadata?.phone_number_id || v.metadata.phone_number_id === phoneNumberId);
+    .filter((v) => !allowed.length || !v.metadata?.phone_number_id || allowed.includes(v.metadata.phone_number_id));
+}
+
+/** Datos de un número de la cuenta según Meta, para validar uno nuevo antes de guardarlo. */
+export async function lookupWhatsAppNumber(phoneNumberId: string): Promise<{ displayPhone: string; name: string | null }> {
+  const n = await graph<{ display_phone_number?: string; verified_name?: string }>(
+    `${encodeURIComponent(phoneNumberId)}?fields=display_phone_number,verified_name`,
+    {},
+    "la consulta del número",
+  );
+  if (!n.display_phone_number) throw new ChannelSendError("Meta no devolvió el número de ese id.");
+  return { displayPhone: n.display_phone_number, name: n.verified_name ?? null };
 }
 
 /**

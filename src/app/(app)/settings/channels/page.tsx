@@ -1,18 +1,21 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowUpRight, CircleCheck, CircleDashed, Plus, Smartphone, Sparkles, SquareKanban } from "lucide-react";
+import { ArrowUpRight, CircleCheck, CircleDashed, Plus, Smartphone, Sparkles, SquareKanban, Trash2 } from "lucide-react";
 import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
 import { getChannelSettings, MAX_REPLY_DELAY_SECONDS, openLeadsByChannel } from "@/lib/domain/channels";
 import { db } from "@/lib/db";
 import { getLegalSettings } from "@/lib/domain/privacy";
+import { listFunnels } from "@/lib/domain/funnels";
+import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
 import { Badge, buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { saveChannelsAction, saveLegalAction } from "../actions";
+import { deleteWhatsAppNumberAction, saveChannelsAction, saveLegalAction, updateWhatsAppNumberAction } from "../actions";
 import { ChannelIcon } from "./channel-icon";
 import { ChannelList, type ChannelRow } from "./channel-list";
 import { WhatsAppStatus } from "./whatsapp-status";
+import { AddWhatsAppNumberForm, FunnelSelect } from "./whatsapp-numbers";
 
 const ENV_HELP: Record<string, string> = {
   WHATSAPP_TOKEN: "Token permanente de un usuario del sistema (Business Manager → Usuarios del sistema).",
@@ -58,12 +61,15 @@ function Webhook({ url, where, fields }: { url: string; where: string; fields: s
 }
 
 export default async function ChannelsSettingsPage() {
-  const [s, legal, leads, stages] = await Promise.all([
+  const [s, legal, leads, stages, numbers, funnels] = await Promise.all([
     getChannelSettings(),
     getLegalSettings(),
     openLeadsByChannel(),
     db.stage.count(),
+    listWhatsAppNumbers(),
+    listFunnels(),
   ]);
+  const funnelOptions = funnels.map(({ id, name }) => ({ id, name }));
   const waMissing = missingWhatsAppEnv();
   const metaMissing = missingMessengerEnv();
   const h = await headers();
@@ -77,7 +83,9 @@ export default async function ChannelsSettingsPage() {
       kind: "WHATSAPP",
       group: "WhatsApp",
       name: "WhatsApp",
-      detail: env.WHATSAPP_PHONE_NUMBER_ID ? `Número ${env.WHATSAPP_PHONE_NUMBER_ID}` : "Sin conectar",
+      detail: env.WHATSAPP_PHONE_NUMBER_ID
+        ? `Número ${env.WHATSAPP_PHONE_NUMBER_ID}${numbers.length ? ` y ${numbers.length} más` : ""}`
+        : "Sin conectar",
       connected: waMissing.length === 0,
       aiOn: s.whatsappAi,
       setup: "#whatsapp",
@@ -191,6 +199,48 @@ export default async function ChannelsSettingsPage() {
             >
               <WhatsAppStatus />
             </Suspense>
+          )}
+          {waMissing.length === 0 && (
+            <section className="mt-6 border-t border-slate-100 pt-5" aria-labelledby="wa-numbers">
+              <h3 id="wa-numbers" className="text-sm font-semibold text-slate-900">
+                Más números de WhatsApp
+              </h3>
+              <p className="mb-3 text-xs text-slate-600">
+                Números de la misma cuenta de Meta, que usan el mismo token y webhook. Cada uno puede llevar sus leads nuevos
+                a un embudo, y la asistente responde por el número al que escribió el cliente.
+              </p>
+              {numbers.length > 0 && (
+                <ul className="mb-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {numbers.map((n) => (
+                    <li key={n.id} className="flex flex-wrap items-center gap-3 p-3">
+                      <form action={updateWhatsAppNumberAction.bind(null, n.id)} className="flex flex-1 flex-wrap items-center gap-2">
+                        <span className="w-full text-xs text-slate-600 sm:w-40">
+                          <span className="block font-medium text-slate-900">{n.displayPhone ?? n.phoneNumberId}</span>
+                          id {n.phoneNumberId}
+                        </span>
+                        <input name="label" aria-label="Nombre del número" defaultValue={n.label} className={`${inputClass} sm:max-w-48`} />
+                        <div className="sm:w-56">
+                          <FunnelSelect funnels={funnelOptions} defaultValue={n.funnelId} label={`Embudo de ${n.label}`} />
+                        </div>
+                        <SubmitButton variant="secondary">Guardar</SubmitButton>
+                      </form>
+                      <form action={deleteWhatsAppNumberAction.bind(null, n.id)}>
+                        <SubmitButton
+                          variant="ghost-danger"
+                          size="icon"
+                          aria-label={`Quitar ${n.label}`}
+                          confirm={`¿Quitar el número "${n.label}"? Bella deja de recibir sus mensajes y sus clientes se responden por el número principal.`}
+                          pendingText=""
+                        >
+                          <Trash2 aria-hidden />
+                        </SubmitButton>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <AddWhatsAppNumberForm funnels={funnelOptions} />
+            </section>
           )}
         </Card>
 
