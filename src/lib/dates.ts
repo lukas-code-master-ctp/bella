@@ -94,6 +94,11 @@ function relative(ms: number) {
   return ms < 0 ? `hace ${label}` : `en ${label}`;
 }
 
+/** Hace cuánto pasó algo, en palabras: "hace 5 min", "hace 2 h", "hace 3 días". */
+export function formatAgo(at: Date, now: Date): string {
+  return relative(Math.min(-1, at.getTime() - now.getTime()));
+}
+
 /** Plazo de una tarea en palabras, relativo a `now`: "Venció hace 2 h", "Hoy 15:30", "Mañana 10:00". */
 export function formatDue(dueAt: Date, now: Date): string {
   if (dueAt < now) return `Venció ${relative(dueAt.getTime() - now.getTime())}`;

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
-import { Bot, BotOff, Sparkles, UserRound } from "lucide-react";
+import { Bot, Headset, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
+import type { Attention } from "@/lib/domain/attention";
 import { Avatar, Badge, TagPill } from "@/components/ui";
 import { LinkPending } from "@/components/link-pending";
 import { ScoreBadge } from "@/components/score-badge";
@@ -15,6 +16,10 @@ export type BoardLead = {
   channel: string;
   assignee: string | null;
   aiEnabled: boolean;
+  /** Quién lo atiende ahora (ver src/lib/domain/attention.ts). */
+  attention: Attention;
+  /** Si está sin atender, hace cuánto escribió el cliente ("hace 5 min"). */
+  waitingFor: string | null;
   lastMessage: string | null;
   /** Resumen de una línea hecho por la IA; si aún no hay, se muestra el último mensaje. */
   summary: string | null;
@@ -105,17 +110,7 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-semibold leading-snug text-slate-900 group-hover:text-brand-700">{lead.name}</span>
-                    {lead.aiEnabled ? (
-                      <Badge tone="success" className="shrink-0">
-                        <Bot aria-hidden />
-                        IA
-                      </Badge>
-                    ) : (
-                      <Badge tone="neutral" className="shrink-0">
-                        <BotOff aria-hidden />
-                        Pausada
-                      </Badge>
-                    )}
+                    <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
                   </div>
                   {lead.summary ? (
                     <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-700">
@@ -148,5 +143,30 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
         );
       })}
     </div>
+  );
+}
+
+function AttentionBadge({ attention, waitingFor }: { attention: Attention; waitingFor: string | null }) {
+  if (attention === "waiting") {
+    return (
+      <span title={waitingFor ? `El cliente escribió ${waitingFor} y nadie le ha respondido` : undefined} className="inline-flex shrink-0">
+        <Badge tone="warning">
+          <MessageCircleWarning aria-hidden />
+          Sin atender
+          {waitingFor && <span className="font-normal tabular-nums">· {waitingFor.replace(/^hace /, "")}</span>}
+        </Badge>
+      </span>
+    );
+  }
+  return attention === "human" ? (
+    <Badge tone="brand" className="shrink-0">
+      <Headset aria-hidden />
+      Ejecutivo
+    </Badge>
+  ) : (
+    <Badge tone="success" className="shrink-0">
+      <Bot aria-hidden />
+      IA
+    </Badge>
   );
 }

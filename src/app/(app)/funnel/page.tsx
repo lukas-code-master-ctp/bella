@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { CircleX, FlaskConical, Inbox, Trophy } from "lucide-react";
+import { CircleX, FlaskConical, Inbox, MessageCircleWarning, Trophy } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { formatAgo } from "@/lib/dates";
+import { attentionOf } from "@/lib/domain/attention";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
 import { Board } from "./board";
@@ -11,6 +13,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
   const user = await requireUser();
   const { executive, sort } = await searchParams;
   const byScore = sort === "score";
+  const waitingFirst = sort === "waiting";
   const scope: Prisma.LeadWhereInput =
     user.role === "ADMIN" ? (executive ? { assigneeId: executive === "none" ? null : executive } : {}) : { assigneeId: user.id };
 
@@ -29,6 +32,18 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
   ]);
   const count = (s: string) => closed.find((c) => c.status === s)?._count._all ?? 0;
+  const now = new Date();
+  const humanStages = new Set(stages.filter((s) => s.requiresHuman).map((s) => s.id));
+  const cards = leads.map((l) => {
+    const last = l.messages[0] ?? null;
+    const attention = attentionOf({ aiEnabled: l.aiEnabled, requiresHuman: humanStages.has(l.stageId), lastMessage: last }, now);
+    return { lead: l, last, attention, waitingSince: attention === "waiting" && last ? last.createdAt : null };
+  });
+  // Sin atender primero, el que lleva más tiempo esperando arriba; el resto queda como venía.
+  if (waitingFirst) {
+    cards.sort((a, b) => (a.waitingSince?.getTime() ?? Infinity) - (b.waitingSince?.getTime() ?? Infinity));
+  }
+  const waiting = cards.filter((c) => c.attention === "waiting").length;
 
   return (
     <>
@@ -43,6 +58,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
         <Stat icon={<Inbox />} label="Abiertos" value={leads.length} tone="text-brand-700 bg-brand-50" />
         <Stat icon={<Trophy />} label="Ganados" value={count("WON")} tone="text-emerald-700 bg-emerald-50" />
         <Stat icon={<CircleX />} label="Perdidos" value={count("LOST")} tone="text-rose-700 bg-rose-50" />
+        {waiting > 0 && <Stat icon={<MessageCircleWarning />} label="Sin atender" value={waiting} tone="text-amber-700 bg-amber-50" />}
         <form className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
           {user.role === "ADMIN" && (
             <>
@@ -63,9 +79,10 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
           <label htmlFor="sort" className="sr-only">
             Orden
           </label>
-          <select id="sort" name="sort" defaultValue={byScore ? "score" : ""} className={`${inputClass} sm:w-48`}>
+          <select id="sort" name="sort" defaultValue={byScore ? "score" : waitingFirst ? "waiting" : ""} className={`${inputClass} sm:w-48`}>
             <option value="">Más recientes</option>
             <option value="score">Mayor puntaje</option>
+            <option value="waiting">Sin atender primero</option>
           </select>
           <button className={buttonClass("secondary")}>Aplicar</button>
         </form>
@@ -84,14 +101,16 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
       ) : (
         <Board
           stages={stages.map(({ id, name, color, requiresHuman }) => ({ id, name, color, requiresHuman }))}
-          leads={leads.map((l) => ({
+          leads={cards.map(({ lead: l, last, attention, waitingSince }) => ({
             id: l.id,
             stageId: l.stageId,
             name: l.contact.name,
             channel: CHANNEL_LABEL[l.contact.channel],
             assignee: l.assignee?.name ?? null,
             aiEnabled: l.aiEnabled,
-            lastMessage: l.messages[0] ? l.messages[0].body || (l.messages[0].mediaUrl ? "🎤 Nota de voz" : "") : null,
+            attention,
+            waitingFor: waitingSince ? formatAgo(waitingSince, now) : null,
+            lastMessage: last ? last.body || (last.mediaUrl ? "🎤 Nota de voz" : "") : null,
             summary: l.aiSummary,
             score: l.score,
             scoreReason: l.scoreReason,

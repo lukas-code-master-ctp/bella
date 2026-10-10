@@ -2,14 +2,15 @@ import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Bot, BotOff, CircleX, ExternalLink, ListTodo, RotateCcw, Sparkles, Target, Trophy } from "lucide-react";
+import { ArrowLeft, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, ListTodo, RotateCcw, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
 import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { sourceLabel } from "@/lib/domain/attribution";
-import { startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { formatAgo, startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -102,6 +103,11 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
+  const lastMessage = lead.messages.at(-1) ?? null;
+  const waitingSince =
+    isOpen && attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage }) === "waiting"
+      ? lastMessage!.createdAt
+      : null;
   const now = new Date();
   // Mañana a las 10:00 (Chile) como vencimiento sugerido.
   const defaultDue = toLocalInput(new Date(startOfLocalDay(now, 1).getTime() + 10 * 3_600_000));
@@ -137,6 +143,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               <Badge tone="danger">
                 <CircleX aria-hidden />
                 Perdido
+              </Badge>
+            )}
+            {waitingSince && (
+              <Badge tone="warning">
+                <MessageCircleWarning aria-hidden />
+                Sin atender · {formatAgo(waitingSince, new Date())}
               </Badge>
             )}
             {lead.aiEnabled ? (
