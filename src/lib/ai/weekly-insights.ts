@@ -209,9 +209,9 @@ export function lastWeekPeriod(now = new Date()) {
 /** Para el cron del lunes: genera el de la semana pasada si aún no existe. */
 export async function runWeeklyInsight(now = new Date(), clients: ProviderClients = {}) {
   const period = lastWeekPeriod(now);
-  if (await db.weeklyInsight.findUnique({ where: { periodEnd: period.to } })) return { created: false };
-  await generateWeeklyInsight({ ...period, clients });
-  return { created: true };
+  if (await db.weeklyInsight.findUnique({ where: { periodEnd: period.to } })) return { created: false, insightId: null };
+  const insight = await generateWeeklyInsight({ ...period, clients });
+  return { created: true, insightId: insight.id };
 }
 
 /** Si hay un resumen que este admin no ha abierto (para el "nuevo" del menú). */

@@ -53,7 +53,7 @@ describe("insights semanales", () => {
     await db.lead.update({ where: { id: ana.id }, data: { createdAt: new Date("2026-10-08T15:00:00Z") } });
 
     const { clients, requests } = fakeOpenRouter("```json\n" + REPLY + "\n```");
-    expect(await runWeeklyInsight(now, clients)).toEqual({ created: true });
+    expect(await runWeeklyInsight(now, clients)).toMatchObject({ created: true, insightId: expect.any(String) });
 
     expect(requests[0].model).toBe("grande");
     const input = requests[0].messages[1].content;
@@ -71,7 +71,7 @@ describe("insights semanales", () => {
     expect(await hasUnseenInsight(admin.id)).toBe(true);
 
     // El cron no lo repite para la misma semana.
-    expect(await runWeeklyInsight(now, clients)).toEqual({ created: false });
+    expect(await runWeeklyInsight(now, clients)).toEqual({ created: false, insightId: null });
     expect(requests).toHaveLength(1);
   });
 
