@@ -1,12 +1,19 @@
 import { createHmac } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { answerLead } from "@/lib/ai/respond";
 import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient } from "@/lib/ai/providers";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
-import { ChannelSendError, validSignature, type WaMessage, type WaWebhook, type WhatsAppApi } from "@/lib/channels/whatsapp";
-import { aiChannels, deliverOutbound, receiveWhatsApp, saveChannelSettings } from "@/lib/domain/channels";
+import { ChannelSendError, checkWhatsApp, validSignature, type WaMessage, type WaWebhook, type WhatsAppApi } from "@/lib/channels/whatsapp";
+import {
+  aiChannels,
+  deliverOutbound,
+  getWhatsAppWebhookLog,
+  logWhatsAppWebhook,
+  receiveWhatsApp,
+  saveChannelSettings,
+} from "@/lib/domain/channels";
 import { closeLead } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
 import type { MediaStore } from "@/lib/media";
@@ -269,5 +276,61 @@ describe("WhatsApp: firma del webhook", () => {
     expect(validSignature(body + " ", sig, "secreto")).toBe(false);
     expect(validSignature(body, sig, undefined)).toBe(false);
     expect(validSignature(body, null, "secreto")).toBe(false);
+  });
+});
+
+describe("WhatsApp: diagnóstico del webhook", () => {
+  it("anota los mensajes recibidos y recuerda el último aunque después lleguen solo estados", async () => {
+    const t1 = new Date("2026-10-10T13:00:00Z");
+    await logWhatsAppWebhook(webhook([text("wamid.d1", "Hola")]), t1);
+    expect(await getWhatsAppWebhookLog()).toMatchObject({ result: "ok", detail: "Recibido: 1 mensaje.", lastMessageAt: t1.toISOString() });
+
+    await logWhatsAppWebhook(webhook([], { statuses: [{ id: "x", status: "read" }] }), new Date("2026-10-10T13:05:00Z"));
+    expect(await getWhatsAppWebhookLog()).toMatchObject({ result: "ok", lastMessageAt: t1.toISOString() });
+  });
+
+  it("avisa cuando Meta manda mensajes de otro número que el configurado", async () => {
+    await logWhatsAppWebhook(webhook([text("wamid.d2", "Hola")], { phoneId: "999" }));
+    const log = await getWhatsAppWebhookLog();
+    expect(log?.result).toBe("otro-numero");
+    expect(log?.detail).toContain("999");
+  });
+
+  it("anota la firma rechazada", async () => {
+    await logWhatsAppWebhook(null);
+    expect((await getWhatsAppWebhookLog())?.result).toBe("firma");
+  });
+});
+
+describe("WhatsApp: diagnóstico con Meta", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.WHATSAPP_TOKEN;
+  });
+
+  function stubGraph(apps: string[]) {
+    process.env.WHATSAPP_TOKEN = "token";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.includes("debug_token")
+          ? { data: { app_id: "app1", granular_scopes: [{ scope: "whatsapp_business_management", target_ids: ["waba1"] }] } }
+          : url.includes("subscribed_apps")
+            ? { data: apps.map((id) => ({ whatsapp_business_api_data: { id } })) }
+            : { display_phone_number: "+56 9 1111 2222", verified_name: "Empresa", platform_type: "CLOUD_API" };
+        return new Response(JSON.stringify(body), { status: 200 });
+      }),
+    );
+  }
+
+  it("detecta que la app no está suscrita a la cuenta de WhatsApp Business", async () => {
+    stubGraph(["otra-app"]);
+    const check = await checkWhatsApp();
+    expect(check).toMatchObject({ wabaId: "waba1", subscribed: false, phone: { display: "+56 9 1111 2222", platform: "CLOUD_API" } });
+  });
+
+  it("confirma la suscripción", async () => {
+    stubGraph(["app1"]);
+    expect((await checkWhatsApp()).subscribed).toBe(true);
   });
 });

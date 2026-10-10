@@ -1,7 +1,7 @@
 import { after, NextResponse, type NextRequest } from "next/server";
 import { answerLead } from "@/lib/ai/respond";
 import { validSignature, type WaWebhook } from "@/lib/channels/whatsapp";
-import { receiveWhatsApp } from "@/lib/domain/channels";
+import { logWhatsAppWebhook, logWhatsAppWebhookError, receiveWhatsApp } from "@/lib/domain/channels";
 
 export const dynamic = "force-dynamic";
 // La respuesta de la IA corre después de contestarle a Meta y puede tomar varios pasos.
@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const raw = await request.text();
   if (!validSignature(raw, request.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
+    // Solo si dice venir de Meta: así un error en META_APP_SECRET queda a la vista en Canales.
+    if (request.headers.get("x-hub-signature-256")) await logWhatsAppWebhook(null).catch(() => null);
     return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
   }
   let payload: WaWebhook;
@@ -32,7 +34,14 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
-  const leads = await receiveWhatsApp(payload);
+  await logWhatsAppWebhook(payload).catch((err) => console.error("[whatsapp] registro del webhook:", err));
+  let leads: string[];
+  try {
+    leads = await receiveWhatsApp(payload);
+  } catch (err) {
+    await logWhatsAppWebhookError(err).catch(() => null);
+    throw err;
+  }
   if (leads.length) after(() => Promise.all(leads.map((id) => answerLead(id))));
   return NextResponse.json({ ok: true });
 }

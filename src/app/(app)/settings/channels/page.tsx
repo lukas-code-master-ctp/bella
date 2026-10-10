@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import { Suspense } from "react";
 import { ArrowUpRight, CircleCheck, CircleDashed, Plus, Smartphone, Sparkles, SquareKanban } from "lucide-react";
 import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
@@ -11,6 +12,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { saveChannelsAction, saveLegalAction } from "../actions";
 import { ChannelIcon } from "./channel-icon";
 import { ChannelList, type ChannelRow } from "./channel-list";
+import { WhatsAppStatus } from "./whatsapp-status";
 
 const ENV_HELP: Record<string, string> = {
   WHATSAPP_TOKEN: "Token permanente de un usuario del sistema (Business Manager → Usuarios del sistema).",
@@ -183,6 +185,13 @@ export default async function ChannelsSettingsPage() {
           </CardHeader>
           <EnvList keys={WHATSAPP_ENV} missing={waMissing} />
           <Webhook url={`${base}/whatsapp`} where="WhatsApp → Configuración" fields="el campo messages" />
+          {waMissing.length === 0 && (
+            <Suspense
+              fallback={<div className="mt-4 h-28 animate-pulse rounded-lg bg-slate-100" aria-label="Revisando la conexión con Meta" />}
+            >
+              <WhatsAppStatus />
+            </Suspense>
+          )}
         </Card>
 
         <Card id="meta" className="scroll-mt-6 p-5">

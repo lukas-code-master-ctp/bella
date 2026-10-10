@@ -53,7 +53,7 @@ export function describeMetaError(code: number | undefined, fallback: string): s
   }
 }
 
-async function graph<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function graph<T>(path: string, init: RequestInit = {}, what = "el envío"): Promise<T> {
   const token = process.env.WHATSAPP_TOKEN;
   if (!token) throw new ChannelSendError("Falta WHATSAPP_TOKEN en las variables de entorno.");
   const res = await fetch(`${GRAPH}/${path}`, {
@@ -66,7 +66,7 @@ async function graph<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok || json.error) {
     const code = json.error?.code;
     const raw = json.error?.error_data?.details || json.error?.message || `HTTP ${res.status}`;
-    throw new ChannelSendError(describeMetaError(code, `WhatsApp rechazó el envío: ${raw}`), code);
+    throw new ChannelSendError(describeMetaError(code, `WhatsApp rechazó ${what}: ${raw}`), code);
   }
   return json;
 }
@@ -204,4 +204,77 @@ export function describeMessage(m: WaMessage): string | null {
     default:
       return "[Mensaje que Bella aún no puede mostrar]";
   }
+}
+
+/** phone_number_id de los cambios de mensajes, sin filtrar por el número configurado. */
+export function webhookPhoneIds(payload: WaWebhook): string[] {
+  if (payload.object !== "whatsapp_business_account") return [];
+  const ids = (payload.entry ?? [])
+    .flatMap((e) => e.changes ?? [])
+    .filter((c) => c.field === "messages")
+    .map((c) => c.value?.metadata?.phone_number_id)
+    .filter((id): id is string => Boolean(id));
+  return [...new Set(ids)];
+}
+
+// --- Diagnóstico de la conexión con Meta -----------------------------------------------
+
+export type WhatsAppCheck = {
+  /** Número que corresponde a WHATSAPP_PHONE_NUMBER_ID, o el error de Meta al pedirlo. */
+  phone: { display?: string; name?: string; platform?: string; status?: string } | { error: string };
+  /** Cuenta de WhatsApp Business del número (de WHATSAPP_BUSINESS_ACCOUNT_ID o del token). */
+  wabaId: string | null;
+  /** Si la app de Bella está suscrita a esa cuenta; sin suscripción Meta no manda los mensajes. */
+  subscribed: boolean | null;
+  error?: string;
+};
+
+type DebugToken = {
+  data?: { app_id?: string; granular_scopes?: { scope: string; target_ids?: string[] }[] };
+};
+
+async function tokenInfo() {
+  const token = process.env.WHATSAPP_TOKEN ?? "";
+  const res = await graph<DebugToken>(`debug_token?input_token=${encodeURIComponent(token)}`, {}, "la consulta del token");
+  const wabas = res.data?.granular_scopes?.find((s) => s.scope === "whatsapp_business_management")?.target_ids ?? [];
+  return { appId: res.data?.app_id ?? null, wabas };
+}
+
+/** Pregunta a Meta por el número configurado y por la suscripción de la app a su cuenta. */
+export async function checkWhatsApp(): Promise<WhatsAppCheck> {
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const result: WhatsAppCheck = { phone: { error: "Falta WHATSAPP_PHONE_NUMBER_ID." }, wabaId: null, subscribed: null };
+  if (phoneId) {
+    try {
+      const p = await graph<{ display_phone_number?: string; verified_name?: string; platform_type?: string; status?: string }>(
+        `${phoneId}?fields=display_phone_number,verified_name,platform_type,status`,
+        {},
+        "la consulta del número",
+      );
+      result.phone = { display: p.display_phone_number, name: p.verified_name, platform: p.platform_type, status: p.status };
+    } catch (err) {
+      result.phone = { error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  try {
+    const { appId, wabas } = await tokenInfo();
+    result.wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || (wabas.length === 1 ? wabas[0] : null);
+    if (!result.wabaId) {
+      result.error = wabas.length
+        ? "El token tiene acceso a varias cuentas de WhatsApp Business: agrega WHATSAPP_BUSINESS_ACCOUNT_ID en Vercel."
+        : "El token no tiene acceso a ninguna cuenta de WhatsApp Business (permiso whatsapp_business_management).";
+      return result;
+    }
+    const subs = await graph<{ data?: { whatsapp_business_api_data?: { id?: string } }[] }>(`${result.wabaId}/subscribed_apps`, {}, "la consulta de la cuenta");
+    const ids = (subs.data ?? []).map((a) => a.whatsapp_business_api_data?.id);
+    result.subscribed = appId ? ids.includes(appId) : ids.length > 0;
+  } catch (err) {
+    result.error = err instanceof Error ? err.message : String(err);
+  }
+  return result;
+}
+
+/** Suscribe la app del token a la cuenta de WhatsApp Business, para que Meta mande los mensajes. */
+export async function subscribeWhatsAppApp(wabaId: string): Promise<void> {
+  await graph(`${wabaId}/subscribed_apps`, { method: "POST" }, "la suscripción");
 }
