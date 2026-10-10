@@ -33,6 +33,16 @@ const change = (cost: number, before: number) => (before > 0 ? ((cost - before) 
  * pasado, o el mes anterior). Null si todavía no hay registros.
  */
 export async function aiSpendSummary(now = new Date()): Promise<SpendRow[] | null> {
+  try {
+    return await summarize(now);
+  } catch (err) {
+    // Ej. un preview que usa la base de producción antes de que exista la tabla.
+    console.error("[ai-usage] no se pudo leer el consumo:", err);
+    return null;
+  }
+}
+
+async function summarize(now: Date): Promise<SpendRow[] | null> {
   if ((await db.aiUsage.count()) === 0) return null;
   const month = (n: number) => startOfLocalMonth(now, n);
   const elapsed = now.getTime() - month(0).getTime();
