@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
-import { Bot, Headset, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
+import { Bot, CalendarClock, Headset, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
 import type { Attention } from "@/lib/domain/attention";
+import type { TaskBucket } from "@/lib/domain/tasks";
 import { Avatar, Badge, TagPill } from "@/components/ui";
 import { LinkPending } from "@/components/link-pending";
 import { ScoreBadge } from "@/components/score-badge";
@@ -25,6 +26,8 @@ export type BoardLead = {
   summary: string | null;
   score: number | null;
   scoreReason: string | null;
+  /** La tarea pendiente que vence primero, con su plazo en palabras ("Venció hace 2 h", "Hoy 15:30"). */
+  nextTask: { title: string; due: string; bucket: TaskBucket } | null;
   tags: { label: string; color: string }[];
   updatedAt: string;
 };
@@ -120,6 +123,7 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                   ) : (
                     lead.lastMessage && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-600">{lead.lastMessage}</p>
                   )}
+                  {lead.nextTask && <TaskDue task={lead.nextTask} />}
                   {lead.tags.length > 0 && (
                     <div className="mt-2.5 flex flex-wrap gap-1">
                       {lead.tags.map((t) => (
@@ -168,5 +172,24 @@ function AttentionBadge({ attention, waitingFor }: { attention: Attention; waiti
       <Bot aria-hidden />
       IA
     </Badge>
+  );
+}
+
+const DUE_TONE: Record<TaskBucket, string> = {
+  overdue: "bg-rose-50 text-rose-800 ring-rose-200",
+  today: "bg-amber-50 text-amber-800 ring-amber-200",
+  upcoming: "bg-slate-50 text-slate-700 ring-slate-200",
+};
+
+function TaskDue({ task }: { task: NonNullable<BoardLead["nextTask"]> }) {
+  return (
+    <p
+      title={`Próxima tarea: ${task.title} (${task.due})`}
+      className={`mt-2 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs ring-1 ring-inset ${DUE_TONE[task.bucket]}`}
+    >
+      <CalendarClock aria-hidden className="size-3.5 shrink-0" />
+      <span className="truncate">{task.title}</span>
+      <span className="ml-auto shrink-0 font-medium tabular-nums">{task.due}</span>
+    </p>
   );
 }

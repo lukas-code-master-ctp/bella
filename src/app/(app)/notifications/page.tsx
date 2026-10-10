@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, CheckCheck, Hand, MessageCircle, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, ClockAlert, Hand, MessageCircle, UserPlus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { vapidPublicKey } from "@/lib/push";
@@ -12,6 +12,7 @@ const ICON: Record<string, React.ReactNode> = {
   HUMAN_STAGE: <Hand aria-hidden />,
   ASSIGNED: <UserPlus aria-hidden />,
   CONTACT_MESSAGE: <MessageCircle aria-hidden />,
+  TASK_DUE: <ClockAlert aria-hidden />,
 };
 
 const time = (d: Date) =>

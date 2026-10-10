@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { formatDue, parseLocalDateTime, startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { createLead, DomainError, moveStage, setAssignee } from "@/lib/domain/leads";
-import { bucketOf, countUrgentTasks, createTask, findDueTasks, listTasks, setTaskDone } from "@/lib/domain/tasks";
+import { bucketOf, countUrgentTasks, createTask, findDueTasks, listTasks, sendTaskReminders, setTaskDone } from "@/lib/domain/tasks";
 import { executeTool } from "@/lib/ai/tools";
 import { executive, seedFunnel } from "./factories";
 
@@ -126,5 +126,46 @@ describe("herramienta create_task de la IA", () => {
     expect(await executeTool(lead.id, "create_task", { title: "Llamar", due: "2020-01-01 10:00", notes: "" })).toMatchObject({ isError: true });
     expect(await executeTool(lead.id, "create_task", { title: "", due: "2099-01-01 10:00", notes: "" })).toMatchObject({ isError: true });
     expect(await db.task.count()).toBe(0);
+  });
+});
+
+describe("aviso de tareas por vencer", () => {
+  it("avisa una sola vez al responsable cuando falta una hora o menos", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    await setAssignee(lead.id, ana.id, { actor: "SYSTEM" });
+    const now = new Date();
+    await createTask(lead.id, { title: "Llamar", dueAt: new Date(now.getTime() + 30 * 60_000) }, { actor: "AI" });
+    await createTask(lead.id, { title: "Más adelante", dueAt: new Date(now.getTime() + 3 * HOUR) }, { actor: "AI" });
+    await db.notification.deleteMany();
+
+    expect(await sendTaskReminders(now)).toEqual({ reminded: 1 });
+    const [n, ...rest] = await db.notification.findMany({ where: { userId: ana.id } });
+    expect(rest).toHaveLength(0);
+    expect(n).toMatchObject({ type: "TASK_DUE", title: "Cliente" });
+    expect(n.body).toContain("Tarea por vencer: «Llamar»");
+
+    expect(await sendTaskReminders(new Date(now.getTime() + 60_000))).toEqual({ reminded: 0 });
+  });
+
+  it("no avisa tareas cumplidas, de leads cerrados ni vencidas hace mucho; sin responsable avisa a los admins", async () => {
+    await seedFunnel();
+    const admin = await db.user.create({ data: { name: "Admin", email: "admin@test.cl", passwordHash: "x", role: "ADMIN" } });
+    const now = new Date();
+    const soon = new Date(now.getTime() + 10 * 60_000);
+    const open = await createLead({ name: "Abierto", channel: "SIMULATOR" });
+    const closed = await createLead({ name: "Cerrado", channel: "SIMULATOR" });
+    const done = await createTask(open.id, { title: "Hecha", dueAt: soon }, { actor: "AI" });
+    await setTaskDone(done.id, true, { actor: "USER" });
+    await createTask(open.id, { title: "Antigua", dueAt: new Date(now.getTime() - 24 * HOUR) }, { actor: "AI" });
+    await createTask(closed.id, { title: "Del cerrado", dueAt: soon }, { actor: "AI" });
+    await db.lead.update({ where: { id: closed.id }, data: { status: "LOST" } });
+    await createTask(open.id, { title: "Recién vencida", dueAt: new Date(now.getTime() - 20 * 60_000) }, { actor: "AI" });
+    await db.notification.deleteMany();
+
+    expect(await sendTaskReminders(now)).toEqual({ reminded: 1 });
+    const [n] = await db.notification.findMany({ where: { userId: admin.id } });
+    expect(n.body).toContain("Tarea vencida: «Recién vencida»");
   });
 });

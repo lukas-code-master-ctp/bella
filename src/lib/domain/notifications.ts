@@ -4,7 +4,7 @@ import { deliverPendingPush } from "../push";
 
 type Tx = Prisma.TransactionClient;
 
-export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE";
+export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE";
 
 /**
  * Destinatarios de un aviso del lead: su ejecutivo asignado o, si no tiene (o está
@@ -74,6 +74,21 @@ export async function notifyContactMessage(leadId: string, body: string) {
     });
   });
   await deliverPendingPush();
+}
+
+/**
+ * Una tarea del lead está por vencer (o venció). Avisa a su responsable; si no tiene o está
+ * inactivo, a quien correspondería un aviso del lead.
+ */
+export async function notifyTaskDueTx(
+  tx: Tx,
+  task: { leadId: string; assigneeId: string | null; title: string },
+  body: string,
+) {
+  const lead = await tx.lead.findUniqueOrThrow({ where: { id: task.leadId } });
+  const owner = task.assigneeId ? await tx.user.findFirst({ where: { id: task.assigneeId, active: true } }) : null;
+  const userIds = owner ? [owner.id] : await recipients(tx, lead);
+  await upsertNotifications(tx, task.leadId, userIds, { type: "TASK_DUE", body });
 }
 
 /** Abrir un lead marca como leídos sus avisos. */
