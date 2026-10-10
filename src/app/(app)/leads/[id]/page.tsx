@@ -48,6 +48,7 @@ const EVENT_LABEL: Record<string, string> = {
   REOPENED: "Reabierto",
   BLOCKED: "Contacto bloqueado",
   UNBLOCKED: "Contacto desbloqueado",
+  CONTACT_MERGED: "Contactos fusionados:",
   FOLLOW_UP_SENT: "Seguimiento enviado",
   FOLLOW_UP_SKIPPED: "Seguimiento omitido",
   FOLLOW_UP_SCHEDULED: "Recontacto agendado",
@@ -61,6 +62,7 @@ const EVENT_LABEL: Record<string, string> = {
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 
 function describe(data: Record<string, unknown>) {
+  if (Array.isArray(data.merged)) return data.merged.join(", ");
   if (data.field) return `${data.field}: ${data.value ?? "borrado"}`;
   if (data.from && data.to) return `${data.from} → ${data.to}`;
   if (data.tag) return String(data.tag);
