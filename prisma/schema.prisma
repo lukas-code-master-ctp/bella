@@ -430,9 +430,42 @@ model SocialComment {
   /// Lo marcó como resuelto alguien del equipo (respondido o descartado).
   doneAt       DateTime?
 
-  repliedBy User? @relation(fields: [repliedById], references: [id])
+  /// Regla que lo atendió sola (ver CommentRule); null si lo atendió el equipo.
+  ruleId       String?
+  /// Lo borró una regla en Meta; se guarda acá para el historial.
+  removedAt    DateTime?
+
+  repliedBy User?        @relation(fields: [repliedById], references: [id])
+  rule      CommentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
 
   @@index([doneAt, createdAt])
+  @@index([ruleId])
+}
+
+/// Respuesta automática a comentarios nuevos, por publicación y palabras clave. Se crea
+/// inactiva: solo actúa cuando alguien la activa (ver src/lib/domain/comment-rules.ts).
+model CommentRule {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(false)
+  /// INSTAGRAM o FACEBOOK; null = ambas.
+  channel   Channel?
+  /// Publicación a la que aplica; null = todas.
+  postId    String?
+  /// Texto o enlace de la publicación, para mostrarla en la configuración.
+  postLabel String?
+  /// Palabras o frases a buscar en el comentario; vacío = cualquier comentario.
+  keywords  String[]
+  /// Respuesta pública en el hilo. {nombre} se reemplaza por el autor.
+  publicReply  String?
+  /// Mensaje privado al autor; si contesta, entra al funnel como lead.
+  privateReply String?
+  hide      Boolean  @default(false)
+  /// Borra el comentario en Meta (no se puede deshacer).
+  remove    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  comments SocialComment[]
 }
 
 /// Pedido de una persona (vía Meta) para borrar sus datos. El código se le muestra para que

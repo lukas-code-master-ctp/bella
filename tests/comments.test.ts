@@ -42,6 +42,9 @@ function fakeApi() {
     hide: async (platform, id, hidden) => {
       calls.push(`hide ${platform} ${id} ${hidden}`);
     },
+    remove: async (id) => {
+      calls.push(`remove ${id}`);
+    },
   };
   return { api, calls };
 }

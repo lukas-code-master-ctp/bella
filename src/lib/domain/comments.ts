@@ -11,12 +11,13 @@ export const PRIVATE_REPLY_DAYS = 7;
 /**
  * Guarda los comentarios nuevos de un webhook de Instagram (field "comments") o de la página
  * (field "feed", item "comment"). Ignora los de la propia cuenta, como las respuestas del equipo.
+ * Devuelve los ids de los guardados, para pasarlos por las reglas de comentarios.
  */
-export async function receiveComments(payload: MessengerWebhook): Promise<number> {
+export async function receiveComments(payload: MessengerWebhook): Promise<string[]> {
   const platform = platformOf(payload);
-  if (!platform) return 0;
+  if (!platform) return [];
   const own = new Set([process.env.META_PAGE_ID, process.env.META_IG_ACCOUNT_ID].filter(Boolean));
-  let saved = 0;
+  const saved: string[] = [];
   for (const entry of payload.entry ?? []) {
     own.add(entry.id);
     for (const change of entry.changes ?? []) {
@@ -41,7 +42,7 @@ export async function receiveComments(payload: MessengerWebhook): Promise<number
           },
         })
         .catch(() => null); // Meta reintentó un comentario ya guardado.
-      if (created) saved++;
+      if (created) saved.push(created.id);
     }
   }
   return saved;
@@ -50,7 +51,7 @@ export async function receiveComments(payload: MessengerWebhook): Promise<number
 export function listComments({ done = false, take = 50 } = {}) {
   return db.socialComment.findMany({
     where: { doneAt: done ? { not: null } : null },
-    include: { repliedBy: { select: { name: true } } },
+    include: { repliedBy: { select: { name: true } }, rule: { select: { name: true } } },
     orderBy: { createdAt: done ? "desc" : "asc" },
     take,
   });
