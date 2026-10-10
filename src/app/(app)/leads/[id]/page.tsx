@@ -90,6 +90,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       stage: true,
       assignee: true,
       source: true,
+      variant: { select: { name: true } },
       messages: { include: { user: true }, orderBy: { createdAt: "asc" } },
       events: { include: { user: true }, orderBy: { createdAt: "desc" } },
       tasks: { include: { assignee: true }, orderBy: [{ completedAt: { sort: "desc", nulls: "first" } }, { dueAt: "asc" }] },
@@ -139,7 +140,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
           <div className="min-w-0">
             <h1 className="truncate font-semibold text-slate-900">{lead.contact.name}</h1>
             <p className="text-xs text-slate-600">
-              {[waNumber ? `${CHANNEL_LABEL[lead.contact.channel]} (${waNumber.label})` : CHANNEL_LABEL[lead.contact.channel], lead.contact.phone, lead.stage.name]
+              {[waNumber ? `${CHANNEL_LABEL[lead.contact.channel]} (${waNumber.label})` : CHANNEL_LABEL[lead.contact.channel], lead.contact.phone, lead.stage.name, lead.variant && `Prueba A/B: ${lead.variant.name}`]
                 .filter(Boolean)
                 .join(" · ")}
             </p>

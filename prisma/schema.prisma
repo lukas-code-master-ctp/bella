@@ -244,6 +244,9 @@ model Lead {
   /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.
   insightsAt DateTime?
 
+  /// Variante de la asistente que le tocó en una prueba A/B (ver src/lib/domain/ab-tests.ts).
+  variantId String?
+
   contact       Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
   stage         Stage             @relation(fields: [stageId], references: [id])
   assignee      User?             @relation("Assignee", fields: [assigneeId], references: [id])
@@ -256,10 +259,30 @@ model Lead {
   source        LeadSource?
   conversions   ConversionEvent[]
   webhookCalls  WebhookDelivery[]
+  variant       AssistantVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([stageId])
   @@index([assigneeId])
   @@index([followUpAt])
+  @@index([variantId])
+}
+
+/// Variante de la asistente en una prueba A/B por canal. Cada lead nuevo del canal recibe una
+/// variante activa al azar según su peso y la mantiene toda la conversación.
+model AssistantVariant {
+  id            String   @id @default(cuid())
+  name          String
+  channel       Channel
+  /// Nombre de la asistente en esta variante; vacío usa el del embudo o el general.
+  assistantName String?
+  /// Instrucciones que se suman a las del embudo y las generales.
+  instructions  String   @default("")
+  /// Proporción relativa de leads nuevos que reciben esta variante.
+  weight        Int      @default(50)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  leads Lead[]
 }
 
 model Message {
