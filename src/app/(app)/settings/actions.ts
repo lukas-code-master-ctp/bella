@@ -18,6 +18,7 @@ import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conve
 import { saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, DEFAULT_FUNNEL_ID, deleteFunnel, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
+import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
@@ -191,12 +192,13 @@ export async function deleteTagAction(id: string) {
 
 export async function createRuleAction(form: FormData) {
   await requireAdmin();
-  // El disparador se deduce del destino elegido: una etapa o una etiqueta.
+  // El disparador se deduce del destino elegido: una etapa, una etiqueta o un botón de plantilla.
   const target = str(form, "target");
-  const isStage = (await db.stage.count({ where: { id: target } })) > 0;
-  const isTag = !isStage && (await db.tag.count({ where: { id: target } })) > 0;
-  if (!isStage && !isTag) return;
-  const trigger: RuleTrigger = isStage ? "STAGE_ENTERED" : "TAG_ADDED";
+  let trigger: RuleTrigger;
+  if (target === TEMPLATE_REPLY_TARGET) trigger = "TEMPLATE_REPLY";
+  else if ((await db.stage.count({ where: { id: target } })) > 0) trigger = "STAGE_ENTERED";
+  else if ((await db.tag.count({ where: { id: target } })) > 0) trigger = "TAG_ADDED";
+  else return;
   const executiveIds = form.getAll("executives").map(String);
   await db.assignmentRule.create({
     data: {
@@ -204,6 +206,8 @@ export async function createRuleAction(form: FormData) {
       trigger,
       stageId: trigger === "STAGE_ENTERED" ? target : null,
       tagId: trigger === "TAG_ADDED" ? target : null,
+      buttonText: trigger === "TEMPLATE_REPLY" ? str(form, "buttonText") || null : null,
+      pauseAi: trigger === "TEMPLATE_REPLY" && form.get("pauseAi") === "on",
       strategy: str(form, "strategy") as AssignStrategy,
       reassign: form.get("reassign") === "on",
       priority: Number(str(form, "priority") || 0),
