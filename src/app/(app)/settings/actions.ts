@@ -11,7 +11,7 @@ import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/d
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
 import { subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
-import { saveChannelSettings } from "@/lib/domain/channels";
+import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { saveLegalSettings } from "@/lib/domain/privacy";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
@@ -210,6 +210,7 @@ export async function saveChannelsAction(form: FormData) {
     whatsappAi: form.get("whatsappAi") === "on",
     instagramAi: form.get("instagramAi") === "on",
     facebookAi: form.get("facebookAi") === "on",
+    replyDelaySeconds: Math.min(Math.max(Math.round(Number(form.get("replyDelaySeconds")) || 0), 0), MAX_REPLY_DELAY_SECONDS),
   });
   revalidatePath("/settings/channels");
 }

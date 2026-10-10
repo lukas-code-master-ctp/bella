@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
-import { answerLead } from "@/lib/ai/respond";
+import { answerLead, answerLeadWhenQuiet } from "@/lib/ai/respond";
 import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient } from "@/lib/ai/providers";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
@@ -252,6 +252,49 @@ describe("WhatsApp: la IA responde", () => {
     // Sin WHATSAPP_TOKEN no sale, y queda a la vista por qué.
     expect([ai[0].deliveryStatus, ai[0].deliveryError]).toEqual(["FAILED", "Falta WHATSAPP_TOKEN en las variables de entorno."]);
     expect((await db.lead.findUniqueOrThrow({ where: { id: leadId } })).agentBusyUntil).toBeNull();
+  });
+
+  it("espera a que el cliente deje de escribir y responde sus mensajes seguidos de una vez", async () => {
+    await seedFunnel();
+    await saveChannelSettings({ whatsappAi: true, replyDelaySeconds: 15 });
+    const chat = fakeChat("¡Hola! Sí, tenemos parcelas en Pucón.");
+    const clients = { openrouter: chat.client };
+    const [leadId] = await receiveWhatsApp(webhook([text("wamid.1", "Hola")]));
+    const waits: number[] = [];
+
+    // Mientras espera el primero, el cliente manda otro mensaje: el primero no responde.
+    await answerLeadWhenQuiet(leadId, {
+      clients,
+      wait: async (ms) => {
+        waits.push(ms);
+        await receiveWhatsApp(webhook([text("wamid.2", "¿Tienen en Pucón?")]));
+      },
+    });
+    expect(chat.calls()).toBe(0);
+
+    // El del segundo mensaje espera su plazo sin novedades y responde ambos.
+    await answerLeadWhenQuiet(leadId, {
+      clients,
+      wait: async (ms) => {
+        waits.push(ms);
+        await db.message.updateMany({ where: { leadId }, data: { createdAt: new Date(Date.now() - ms) } });
+      },
+    });
+    expect(waits).toEqual([15_000, 15_000]);
+    expect((await db.message.findMany({ where: { author: "AI" } })).map((m) => m.body)).toEqual([
+      "¡Hola! Sí, tenemos parcelas en Pucón.",
+    ]);
+  });
+
+  it("con espera 0 responde al instante", async () => {
+    await seedFunnel();
+    await saveChannelSettings({ whatsappAi: true, replyDelaySeconds: 0 });
+    const chat = fakeChat("¡Hola!");
+    const [leadId] = await receiveWhatsApp(webhook([text("wamid.1", "Hola")]));
+    let waited = false;
+    await answerLeadWhenQuiet(leadId, { clients: { openrouter: chat.client }, wait: async () => (waited = true) });
+    expect(waited).toBe(false);
+    expect(await db.message.count({ where: { author: "AI" } })).toBe(1);
   });
 
   it("los seguimientos automáticos no le escriben a WhatsApp mientras la IA del canal esté apagada", async () => {

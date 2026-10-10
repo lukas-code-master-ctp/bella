@@ -1,5 +1,5 @@
 import { after, NextResponse, type NextRequest } from "next/server";
-import { answerLead } from "@/lib/ai/respond";
+import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import type { MessengerWebhook } from "@/lib/channels/messenger";
 import { validSignature } from "@/lib/channels/whatsapp";
 import { receiveMessenger } from "@/lib/domain/channels";
@@ -33,6 +33,6 @@ export async function POST(request: NextRequest) {
   }
   await receiveComments(payload);
   const leads = await receiveMessenger(payload);
-  if (leads.length) after(() => Promise.all(leads.map((id) => answerLead(id))));
+  if (leads.length) after(() => Promise.all(leads.map((id) => answerLeadWhenQuiet(id))));
   return NextResponse.json({ ok: true });
 }
