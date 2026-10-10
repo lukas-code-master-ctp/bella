@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { AssignStrategy, Role, RuleTrigger } from "@prisma/client";
+import { redirect } from "next/navigation";
+import type { AssignStrategy, Channel, Role, RuleTrigger } from "@prisma/client";
 import { hashPassword, requireAdmin } from "@/lib/auth";
 import { DEFAULT_SUMMARY_MODEL, type AiConfig, type AiEffort, type AiProvider } from "@/lib/ai/config";
 import { listOpenRouterModels } from "@/lib/ai/models";
@@ -14,6 +15,9 @@ import { subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { saveLegalSettings } from "@/lib/domain/privacy";
+import { createFunnel, DEFAULT_FUNNEL_ID, deleteFunnel, updateFunnel } from "@/lib/domain/funnels";
+import { DomainError } from "@/lib/domain/leads";
+import { CHANNEL_LABEL } from "@/lib/labels";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
 
@@ -62,10 +66,13 @@ export async function saveAiAction(_prev: string | null, form: FormData): Promis
 export async function createStageAction(form: FormData) {
   await requireAdmin();
   const name = str(form, "name");
+  const funnelId = str(form, "funnelId") || DEFAULT_FUNNEL_ID;
   if (!name) return;
-  const last = await db.stage.findFirst({ orderBy: { position: "desc" } });
+  if (await db.stage.findFirst({ where: { funnelId, name: { equals: name, mode: "insensitive" } } })) return;
+  const last = await db.stage.findFirst({ where: { funnelId }, orderBy: { position: "desc" } });
   await db.stage.create({
     data: {
+      funnelId,
       name,
       color: str(form, "color") || "#64748b",
       requiresHuman: form.get("requiresHuman") === "on",
@@ -92,7 +99,8 @@ export async function updateStageAction(id: string, form: FormData) {
 
 export async function moveStagePositionAction(id: string, direction: -1 | 1) {
   await requireAdmin();
-  const stages = await db.stage.findMany({ orderBy: { position: "asc" } });
+  const stage = await db.stage.findUniqueOrThrow({ where: { id } });
+  const stages = await db.stage.findMany({ where: { funnelId: stage.funnelId }, orderBy: { position: "asc" } });
   const index = stages.findIndex((s) => s.id === id);
   const other = stages[index + direction];
   if (!other) return;
@@ -109,6 +117,52 @@ export async function deleteStageAction(id: string) {
   if (inUse > 0) throw new Error("No se puede borrar una etapa con leads. Muévelos primero.");
   await db.stage.delete({ where: { id } });
   revalidatePath("/settings/funnel");
+}
+
+// Embudos
+
+export async function createFunnelAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  let id: string;
+  try {
+    id = (await createFunnel(str(form, "name"))).id;
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/funnel");
+  redirect(`/settings/funnel?funnel=${id}`);
+}
+
+export async function updateFunnelAction(id: string, _prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  const channels = form.getAll("channels").map(String).filter((c): c is Channel => c in CHANNEL_LABEL);
+  try {
+    await updateFunnel(id, {
+      name: str(form, "name"),
+      channels,
+      assistantName: str(form, "assistantName"),
+      instructions: str(form, "instructions"),
+    });
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/funnel");
+  revalidatePath("/funnel");
+  return "Guardado.";
+}
+
+export async function deleteFunnelAction(id: string, _prev: string | null): Promise<string | null> {
+  await requireAdmin();
+  try {
+    await deleteFunnel(id);
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/funnel");
+  redirect("/settings/funnel");
 }
 
 // Etiquetas

@@ -7,6 +7,7 @@
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import { ensureDefaultFunnel } from "../src/lib/domain/default-funnel";
 import { applyPreset } from "../src/lib/domain/presets";
 import { COMPRA_TU_PARCELA } from "../src/lib/presets/compra-tu-parcela";
 
@@ -26,6 +27,7 @@ async function main() {
     }
   }
 
+  await ensureDefaultFunnel(db);
   if ((await db.stage.count()) === 0) {
     const stages = [
       { name: "Nuevo", color: "#64748b" },

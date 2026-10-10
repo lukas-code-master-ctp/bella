@@ -4,6 +4,7 @@ import { deliverPendingPush } from "../push";
 import { applyAssignment } from "./assignment";
 import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
 import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
+import { entryStage } from "./funnels";
 import { moveOpenTasksTx } from "./tasks";
 import { deliverPendingWebhooks, queueStageWebhooksTx } from "./webhooks";
 
@@ -19,10 +20,8 @@ export class DomainError extends Error {}
  */
 export async function createLead(
   input: { name: string; channel: Channel; phone?: string; externalId?: string } | { contactId: string },
-  options: { aiEnabled?: boolean } = {},
+  options: { aiEnabled?: boolean; funnelId?: string | null } = {},
 ) {
-  const firstStage = await db.stage.findFirst({ orderBy: { position: "asc" } });
-  if (!firstStage) throw new DomainError("No hay etapas configuradas en el funnel.");
   const created = await db.$transaction(async (tx) => {
     const contact =
       "contactId" in input
@@ -30,6 +29,8 @@ export async function createLead(
         : await tx.contact.create({
             data: { name: input.name, channel: input.channel, phone: input.phone, externalId: input.externalId },
           });
+    // Entra al embudo de su canal (o al indicado, ej. desde el simulador).
+    const firstStage = await entryStage(tx, contact.channel, options.funnelId);
     const lead = await tx.lead.create({
       data: { contactId: contact.id, stageId: firstStage.id, ...(options.aiEnabled === false ? { aiEnabled: false } : {}) },
     });
@@ -234,8 +235,10 @@ export async function setAiEnabled(leadId: string, enabled: boolean, by: ActorRe
  * (si existe), pausa la IA y deja que las reglas asignen un ejecutivo.
  */
 export async function handoffToHumanTx(tx: Tx, leadId: string, reason: string) {
+  const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId }, include: { stage: true } });
+  // La etapa de atención humana del mismo embudo del lead.
   const humanStage = await tx.stage.findFirst({
-    where: { requiresHuman: true },
+    where: { requiresHuman: true, funnelId: lead.stage.funnelId },
     orderBy: { position: "asc" },
   });
   await tx.leadEvent.create({ data: { leadId, type: "HANDOFF", actor: "AI", reason } });

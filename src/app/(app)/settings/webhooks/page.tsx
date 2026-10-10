@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RotateCcw, Trash2, Webhook } from "lucide-react";
+import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -19,7 +20,7 @@ const time = (d: Date) =>
 export default async function WebhooksPage() {
   const [webhooks, stages, deliveries] = await Promise.all([
     db.webhook.findMany({ include: { stage: true }, orderBy: { createdAt: "asc" } }),
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
     db.webhookDelivery.findMany({
       orderBy: { createdAt: "desc" },
       take: 20,
@@ -84,7 +85,7 @@ export default async function WebhooksPage() {
           {stages.length === 0 ? (
             <p className="text-sm text-slate-500">Primero crea las etapas en Funnel y etiquetas.</p>
           ) : (
-            <NewWebhookForm stages={stages.map((s) => ({ id: s.id, name: s.name }))} />
+            <NewWebhookForm stages={stages.map((s) => ({ id: s.id, name: s.label }))} />
           )}
         </Card>
 

@@ -12,7 +12,7 @@ export default async function ContactsSettingsPage() {
     db.customField.findMany({ orderBy: { position: "asc" }, select: { name: true } }),
     findDuplicateGroups(),
   ]);
-  const columns = ["Nombre", "Teléfono", "Correo", "Etiquetas", "Etapa", "Ejecutivo", ...fields.map((f) => f.name)];
+  const columns = ["Nombre", "Teléfono", "Correo", "Etiquetas", "Embudo", "Etapa", "Ejecutivo", ...fields.map((f) => f.name)];
 
   return (
     <>

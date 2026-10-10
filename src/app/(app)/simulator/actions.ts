@@ -8,7 +8,7 @@ import { createLead } from "@/lib/domain/leads";
 export async function createSimulatedLeadAction(form: FormData) {
   const user = await requireUser();
   const name = String(form.get("name") ?? "").trim() || "Cliente de prueba";
-  const lead = await createLead({ name, channel: "SIMULATOR" });
+  const lead = await createLead({ name, channel: "SIMULATOR" }, { funnelId: String(form.get("funnelId") ?? "") || null });
   // Un ejecutivo debe poder ver el lead que acaba de crear para probar.
   if (user.role === "EXECUTIVE") {
     const current = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });

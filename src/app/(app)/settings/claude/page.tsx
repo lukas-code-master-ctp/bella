@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { API_KEY_ENV } from "@/lib/ai/config";
 import { MESSENGER_ENV } from "@/lib/channels/messenger";
@@ -33,7 +34,7 @@ export default async function ClaudeSetupPage() {
     getAssistantSettings(),
     getFollowUpSettings(),
     getSetting<InventorySettings>("inventory", { sheetUrl: "" }),
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
     db.knowledgeDoc.count(),
     db.customField.count(),
     db.user.count({ where: { role: "EXECUTIVE", active: true } }),
@@ -51,7 +52,7 @@ export default async function ClaudeSetupPage() {
     assistant,
     knowledgeDocs,
     inventorySheet: Boolean(inventory.sheetUrl),
-    stages: stages.map((s) => s.name),
+    stages: stages.map((s) => s.label),
     fields,
     followUps: followUps.enabled,
     executives,

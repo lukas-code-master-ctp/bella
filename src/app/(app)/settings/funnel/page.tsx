@@ -1,6 +1,9 @@
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { db } from "@/lib/db";
-import { Card, inputClass, PageHeader, TagPill } from "@/components/ui";
+import { DEFAULT_FUNNEL_ID, ensureDefaultFunnel, listFunnels } from "@/lib/domain/funnels";
+import { getAssistantSettings } from "@/lib/settings";
+import { buttonClass, Card, inputClass, PageHeader, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { ConfirmButton } from "@/components/confirm-button";
 import {
@@ -11,22 +14,56 @@ import {
   moveStagePositionAction,
   updateStageAction,
 } from "../actions";
+import { FunnelForm, NewFunnelForm } from "./funnel-forms";
 
 const colorClass = "size-10 shrink-0 rounded-lg border border-slate-300 bg-white p-1";
 const checkClass = "size-4 rounded border-slate-300 accent-brand-600";
 
-export default async function FunnelSettingsPage() {
-  const [stages, tags, counts] = await Promise.all([
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+export default async function FunnelSettingsPage({ searchParams }: { searchParams: Promise<{ funnel?: string }> }) {
+  const { funnel: selected } = await searchParams;
+  await ensureDefaultFunnel(db);
+  const [funnels, tags, counts, assistant] = await Promise.all([
+    listFunnels(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     db.lead.groupBy({ by: ["stageId"], _count: { _all: true } }),
+    getAssistantSettings(),
   ]);
+  const funnel = funnels.find((f) => f.id === selected) ?? funnels[0];
+  const stages = await db.stage.findMany({ where: { funnelId: funnel.id }, orderBy: { position: "asc" } });
   const leadsIn = (id: string) => counts.find((c) => c.stageId === id)?._count._all ?? 0;
 
   return (
     <>
       <PageHeader
-        title="Etapas del funnel"
+        title="Embudos"
+        description="Cada línea de negocio puede tener su embudo, con sus etapas, los canales que entran a él y su propia asistente."
+      />
+      <Card className="mb-6 space-y-4 p-4">
+        <nav aria-label="Embudos" className="flex flex-wrap gap-2">
+          {funnels.map((f) => (
+            <Link
+              key={f.id}
+              href={`/settings/funnel?funnel=${f.id}`}
+              aria-current={f.id === funnel.id ? "page" : undefined}
+              className={buttonClass(f.id === funnel.id ? "primary" : "secondary", "sm")}
+            >
+              {f.name}
+            </Link>
+          ))}
+        </nav>
+        <NewFunnelForm />
+      </Card>
+      <Card className="mb-6 p-5">
+        <FunnelForm
+          key={funnel.id}
+          funnel={funnel}
+          defaultAssistant={assistant.assistantName}
+          removable={funnel.id !== DEFAULT_FUNNEL_ID}
+        />
+      </Card>
+
+      <PageHeader
+        title={funnels.length > 1 ? `Etapas de ${funnel.name}` : "Etapas del funnel"}
         description="En las etapas que atiende la IA, escribe cuándo debe mover al lead y a qué etapa; si no nombras otra, avanza a la siguiente. Al entrar a una etapa de atención humana, la IA se pausa y se asigna un ejecutivo automáticamente."
       />
       <Card className="divide-y divide-slate-100">
@@ -93,6 +130,7 @@ export default async function FunnelSettingsPage() {
           </div>
         ))}
         <form action={createStageAction} className="flex flex-wrap items-center gap-3 rounded-b-xl bg-slate-50 p-3 pl-14">
+          <input type="hidden" name="funnelId" value={funnel.id} />
           <input type="color" name="color" aria-label="Color" defaultValue="#64748b" className={colorClass} />
           <input name="name" required aria-label="Nueva etapa" placeholder="Nueva etapa" className={`${inputClass} max-w-xs`} />
           <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">

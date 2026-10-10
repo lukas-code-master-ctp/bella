@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight, FlaskConical, History, MessageCircle } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { listFunnels } from "@/lib/domain/funnels";
 import { Avatar, Badge, Card, CardHeader, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
@@ -9,12 +10,12 @@ import { createSimulatedLeadAction } from "./actions";
 
 export default async function SimulatorPage() {
   const user = await requireUser();
-  const leads = await db.lead.findMany({
+  const [funnels, leads] = await Promise.all([listFunnels(), db.lead.findMany({
     where: { contact: { channel: "SIMULATOR" }, ...(user.role === "ADMIN" ? {} : { assigneeId: user.id }) },
     include: { contact: true, stage: true },
     orderBy: { createdAt: "desc" },
     take: 20,
-  });
+  })]);
   return (
     <>
       <PageHeader
@@ -32,6 +33,17 @@ export default async function SimulatorPage() {
             <Field label="Nombre del cliente ficticio">
               <input name="name" placeholder="Ej. Pedro González" className={inputClass} />
             </Field>
+            {funnels.length > 1 && (
+              <Field label="Embudo">
+                <select name="funnelId" defaultValue={funnels.find((f) => f.channels.includes("SIMULATOR"))?.id ?? funnels[0].id} className={inputClass}>
+                  {funnels.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <SubmitButton pendingText="Creando…">
               <MessageCircle aria-hidden />
               Empezar conversación

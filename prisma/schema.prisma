@@ -85,7 +85,9 @@ model User {
 /// al entrar, la IA se pausa y se asigna un ejecutivo.
 model Stage {
   id            String  @id @default(cuid())
-  name          String  @unique
+  /// Embudo al que pertenece. "default" es el embudo que crea la migración (ver DEFAULT_FUNNEL_ID).
+  funnelId      String  @default("default")
+  name          String
   position      Int
   requiresHuman Boolean @default(false)
   color         String  @default("#64748b")
@@ -93,9 +95,30 @@ model Stage {
   /// que la asistente recibe en <crm_state>; sin destino nombrado, avanza a la siguiente.
   exitCriteria  String?
 
+  funnel   Funnel           @relation(fields: [funnelId], references: [id])
   leads    Lead[]
   rules    AssignmentRule[]
   webhooks Webhook[]
+
+  @@unique([funnelId, name])
+  @@index([funnelId, position])
+}
+
+/// Embudo de ventas: una línea de negocio con sus etapas y, si se configura, su propia asistente
+/// (nombre e instrucciones). Los leads nuevos de un canal entran al embudo que tiene ese canal.
+model Funnel {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  position      Int
+  /// Canales cuyos leads nuevos entran a este embudo. Un canal sin embudo va al primero.
+  channels      Channel[]
+  /// Nombre de la asistente en este embudo; vacío usa el de Configuración → Asistente.
+  assistantName String?
+  /// Instrucciones propias de este embudo, que se suman a las generales.
+  instructions  String?
+  createdAt     DateTime  @default(now())
+
+  stages Stage[]
 }
 
 /// Etiqueta de contacto agrupada por categoría (ej. "Producto" / "Interés").

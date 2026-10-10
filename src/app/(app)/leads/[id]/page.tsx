@@ -7,6 +7,7 @@ import { ArrowLeft, Ban, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLin
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
+import { stageOptions } from "@/lib/domain/funnels";
 import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { sourceLabel } from "@/lib/domain/attribution";
@@ -97,7 +98,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   if (!lead || !canAccessLead(user, lead)) notFound();
 
   const [stages, tags, executives, fields, followUps] = await Promise.all([
-    db.stage.findMany({ orderBy: { position: "asc" } }),
+    stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     db.customField.findMany({
@@ -234,7 +235,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               <select key={lead.stageId} name="stageId" aria-label="Etapa" defaultValue={lead.stageId} className={inputClass}>
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.label}
                   </option>
                 ))}
               </select>

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { startOfLocalDay } from "@/lib/dates";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { hasUnseenInsight } from "@/lib/ai/weekly-insights";
+import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration, getMetrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
 
@@ -20,7 +21,7 @@ const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : "â€
 const money = (n: number) => `$${n.toLocaleString("es-CL")}`;
 const int = (n: number) => n.toLocaleString("es-CL");
 
-export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ d?: string; executive?: string }> }) {
+export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ d?: string; executive?: string; funnel?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const isAdmin = user.role === "ADMIN";
@@ -28,8 +29,11 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   // El ejecutivo ve solo sus leads; el admin, todos o los de un ejecutivo.
   const assigneeId = isAdmin ? params.executive || undefined : user.id;
   const now = new Date();
+  // Con varios embudos, las mÃ©tricas son de uno a la vez (las etapas de cada uno son distintas).
+  const funnels = await listFunnels();
+  const funnelId = funnels.length > 1 ? (funnels.find((f) => f.id === params.funnel) ?? funnels[0]).id : undefined;
   const [m, executives, newInsight] = await Promise.all([
-    getMetrics({ from: startOfLocalDay(now, -(days - 1)), to: now, assigneeId }),
+    getMetrics({ from: startOfLocalDay(now, -(days - 1)), to: now, assigneeId, funnelId }),
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     isAdmin && hasUnseenInsight(user.id),
   ]);
@@ -64,6 +68,20 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
               </option>
             ))}
           </select>
+          {funnelId && (
+            <>
+              <label htmlFor="funnel" className="sr-only">
+                Embudo
+              </label>
+              <select id="funnel" name="funnel" defaultValue={funnelId} className={`${inputClass} sm:w-44`}>
+                {funnels.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           {isAdmin && (
             <>
               <label htmlFor="executive" className="sr-only">
