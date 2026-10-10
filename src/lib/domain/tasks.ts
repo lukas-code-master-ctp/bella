@@ -1,7 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
-import { startOfLocalDay } from "../dates";
+import { formatDue, startOfLocalDay } from "../dates";
+import { deliverPendingPush } from "../push";
 import { DomainError, type ActorRef } from "./leads";
+import { notifyTaskDueTx } from "./notifications";
 
 type Tx = Prisma.TransactionClient;
 
@@ -155,4 +157,37 @@ export async function findDueTasks(until: Date, since?: Date) {
     },
     orderBy: { dueAt: "asc" },
   });
+}
+
+/** Con cuánta anticipación se avisa que una tarea vence. */
+export const REMINDER_LEAD_MS = 60 * 60_000;
+/** Las tareas que vencieron hace más que esto ya no se avisan (ej. las antiguas al activar los avisos). */
+const REMINDER_MAX_LATE_MS = 6 * 60 * 60_000;
+
+/**
+ * Avisa una vez por tarea, cuando falta una hora o menos para su plazo (o si ya venció hace
+ * poco y no se había avisado). Solo tareas pendientes de leads abiertos. La llama el cron
+ * cada 15 minutos.
+ */
+export async function sendTaskReminders(now = new Date()) {
+  const due = await db.task.findMany({
+    where: {
+      completedAt: null,
+      remindedAt: null,
+      dueAt: { lte: new Date(now.getTime() + REMINDER_LEAD_MS), gt: new Date(now.getTime() - REMINDER_MAX_LATE_MS) },
+      lead: { status: "OPEN" },
+    },
+    orderBy: { dueAt: "asc" },
+  });
+  for (const task of due) {
+    const when = formatDue(task.dueAt, now);
+    const body = task.dueAt < now ? `Tarea vencida: «${task.title}» (${when.toLowerCase()})` : `Tarea por vencer: «${task.title}» (${when})`;
+    await db.$transaction(async (tx) => {
+      // Si otra ejecución ya la avisó, no se repite.
+      const { count } = await tx.task.updateMany({ where: { id: task.id, remindedAt: null }, data: { remindedAt: now } });
+      if (count) await notifyTaskDueTx(tx, task, body);
+    });
+  }
+  if (due.length) await deliverPendingPush();
+  return { reminded: due.length };
 }

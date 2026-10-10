@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatAgo } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
+import { formatDue } from "@/lib/dates";
+import { bucketOf } from "@/lib/domain/tasks";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
 import { Board } from "./board";
@@ -25,6 +27,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
         contact: { include: { tags: { include: { tag: true } } } },
         assignee: true,
         messages: { orderBy: { createdAt: "desc" }, take: 1 },
+        tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } },
       },
       orderBy: byScore ? [{ score: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }] : { updatedAt: "desc" },
     }),
@@ -114,6 +117,9 @@ export default async function FunnelPage({ searchParams }: { searchParams: Promi
             summary: l.aiSummary,
             score: l.score,
             scoreReason: l.scoreReason,
+            nextTask: l.tasks[0]
+              ? { title: l.tasks[0].title, due: formatDue(l.tasks[0].dueAt, now), bucket: bucketOf(l.tasks[0].dueAt, now) }
+              : null,
             tags: l.contact.tags.map((ct) => ({ label: ct.tag.name, color: ct.tag.color })),
             updatedAt: l.updatedAt.toISOString(),
           }))}
