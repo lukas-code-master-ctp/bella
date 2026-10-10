@@ -27,6 +27,7 @@ import {
 } from "../channels/messenger";
 import type { AdsApi } from "../channels/ads";
 import { attachAdSource, attachLinkSource, takeRefCode } from "./attribution";
+import { isBlocked } from "./contacts";
 import { createLead } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
 import { notifyContactMessage } from "./notifications";
@@ -223,6 +224,8 @@ async function receiveWhatsAppMessage(
   if (await db.message.findUnique({ where: { externalId: m.id } })) return null;
   const body = m.type === "audio" ? "" : describeMessage(m);
   if (body === null) return null;
+  // Un contacto bloqueado no crea leads ni avisos: su mensaje se descarta.
+  if (await isBlocked("WHATSAPP", m.from)) return null;
   const leadId = await openLeadFor("WHATSAPP", m.from, async () => profileName?.trim() || `+${m.from}`, aiEnabled, `+${m.from}`);
   const r = m.referral;
   if (r) {
@@ -292,6 +295,7 @@ async function receiveMessengerEvent(
 
   const api = deps.messenger ?? messengerApi;
   const userId = event.sender.id;
+  if (await isBlocked(platform, userId)) return null;
   const fallback = platform === "INSTAGRAM" ? "Usuario de Instagram" : "Usuario de Facebook";
   const leadId = await openLeadFor(platform, userId, async () => (await api.profileName(platform, userId)) ?? fallback, aiEnabled);
   if (referral) await attachReferral(leadId, referral, deps);
@@ -354,6 +358,8 @@ async function applyWhatsAppStatus(s: WaStatus) {
 
 // --- Salientes ---------------------------------------------------------------------------
 
+const BLOCKED_SEND_ERROR = "El contacto está bloqueado: no se le envían mensajes.";
+
 export type OutboundApis = { whatsapp?: WhatsAppApi; messenger?: MessengerApi };
 
 /**
@@ -365,6 +371,13 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
   const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { contact: true } });
   const { channel, externalId: to } = lead.contact;
   if (channel === "SIMULATOR" || !to) return null;
+  if (lead.contact.blockedAt) {
+    await db.message.updateMany({
+      where: { leadId, author: { in: ["AI", "USER"] }, deliveryStatus: null },
+      data: { deliveryStatus: "FAILED", deliveryError: BLOCKED_SEND_ERROR },
+    });
+    return BLOCKED_SEND_ERROR;
+  }
   const wa = apis.whatsapp ?? cloudApi;
   const meta = apis.messenger ?? messengerApi;
   const sender =

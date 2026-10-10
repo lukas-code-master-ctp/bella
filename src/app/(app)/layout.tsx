@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
 import { countUrgentTasks } from "@/lib/domain/tasks";
 import { countPendingComments } from "@/lib/domain/comments";
+import { hasUnseenInsight } from "@/lib/ai/weekly-insights";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
@@ -16,10 +17,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Además del cron (cada 15 minutos), mientras el equipo usa la app los seguimientos
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   after(runDueFollowUpsIfStale);
-  const [urgentTasks, unread, pendingComments] = await Promise.all([
+  const [urgentTasks, unread, pendingComments, newInsight] = await Promise.all([
     countUrgentTasks(user.id),
     unreadNotificationCount(user.id),
     countPendingComments(),
+    user.role === "ADMIN" && hasUnseenInsight(user.id),
   ]);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
@@ -74,6 +76,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </NavLink>
           <NavLink href="/metrics" icon={<ChartNoAxesColumn />}>
             Métricas
+            {newInsight && (
+              <span className="ml-auto rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
+                <span className="sr-only">, resumen semanal </span>
+                Nuevo
+              </span>
+            )}
           </NavLink>
           <NavLink href="/simulator" icon={<FlaskConical />}>
             Simulador

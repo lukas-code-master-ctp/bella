@@ -8,6 +8,7 @@ import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
 import { sendFollowUpNow } from "@/lib/ai/follow-ups";
 import { deliverOutbound } from "@/lib/domain/channels";
+import { blockContact, unblockContact } from "@/lib/domain/contacts";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
@@ -33,6 +34,8 @@ async function authorize(leadId: string) {
   return { user, lead, by: { actor: "USER" as const, userId: user.id } };
 }
 
+const BLOCKED = "El contacto está bloqueado. Desbloquéalo para escribirle.";
+
 function done(leadId: string) {
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/funnel");
@@ -47,6 +50,7 @@ function refreshInsightsLater(leadId: string) {
 export async function sendAsContactAction(leadId: string, _prev: string | null, form: FormData) {
   const { lead } = await authorize(leadId);
   if (lead.contact.channel !== "SIMULATOR") return "Solo disponible en leads del simulador.";
+  if (lead.contact.blockedAt) return BLOCKED;
   const body = String(form.get("body") ?? "").trim();
   const audio = await audioFrom(form);
   if (audio) {
@@ -95,6 +99,7 @@ function audioError(e: unknown) {
  */
 export async function sendAsUserAction(leadId: string, form: FormData): Promise<string | null> {
   const { user, lead, by } = await authorize(leadId);
+  if (lead.contact.blockedAt) return BLOCKED;
   const body = String(form.get("body") ?? "").trim();
   const audio = await audioFrom(form);
   if (audio) {
@@ -219,4 +224,17 @@ export async function refreshInsightsAction(leadId: string): Promise<string | nu
 export async function getAgentRunAction(leadId: string, messageId: string) {
   await authorize(leadId);
   return loadRunView(leadId, messageId);
+}
+
+/** Bloquea al contacto: cierra sus leads abiertos y descarta sus mensajes nuevos. */
+export async function blockContactAction(leadId: string, form: FormData) {
+  const { by } = await authorize(leadId);
+  await blockContact(leadId, by, String(form.get("reason") ?? ""));
+  done(leadId);
+}
+
+export async function unblockContactAction(leadId: string) {
+  const { by } = await authorize(leadId);
+  await unblockContact(leadId, by);
+  done(leadId);
 }

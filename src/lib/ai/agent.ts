@@ -219,9 +219,9 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   const startedAt = new Date();
   const lead = await db.lead.findUniqueOrThrow({
     where: { id: leadId },
-    include: { transcript: true, stage: true, contact: { select: { channel: true } } },
+    include: { transcript: true, stage: true, contact: { select: { channel: true, blockedAt: true } } },
   });
-  if (!lead.aiEnabled || lead.status !== "OPEN") return "skipped";
+  if (!lead.aiEnabled || lead.status !== "OPEN" || lead.contact.blockedAt) return "skipped";
 
   const [settings, config, followUps, operation] = await Promise.all([
     getAssistantSettings(),
