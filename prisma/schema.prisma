@@ -118,6 +118,10 @@ model Contact {
   channel    Channel
   externalId String?
   createdAt  DateTime @default(now())
+  /// Contacto bloqueado (spam, mensajes personales, postulantes): sus mensajes nuevos se
+  /// descartan y ni la IA ni el equipo le escriben (ver src/lib/domain/contacts.ts).
+  blockedAt     DateTime?
+  blockedReason String?
 
   tags   ContactTag[]
   leads  Lead[]

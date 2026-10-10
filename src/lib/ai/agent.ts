@@ -214,8 +214,11 @@ function followUpBlock(f: FollowUpTurn, s: FollowUpSettings, silentMs: number) {
 
 async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?: FollowUpTurn): Promise<TurnOutcome> {
   const startedAt = new Date();
-  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { transcript: true, stage: true } });
-  if (!lead.aiEnabled || lead.status !== "OPEN") return "skipped";
+  const lead = await db.lead.findUniqueOrThrow({
+    where: { id: leadId },
+    include: { transcript: true, stage: true, contact: { select: { blockedAt: true } } },
+  });
+  if (!lead.aiEnabled || lead.status !== "OPEN" || lead.contact.blockedAt) return "skipped";
 
   const [settings, config, followUps] = await Promise.all([getAssistantSettings(), getAiConfig(), getFollowUpSettings()]);
   const provider = providerFor(config, clients);

@@ -3,10 +3,10 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, BellRing, Bot, Check, CheckCheck, CircleAlert, CircleX, Clock, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, CircleX, Clock, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
+import { blockContactAction, closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 
@@ -41,12 +41,15 @@ export function LeadChat({
   contactName,
   userName,
   simulator,
+  blocked = false,
 }: {
   leadId: string;
   messages: ChatMessage[];
   contactName: string;
   userName: string;
   simulator: boolean;
+  /** Contacto bloqueado: no se le escribe ni se simula que escribe. */
+  blocked?: boolean;
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
@@ -84,6 +87,12 @@ export function LeadChat({
         <ScrollToBottom dep={shown.length + (typing ? 1 : 0)} />
       </div>
 
+      {blocked ? (
+        <p className="flex items-center gap-2 border-t border-slate-200 bg-white p-4 text-sm text-slate-600">
+          <Ban aria-hidden className="size-4 shrink-0 text-rose-600" />
+          Contacto bloqueado: sus mensajes nuevos se descartan y nadie le responde.
+        </p>
+      ) : (
       <div className="space-y-3 border-t border-slate-200 bg-white p-3 sm:p-4">
         {simulator && (
           <ContactComposer
@@ -104,6 +113,7 @@ export function LeadChat({
           }}
         />
       </div>
+      )}
 
       <ActivityPanel leadId={leadId} message={inspected} onClose={closeInspector} />
     </>
@@ -450,6 +460,39 @@ export function FollowUpNowButton({ leadId }: { leadId: string }) {
         Enviar ahora
       </SubmitButton>
       {message && <FormMessage>{message}</FormMessage>}
+    </form>
+  );
+}
+
+/** Bloquear al contacto pide confirmación y un motivo opcional (ej. spam, postulante). */
+export function BlockContactForm({ leadId }: { leadId: string }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <Button variant="ghost-danger" type="button" className="w-full" onClick={() => setOpen(true)}>
+        <Ban aria-hidden />
+        Bloquear contacto
+      </Button>
+    );
+  }
+  return (
+    <form action={blockContactAction.bind(null, leadId)} className="space-y-2">
+      <p className="text-xs text-slate-600">
+        Sus leads abiertos se cierran como perdidos y sus mensajes nuevos se descartan: ni la IA ni el equipo le responden.
+      </p>
+      <label htmlFor="block-reason" className="sr-only">
+        Motivo del bloqueo
+      </label>
+      <input id="block-reason" name="reason" placeholder="Motivo (opcional), ej. spam" className={inputClass} />
+      <div className="flex gap-2">
+        <SubmitButton variant="danger" pendingText="Bloqueando…">
+          <Ban aria-hidden />
+          Bloquear
+        </SubmitButton>
+        <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
+          Cancelar
+        </Button>
+      </div>
     </form>
   );
 }
