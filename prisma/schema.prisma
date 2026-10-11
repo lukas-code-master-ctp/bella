@@ -70,6 +70,8 @@ model User {
   role         Role     @default(EXECUTIVE)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
+  /// Último cambio de contraseña: invalida las sesiones abiertas antes de esa fecha.
+  passwordChangedAt DateTime?
 
   leads        Lead[]           @relation("Assignee")
   messages     Message[]
@@ -81,6 +83,20 @@ model User {
   notifications     Notification[]
   pushSubscriptions PushSubscription[]
   comments          SocialComment[]
+  passwordResets    PasswordResetToken[]
+}
+
+/// Enlace de un solo uso para recuperar la contraseña. Se guarda solo el hash del token.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 /// Etapa del funnel de ventas. `requiresHuman` marca la etapa de atención humana:

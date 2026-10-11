@@ -1,21 +1,25 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { login, logout } from "@/lib/auth";
+import { parseEmails } from "@/lib/email";
+import { passwordResetAvailable, requestPasswordReset, resetPassword } from "@/lib/domain/password-reset";
 
-export type LoginState = { error: string; email: string } | null;
+export type LoginState = { error: string; email: string; remember: boolean } | null;
 
 export async function loginAction(_prev: LoginState, form: FormData): Promise<LoginState> {
   const email = String(form.get("email") ?? "");
+  const remember = form.get("remember") === "on";
   let ok: boolean;
   try {
-    ok = await login(email, String(form.get("password") ?? ""));
+    ok = await login(email, String(form.get("password") ?? ""), remember);
   } catch (err) {
     // Errores de configuración del servidor: se muestran claros en vez de una página 500.
     console.error("[login]", err);
-    return { error: loginErrorMessage(err), email };
+    return { error: loginErrorMessage(err), email, remember };
   }
-  if (!ok) return { error: "Correo o contraseña incorrectos.", email };
+  if (!ok) return { error: "Correo o contraseña incorrectos.", email, remember };
   redirect("/funnel");
 }
 
@@ -34,4 +38,45 @@ function loginErrorMessage(err: unknown): string {
 export async function logoutAction() {
   await logout();
   redirect("/login");
+}
+
+// Recuperar contraseña
+
+export type ForgotState = { sent: boolean; error?: string; email: string } | null;
+
+/** Origen de la app para el enlace. Sale de variables del servidor y no del Host del pedido. */
+async function appOrigin() {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.VERCEL_ENV === "production" && process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  const h = await headers();
+  return `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host") ?? "localhost:3000"}`;
+}
+
+export async function forgotPasswordAction(_prev: ForgotState, form: FormData): Promise<ForgotState> {
+  const email = String(form.get("email") ?? "").trim();
+  if (!parseEmails(email).length) return { sent: false, error: "Escribe un correo válido.", email };
+  if (!(await passwordResetAvailable())) {
+    return { sent: false, error: "El envío de correos no está configurado. Pide a un administrador que te cambie la contraseña.", email };
+  }
+  try {
+    await requestPasswordReset(email, await appOrigin());
+  } catch (err) {
+    console.error("[forgot-password]", err);
+    return { sent: false, error: "No pudimos enviar el correo. Inténtalo de nuevo en unos minutos.", email };
+  }
+  // Mismo mensaje exista o no la cuenta, para no revelar qué correos están registrados.
+  return { sent: true, email };
+}
+
+export type ResetState = { error: string } | null;
+
+export async function resetPasswordAction(_prev: ResetState, form: FormData): Promise<ResetState> {
+  const password = String(form.get("password") ?? "");
+  if (password !== String(form.get("confirm") ?? "")) return { error: "Las contraseñas no coinciden." };
+  const result = await resetPassword(String(form.get("token") ?? ""), password);
+  if (!result.ok) return { error: result.error };
+  redirect("/login?restablecida=1");
 }
