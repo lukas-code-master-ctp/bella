@@ -53,7 +53,7 @@ describe("Prompts para configurar con Claude", () => {
     const p = assistantSetupPrompt(status());
     expect(p).toContain('asistente "Valentina" de "Compra tu Parcela"');
     expect(p).toContain("etapas del funnel: Nuevo, Calificado");
-    expect(p).toContain("https://bella.test/simulator");
+    expect(p).toContain("https://bella.test/chats/simulator");
     expect(p).toContain("pregúntame antes de encenderlos");
     expect(p).toContain("Clave de IA: ya está");
   });

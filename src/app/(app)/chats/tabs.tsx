@@ -2,24 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageCircle, MessagesSquare } from "lucide-react";
+import { FlaskConical, MessageCircle, MessagesSquare } from "lucide-react";
 import { LinkPending } from "@/components/link-pending";
 
-/** Submenú de Chats: todas las conversaciones o los comentarios de Instagram y Facebook. */
+/** Submenú de Chats: todas las conversaciones, los comentarios de Instagram y Facebook, y el simulador. */
 export function ChatsTabs({ pendingComments }: { pendingComments: number }) {
   const pathname = usePathname();
   const tabs = [
     { href: "/chats", label: "Todos los chats", icon: <MessageCircle />, active: pathname === "/chats", badge: 0 },
     { href: "/chats/comments", label: "Comentarios", icon: <MessagesSquare />, active: pathname.startsWith("/chats/comments"), badge: pendingComments },
+    { href: "/chats/simulator", label: "Simulador", icon: <FlaskConical />, active: pathname.startsWith("/chats/simulator"), badge: 0 },
   ];
   return (
-    <nav aria-label="Chats" className="mb-6 flex w-full gap-1 rounded-xl bg-slate-100 p-1 text-sm font-semibold sm:w-fit">
+    <nav aria-label="Chats" className="mb-6 flex w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-sm font-semibold sm:w-fit">
       {tabs.map((t) => (
         <Link
           key={t.href}
           href={t.href}
           aria-current={t.active ? "page" : undefined}
-          className={`relative flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 transition-colors duration-150 sm:flex-none [&_svg]:size-4 ${
+          className={`relative flex min-h-10 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 sm:px-4 transition-colors duration-150 sm:flex-none [&_svg]:size-4 ${
             t.active ? "bg-white text-brand-700 shadow-xs" : "text-slate-600 hover:text-slate-900"
           }`}
         >

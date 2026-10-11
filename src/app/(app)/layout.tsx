@@ -1,4 +1,4 @@
-import { Bell, ChartNoAxesColumn, FlaskConical, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
+import { Bell, ChartNoAxesColumn, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
 import { after } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
@@ -50,16 +50,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/funnel" icon={<SquareKanban />}>
             Funnel
           </NavLink>
-          <NavLink href="/tasks" icon={<ListTodo />}>
-            {user.role === "ADMIN" ? "Tareas" : "Mis tareas"}
-            {urgentTasks > 0 && (
-              <span key={urgentTasks} className="ml-auto animate-pop rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
-                <span className="sr-only">, </span>
-                {urgentTasks}
-                <span className="sr-only"> vencidas o para hoy</span>
-              </span>
-            )}
-          </NavLink>
           <NavLink href="/chats" icon={<MessagesSquare />}>
             Chats
             {pendingComments > 0 && (
@@ -74,6 +64,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             Avisos
             <UnreadBadge initial={unread} />
           </NavLink>
+          <NavLink href="/tasks" icon={<ListTodo />}>
+            {user.role === "ADMIN" ? "Tareas" : "Mis tareas"}
+            {urgentTasks > 0 && (
+              <span key={urgentTasks} className="ml-auto animate-pop rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
+                <span className="sr-only">, </span>
+                {urgentTasks}
+                <span className="sr-only"> vencidas o para hoy</span>
+              </span>
+            )}
+          </NavLink>
           <NavLink href="/metrics" icon={<ChartNoAxesColumn />}>
             Métricas
             {newInsight && (
@@ -82,9 +82,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 Nuevo
               </span>
             )}
-          </NavLink>
-          <NavLink href="/simulator" icon={<FlaskConical />}>
-            Simulador
           </NavLink>
           {user.role === "ADMIN" && (
             <NavLink href="/settings" icon={<Settings />}>
