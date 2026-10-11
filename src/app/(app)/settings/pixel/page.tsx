@@ -2,7 +2,8 @@ import Link from "next/link";
 import { CircleCheck, CircleDashed, RotateCcw } from "lucide-react";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
-import { getPixelSettings, pixelToken } from "@/lib/domain/conversions";
+import { credentials } from "@/lib/credentials";
+import { getPixelSettings } from "@/lib/domain/conversions";
 import { Badge, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { retryConversionsAction, savePixelAction } from "../actions";
@@ -31,8 +32,9 @@ export default async function PixelSettingsPage() {
       include: { lead: { select: { id: true, contact: { select: { name: true } } } } },
     }),
   ]);
-  const hasToken = Boolean(pixelToken());
-  const hasWaba = Boolean(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID);
+  const creds = await credentials();
+  const hasToken = Boolean(creds.META_CAPI_TOKEN);
+  const hasWaba = Boolean(creds.WHATSAPP_BUSINESS_ACCOUNT_ID);
   const failed = events.some((e) => e.status === "FAILED");
 
   return (
@@ -49,11 +51,11 @@ export default async function PixelSettingsPage() {
           <ul className="mb-5 space-y-2 text-sm">
             {(
               [
-                ["META_CAPI_TOKEN", hasToken, "Token de acceso de la API de Conversiones (Administrador de eventos → tu píxel → Configuración → Generar token)."],
+                ["Token de la API de Conversiones", hasToken, "Se carga en Configuración → Credenciales. Token de acceso de la API de Conversiones (Administrador de eventos → tu píxel → Configuración → Generar token)."],
                 [
-                  "WHATSAPP_BUSINESS_ACCOUNT_ID",
+                  "Id de la cuenta de WhatsApp Business",
                   hasWaba,
-                  "Opcional. Id de la cuenta de WhatsApp Business (WhatsApp Manager); mejora la atribución de los anuncios de clic a WhatsApp.",
+                  "Opcional, en Credenciales. Está en WhatsApp Manager; mejora la atribución de los anuncios de clic a WhatsApp.",
                 ],
               ] as const
             ).map(([key, ok, help]) => (
@@ -64,7 +66,7 @@ export default async function PixelSettingsPage() {
                   <CircleDashed aria-label="Falta" className="mt-0.5 size-4 shrink-0 text-slate-400" />
                 )}
                 <span>
-                  <code className="font-mono text-[13px] font-semibold text-slate-900">{key}</code>
+                  <span className="font-medium text-slate-900">{key}</span>
                   <span className="block text-xs text-slate-600">{help}</span>
                 </span>
               </li>

@@ -1,4 +1,5 @@
 import { after, NextResponse, type NextRequest } from "next/server";
+import { credential } from "@/lib/credentials";
 import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import { validSignature, type WaWebhook } from "@/lib/channels/whatsapp";
 import { logWhatsAppWebhook, logWhatsAppWebhookError, receiveWhatsApp } from "@/lib/domain/channels";
@@ -10,7 +11,7 @@ export const maxDuration = 300;
 /** Meta verifica el webhook una vez, al registrarlo: hay que devolver el challenge. */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
-  const token = process.env.META_VERIFY_TOKEN;
+  const token = await credential("META_VERIFY_TOKEN");
   if (params.get("hub.mode") === "subscribe" && token && params.get("hub.verify_token") === token) {
     return new NextResponse(params.get("hub.challenge") ?? "", { status: 200 });
   }
@@ -23,8 +24,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   const raw = await request.text();
-  if (!validSignature(raw, request.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
-    // Solo si dice venir de Meta: así un error en META_APP_SECRET queda a la vista en Canales.
+  if (!validSignature(raw, request.headers.get("x-hub-signature-256"), await credential("META_APP_SECRET"))) {
+    // Solo si dice venir de Meta: así un error en la clave secreta de la app queda a la vista en Canales.
     if (request.headers.get("x-hub-signature-256")) await logWhatsAppWebhook(null).catch(() => null);
     return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
   }

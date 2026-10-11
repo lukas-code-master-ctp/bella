@@ -1,5 +1,6 @@
 import type { SocialComment } from "@prisma/client";
 import { db } from "../db";
+import { credentials } from "../credentials";
 import { ChannelSendError } from "../channels/whatsapp";
 import { platformOf, type MessengerWebhook } from "../channels/messenger";
 import { commentsApi, type CommentsApi } from "../channels/comments";
@@ -16,7 +17,8 @@ export const PRIVATE_REPLY_DAYS = 7;
 export async function receiveComments(payload: MessengerWebhook): Promise<string[]> {
   const platform = platformOf(payload);
   if (!platform) return [];
-  const own = new Set([process.env.META_PAGE_ID, process.env.META_IG_ACCOUNT_ID].filter(Boolean));
+  const creds = await credentials();
+  const own = new Set([creds.META_PAGE_ID, creds.META_IG_ACCOUNT_ID].filter(Boolean));
   const saved: string[] = [];
   for (const entry of payload.entry ?? []) {
     own.add(entry.id);

@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "../db";
 import { startOfLocalDay } from "../dates";
@@ -7,7 +6,7 @@ import { getMetrics } from "../domain/metrics";
 import { pushToUsers } from "../push";
 import { getAssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
-import { openRouterClient, type ProviderClients } from "./providers";
+import { defaultAnthropic, openRouterClient, type ProviderClients } from "./providers";
 
 /**
  * Insights semanales: cada lunes la IA lee las conversaciones de la semana y arma un resumen
@@ -150,8 +149,6 @@ async function buildInput(from: Date, to: Date) {
   return { input: lines.join("\n"), stats };
 }
 
-let anthropicDefault: Anthropic | null = null;
-
 /**
  * Genera el resumen de la semana [from, to) y lo guarda (reemplaza el de ese mismo período si ya
  * existía). Avisa a los admins con un push. Lanza si la IA falla, para que el cron lo registre.
@@ -164,7 +161,7 @@ export async function generateWeeklyInsight(
 
   let text: string;
   if (config.provider === "anthropic") {
-    const api = clients.anthropic ?? (anthropicDefault ??= new Anthropic());
+    const api = clients.anthropic ?? (await defaultAnthropic());
     const response = await api.beta.messages.create({
       model: config.model,
       max_tokens: 3000,

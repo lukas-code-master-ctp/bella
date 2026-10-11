@@ -1,9 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "../db";
 import { getAssistantSettings } from "../settings";
 import { getAiConfig } from "./config";
-import { openRouterClient, type ProviderClients } from "./providers";
+import { defaultAnthropic, openRouterClient, type ProviderClients } from "./providers";
 
 /**
  * Resumen de una línea y puntaje (0-100) del lead, para decidir a quién atender primero sin abrir
@@ -56,8 +55,6 @@ export function parseInsights(text: string): LeadInsights | null {
   }
 }
 
-let anthropicDefault: Anthropic | null = null;
-
 /**
  * Recalcula el resumen y el puntaje si hay mensajes nuevos desde la última vez (o siempre, con
  * `force`). Pensado para correr después de responder (con `after()` en las server actions), así no
@@ -102,7 +99,7 @@ export async function refreshLeadInsights(
 
     let text: string;
     if (config.provider === "anthropic") {
-      const api = clients.anthropic ?? (anthropicDefault ??= new Anthropic());
+      const api = clients.anthropic ?? (await defaultAnthropic());
       const response = await api.beta.messages.create({
         model: config.summaryModel,
         max_tokens: 400,

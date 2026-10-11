@@ -68,7 +68,7 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
     return null;
   }
   if (lead.aiEnabled && lead.status === "OPEN") {
-    const missing = missingKeyMessage((await getAiConfig()).provider);
+    const missing = await missingKeyMessage((await getAiConfig()).provider);
     if (missing) {
       done(leadId);
       return missing;
@@ -146,7 +146,7 @@ export async function toggleAiAction(leadId: string, enabled: boolean) {
 export async function sendFollowUpNowAction(leadId: string, _prev: string | null): Promise<string | null> {
   const { lead } = await authorize(leadId);
   if (!lead.aiEnabled || lead.status !== "OPEN") return "La IA debe estar activa en un lead abierto.";
-  const missing = missingKeyMessage((await getAiConfig()).provider);
+  const missing = await missingKeyMessage((await getAiConfig()).provider);
   if (missing) return missing;
   const outcome = await sendFollowUpNow(leadId);
   done(leadId);

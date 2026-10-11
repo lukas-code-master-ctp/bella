@@ -5,6 +5,7 @@ process.env.DATABASE_URL =
 process.env.SESSION_SECRET ??= "test-secret-test-secret";
 
 const { db } = await import("@/lib/db");
+const { clearCredentialCache } = await import("@/lib/credentials");
 
 beforeEach(async () => {
   const tables = await db.$queryRaw<{ tablename: string }[]>`
@@ -14,4 +15,5 @@ beforeEach(async () => {
   );
   // Como en la base real después de la migración de embudos.
   await db.$executeRawUnsafe(`INSERT INTO "Funnel" ("id", "name", "position") VALUES ('default', 'Principal', 0)`);
+  clearCredentialCache();
 });

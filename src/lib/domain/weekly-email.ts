@@ -105,7 +105,7 @@ export async function sendWeeklyInsightEmail(
     await setSetting("weeklyEmailLog", entry);
     return entry;
   };
-  if (sender === resendSender && !emailConfigured()) return log(false, "Falta RESEND_API_KEY en las variables de entorno.");
+  if (sender === resendSender && !(await emailConfigured())) return log(false, "Falta la clave de Resend en Configuración → Credenciales.");
   if (!s.from.includes("@")) return log(false, "Falta el remitente.");
   const to = await weeklyEmailRecipients(s);
   if (!to.length) return log(false, "No hay destinatarios.");

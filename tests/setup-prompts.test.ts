@@ -20,9 +20,9 @@ const status = (over: Partial<SetupStatus> = {}): SetupStatus => ({
 describe("Prompts para configurar con Claude", () => {
   it("Meta: lista lo que falta, marca lo que ya está y trae las URLs de Bella", () => {
     const p = metaSetupPrompt(status());
-    expect(p).toContain("faltan estas variables en Vercel: WHATSAPP_TOKEN, META_CAPI_TOKEN.");
-    expect(p).toContain("- META_APP_SECRET (ya está, no la toques)");
-    expect(p).not.toContain("- WHATSAPP_TOKEN (ya está");
+    expect(p).toContain("faltan estas credenciales en Bella: Token de WhatsApp, Token de la API de Conversiones.");
+    expect(p).toContain("- Clave secreta de la app de Meta (ya está, no la toques)");
+    expect(p).not.toContain("- Token de WhatsApp (ya está");
     expect(p).toContain("https://bella.test/api/webhooks/whatsapp");
     expect(p).toContain("https://bella.test/privacidad");
     expect(p).toContain("pregúntame cuál");
@@ -36,14 +36,15 @@ describe("Prompts para configurar con Claude", () => {
     for (const step of ["Portafolio comercial", "Número de WhatsApp", "Usuario del sistema", "Publicar la app"]) {
       expect(p).toContain(step);
     }
-    expect(p).toContain("el proyecto que publica https://bella.test");
+    expect(p).toContain("https://bella.test/settings/credentials");
+    expect(p).not.toContain("Vercel");
   });
 
   it("Meta: no vuelve a pedir lo que ya está configurado", () => {
     const p = metaSetupPrompt(
       status({ missingEnv: [], whatsappNumber: "56912345678", pixel: { enabled: true, datasetId: "999", qualifiedStage: "Calificado" } }),
     );
-    expect(p).toContain("todas las variables de Meta ya están en Vercel.");
+    expect(p).toContain("todas las credenciales de Meta ya están en Bella.");
     expect(p).toContain("ya está (56912345678)");
     expect(p).toContain("ya está (999)");
     expect(p).not.toContain("qué etapa del funnel");
@@ -68,7 +69,8 @@ describe("Prompts para configurar con Claude", () => {
       }),
     );
     expect(p).toContain("sin el nombre de la empresa");
-    expect(p).toContain("como OPENROUTER_API_KEY");
+    expect(p).toContain("en el campo Clave de OpenRouter");
+    expect(p).not.toContain("Vercel");
     expect(p).toContain("0 ejecutivos");
     expect(p).not.toContain("Compra tu Parcela");
   });

@@ -25,7 +25,7 @@ export default async function WeeklyInsightsPage({ searchParams }: { searchParam
   if (insight && !insight.seenBy.includes(user.id)) {
     await db.weeklyInsight.update({ where: { id: insight.id }, data: { seenBy: { push: user.id } } });
   }
-  const [emailSettings, emailLog] = await Promise.all([getWeeklyEmailSettings(), getWeeklyEmailLog()]);
+  const [emailSettings, emailLog, hasEmail] = await Promise.all([getWeeklyEmailSettings(), getWeeklyEmailLog(), emailConfigured()]);
   const recipients = await weeklyEmailRecipients(emailSettings);
   const report = insight?.report as WeeklyReport | undefined;
   const stats = insight?.stats as WeeklyStats | undefined;
@@ -97,9 +97,9 @@ export default async function WeeklyInsightsPage({ searchParams }: { searchParam
         <CardHeader
           icon={<Mail />}
           title="Envío por correo"
-          description="Cada lunes, apenas está listo, el resumen llega por correo. Los correos salen por Resend: agrega RESEND_API_KEY en Vercel y verifica en Resend el dominio del remitente."
+          description="Cada lunes, apenas está listo, el resumen llega por correo. Los correos salen por Resend: agrega la clave de Resend en Configuración → Credenciales y verifica en Resend el dominio del remitente."
         >
-          {emailConfigured() ? <Badge tone="success">Resend conectado</Badge> : <Badge>Falta RESEND_API_KEY</Badge>}
+          {hasEmail ? <Badge tone="success">Resend conectado</Badge> : <Badge>Falta la clave de Resend</Badge>}
         </CardHeader>
         <form action={saveWeeklyEmailAction} className="space-y-4">
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-800">

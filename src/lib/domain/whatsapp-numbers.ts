@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { credential } from "../credentials";
 import { lookupWhatsAppNumber } from "../channels/whatsapp";
 import { DomainError } from "./leads";
 
@@ -14,10 +15,10 @@ export function listWhatsAppNumbers() {
   return db.whatsAppNumber.findMany({ orderBy: { createdAt: "asc" }, include: { funnel: true } });
 }
 
-/** phone_number_id que Bella atiende: el de las variables de entorno y los agregados. */
+/** phone_number_id que Bella atiende: el principal (Credenciales) y los agregados. */
 export async function whatsappPhoneIds(): Promise<string[]> {
   const extra = await db.whatsAppNumber.findMany({ select: { phoneNumberId: true } });
-  const env = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const env = await credential("WHATSAPP_PHONE_NUMBER_ID");
   return [...new Set([...(env ? [env] : []), ...extra.map((n) => n.phoneNumberId)])];
 }
 
@@ -39,7 +40,7 @@ export async function addWhatsAppNumber(
 ) {
   const phoneNumberId = input.phoneNumberId.trim();
   if (!/^\d+$/.test(phoneNumberId)) throw new DomainError("El id del número son solo dígitos (no es el número de teléfono).");
-  if (phoneNumberId === process.env.WHATSAPP_PHONE_NUMBER_ID) throw new DomainError("Ese es el número principal: ya está conectado.");
+  if (phoneNumberId === (await credential("WHATSAPP_PHONE_NUMBER_ID"))) throw new DomainError("Ese es el número principal: ya está conectado.");
   if (await db.whatsAppNumber.findUnique({ where: { phoneNumberId } })) throw new DomainError("Ese número ya está agregado.");
   const info = await lookup(phoneNumberId);
   return db.whatsAppNumber.create({

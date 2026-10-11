@@ -1,3 +1,4 @@
+import { credential } from "../credentials";
 import { audioFormat, type AudioFile } from "../media";
 import { openRouterClient, type ChatClient } from "./providers";
 
@@ -16,8 +17,8 @@ const INSTRUCTIONS =
 
 export function openRouterTranscriber(client: ChatClient = openRouterClient): Transcriber {
   return async (file) => {
-    if (!process.env.OPENROUTER_API_KEY && client === openRouterClient) {
-      throw new Error("Falta configurar OPENROUTER_API_KEY para transcribir audios.");
+    if (client === openRouterClient && !(await credential("OPENROUTER_API_KEY"))) {
+      throw new Error("Falta la clave de OpenRouter en Configuración → Credenciales para transcribir audios.");
     }
     const format = audioFormat(file.mimeType, file.fileName);
     if (!format) throw new Error(`Formato de audio no soportado: ${file.mimeType || file.fileName}`);

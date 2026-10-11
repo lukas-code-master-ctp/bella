@@ -1,3 +1,4 @@
+import { credential, credentials } from "../credentials";
 import { ChannelSendError } from "./whatsapp";
 import { pageGraph, type MetaPlatform } from "./messenger";
 
@@ -28,8 +29,8 @@ export const commentsApi: CommentsApi = {
     return res.id;
   },
   async privateReply(commentId, text) {
-    const pageId = process.env.META_PAGE_ID;
-    if (!pageId) throw new ChannelSendError("Falta META_PAGE_ID en las variables de entorno.");
+    const pageId = await credential("META_PAGE_ID");
+    if (!pageId) throw new ChannelSendError("Falta el id de la página de Facebook en Configuración → Credenciales.");
     const res = await post<{ message_id?: string }>(`${pageId}/messages`, {
       recipient: { comment_id: commentId },
       message: { text },
@@ -52,8 +53,7 @@ const caption = (text: string | undefined, fallback: string) => {
 
 /** Últimas publicaciones de la cuenta de Instagram y de la página de Facebook conectadas. */
 export async function recentPosts(): Promise<SocialPost[]> {
-  const igId = process.env.META_IG_ACCOUNT_ID;
-  const pageId = process.env.META_PAGE_ID;
+  const { META_IG_ACCOUNT_ID: igId, META_PAGE_ID: pageId } = await credentials();
   const [ig, fb] = await Promise.all([
     igId
       ? pageGraph<{ data?: { id: string; caption?: string; permalink?: string; timestamp?: string }[] }>(

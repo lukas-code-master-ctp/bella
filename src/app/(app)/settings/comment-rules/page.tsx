@@ -1,4 +1,5 @@
 import { ExternalLink, MessageSquareReply, Trash2 } from "lucide-react";
+import { credential } from "@/lib/credentials";
 import { recentPosts, type SocialPost } from "@/lib/channels/comments";
 import { ChannelSendError } from "@/lib/channels/whatsapp";
 import { listCommentRules } from "@/lib/domain/comment-rules";
@@ -9,7 +10,7 @@ import { deleteCommentRuleAction, toggleCommentRuleAction } from "./actions";
 import { CommentRuleForm } from "./form";
 
 async function loadPosts(): Promise<{ posts: SocialPost[]; error: string | null }> {
-  if (!process.env.META_PAGE_ACCESS_TOKEN) {
+  if (!(await credential("META_PAGE_ACCESS_TOKEN"))) {
     return { posts: [], error: "Conecta Instagram o Facebook en Canales para elegir la publicación de una lista." };
   }
   try {

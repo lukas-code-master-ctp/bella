@@ -5,6 +5,7 @@ import type { AiConfig, AiProvider } from "@/lib/ai/config";
 import type { ModelOption, OpenRouterKeyInfo } from "@/lib/ai/models";
 import { Field, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import Link from "next/link";
 import { saveAiAction } from "../actions";
 
 export function AiForm({
@@ -98,8 +99,11 @@ export function AiForm({
       )}
       {!keys[provider] && (
         <p className="text-sm text-rose-600">
-          Falta la variable {provider === "openrouter" ? "OPENROUTER_API_KEY" : "ANTHROPIC_API_KEY"} en el servidor.
-          Agrégala en Vercel y vuelve a desplegar.
+          Falta la clave de {provider === "openrouter" ? "OpenRouter" : "Anthropic"}.{" "}
+          <Link href="/settings/credentials" className="font-medium underline">
+            Agrégala en Credenciales
+          </Link>
+          .
         </p>
       )}
       <div className="flex items-center gap-3">

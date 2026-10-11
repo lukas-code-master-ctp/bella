@@ -294,8 +294,8 @@ describe("WhatsApp: la IA responde", () => {
 
     const ai = await db.message.findMany({ where: { author: "AI" } });
     expect(ai.map((m) => m.body)).toEqual(["¡Hola! Sí, tenemos parcelas en Pucón."]);
-    // Sin WHATSAPP_TOKEN no sale, y queda a la vista por qué.
-    expect([ai[0].deliveryStatus, ai[0].deliveryError]).toEqual(["FAILED", "Falta WHATSAPP_TOKEN en las variables de entorno."]);
+    // Sin token de WhatsApp no sale, y queda a la vista por qué.
+    expect([ai[0].deliveryStatus, ai[0].deliveryError]).toEqual(["FAILED", "Falta el token de WhatsApp en Configuración → Credenciales."]);
     expect((await db.lead.findUniqueOrThrow({ where: { id: leadId } })).agentBusyUntil).toBeNull();
   });
 

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { credential } from "@/lib/credentials";
 import { deleteMetaUserData, parseSignedRequest } from "@/lib/domain/privacy";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const form = await request.formData().catch(() => null);
   const signed = String(form?.get("signed_request") ?? "");
-  const data = parseSignedRequest(signed, process.env.META_APP_SECRET);
+  const data = parseSignedRequest(signed, await credential("META_APP_SECRET"));
   if (!data?.user_id) return NextResponse.json({ error: "signed_request inválido" }, { status: 400 });
   const { code } = await deleteMetaUserData(data.user_id);
   const url = new URL(`/eliminacion-de-datos?codigo=${code}`, request.nextUrl.origin).toString();

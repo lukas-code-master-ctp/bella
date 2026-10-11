@@ -1,6 +1,8 @@
+import { credential } from "./credentials";
+
 /**
- * Envío de correos con Resend (https://resend.com), por su API HTTP. Credencial en la variable
- * de entorno RESEND_API_KEY; el remitente (de un dominio verificado en Resend) se configura en la
+ * Envío de correos con Resend (https://resend.com), por su API HTTP. Credencial RESEND_API_KEY en
+ * Configuración → Credenciales; el remitente (de un dominio verificado en Resend) se configura en la
  * app, porque es propio de cada empresa.
  */
 
@@ -11,14 +13,14 @@ export type EmailSender = { send(email: Email): Promise<string> };
 
 export class EmailError extends Error {}
 
-export function emailConfigured() {
-  return Boolean(process.env.RESEND_API_KEY);
+export async function emailConfigured() {
+  return Boolean(await credential("RESEND_API_KEY"));
 }
 
 export const resendSender: EmailSender = {
   async send(email) {
-    const key = process.env.RESEND_API_KEY;
-    if (!key) throw new EmailError("Falta RESEND_API_KEY en las variables de entorno.");
+    const key = await credential("RESEND_API_KEY");
+    if (!key) throw new EmailError("Falta la clave de Resend en Configuración → Credenciales.");
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
