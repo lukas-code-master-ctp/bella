@@ -60,8 +60,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             )}
           </NavLink>
-          <NavLink href="/comments" icon={<MessagesSquare />}>
-            Comentarios
+          <NavLink href="/chats" icon={<MessagesSquare />}>
+            Chats
             {pendingComments > 0 && (
               <span className="ml-auto rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
                 <span className="sr-only">, </span>

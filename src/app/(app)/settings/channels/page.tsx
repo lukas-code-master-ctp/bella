@@ -260,7 +260,7 @@ export default async function ChannelsSettingsPage() {
           <p className="mt-3 text-xs text-slate-600">
             Para atender a cualquier persona (no solo a quienes tienen un rol en la app), Meta debe aprobar en la revisión
             de la app los permisos pages_messaging, instagram_manage_messages, instagram_manage_comments y
-            pages_manage_engagement. Los comentarios se responden en la pestaña Comentarios.
+            pages_manage_engagement. Los comentarios se responden en Chats → Comentarios.
           </p>
         </Card>
 

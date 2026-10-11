@@ -1,9 +1,12 @@
-import { LoadingScreen, PageHeaderSkeleton, Skeleton } from "@/components/ui";
+import { LoadingScreen, Skeleton } from "@/components/ui";
 
 export default function CommentsLoading() {
   return (
     <LoadingScreen label="Cargando los comentarios…">
-      <PageHeaderSkeleton />
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <Skeleton className="h-4 w-96 max-w-[60vw]" />
+        <Skeleton className="h-9 w-52" />
+      </div>
       <div className="space-y-3">
         {[0, 1, 2].map((i) => (
           <div key={i} className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
