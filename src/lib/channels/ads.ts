@@ -1,3 +1,4 @@
+import { credentials } from "../credentials";
 import { GRAPH_VERSION } from "./whatsapp";
 
 /**
@@ -10,13 +11,14 @@ export type AdInfo = { adName?: string; adsetName?: string; campaignId?: string;
 /** Lo que Bella necesita de la API de Marketing. Se reemplaza en pruebas. */
 export type AdsApi = { lookup(adId: string): Promise<AdInfo | null> };
 
-export function adsToken(): string | undefined {
-  return process.env.META_ADS_TOKEN || process.env.WHATSAPP_TOKEN || process.env.META_PAGE_ACCESS_TOKEN || undefined;
+export async function adsToken(): Promise<string | undefined> {
+  const c = await credentials();
+  return c.META_ADS_TOKEN || c.WHATSAPP_TOKEN || c.META_PAGE_ACCESS_TOKEN || undefined;
 }
 
 export const marketingApi: AdsApi = {
   async lookup(adId) {
-    const token = adsToken();
+    const token = await adsToken();
     if (!token || !/^\d+$/.test(adId)) return null;
     try {
       const res = await fetch(

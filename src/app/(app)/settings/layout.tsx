@@ -1,4 +1,4 @@
-import { Archive, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
+import { Archive, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 import { ScrollActiveIntoView } from "./scroll-active";
@@ -18,6 +18,7 @@ const GROUPS = [
     [
       ["/settings/channels", "Canales", <MessagesSquare key="i" />],
       ["/settings/comment-rules", "Reglas de comentarios", <MessageSquareReply key="i" />],
+      ["/settings/credentials", "Credenciales", <KeyRound key="i" />],
     ],
   ],
   [

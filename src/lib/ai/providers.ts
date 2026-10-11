@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type * as Beta from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import type { AiConfig } from "./config";
 import { recordAiUsage } from "../domain/ai-usage";
+import { credential } from "../credentials";
 import { AGENT_TOOLS } from "./tools";
 
 /**
@@ -42,7 +43,14 @@ export interface Provider {
 
 export type AnthropicClient = Pick<Anthropic, "beta">;
 
-let anthropicDefault: Anthropic | null = null;
+let anthropicDefault: { key: string | undefined; client: Anthropic } | null = null;
+
+/** Cliente de Anthropic con la clave de Credenciales; se rehace si la clave cambia. */
+export async function defaultAnthropic(): Promise<Anthropic> {
+  const key = await credential("ANTHROPIC_API_KEY");
+  if (!anthropicDefault || anthropicDefault.key !== key) anthropicDefault = { key, client: new Anthropic({ apiKey: key ?? null }) };
+  return anthropicDefault.client;
+}
 
 export function anthropicProvider(config: AiConfig, client?: AnthropicClient): Provider {
   return {
@@ -63,7 +71,7 @@ export function anthropicProvider(config: AiConfig, client?: AnthropicClient): P
     ],
     assistantText: (text) => ({ role: "assistant", content: [{ type: "text", text }] }),
     async step(system, messages) {
-      const api = client ?? (anthropicDefault ??= new Anthropic());
+      const api = client ?? (await defaultAnthropic());
       const response = await api.beta.messages.create({
         model: config.model,
         max_tokens: 16000,
@@ -156,7 +164,7 @@ export const openRouterClient: ChatClient = {
     const res = await fetch(`${OPENROUTER_URL}/chat/completions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${await credential("OPENROUTER_API_KEY")}`,
         "Content-Type": "application/json",
         "HTTP-Referer": APP_URL,
         "X-Title": "Bella CRM",

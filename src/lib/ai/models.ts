@@ -1,3 +1,4 @@
+import { credential } from "../credentials";
 import { OPENROUTER_URL } from "./providers";
 
 export type ModelOption = { id: string; name: string; price: string };
@@ -35,10 +36,11 @@ export type OpenRouterKeyInfo = { label: string; usage: number };
  * saber en qué cuenta de OpenRouter quedan los registros. Null si no hay clave o no responde.
  */
 export async function getOpenRouterKeyInfo(): Promise<OpenRouterKeyInfo | null> {
-  if (!process.env.OPENROUTER_API_KEY) return null;
+  const key = await credential("OPENROUTER_API_KEY");
+  if (!key) return null;
   try {
     const res = await fetch(`${OPENROUTER_URL}/key`, {
-      headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` },
+      headers: { Authorization: `Bearer ${key}` },
       cache: "no-store",
     });
     if (!res.ok) return null;

@@ -1,9 +1,11 @@
 import type { FileKind } from "../media";
+import { credential, missingCredentials } from "../credentials";
 import { GRAPH_VERSION, ChannelSendError } from "./whatsapp";
 
 /**
  * Instagram Direct y Facebook Messenger (Messenger Platform de Meta). Ambos usan el token de la
- * página de Facebook, a la que debe estar vinculada la cuenta profesional de Instagram:
+ * página de Facebook, a la que debe estar vinculada la cuenta profesional de Instagram
+ * (Configuración → Credenciales, ver credentials.ts):
  * - META_PAGE_ACCESS_TOKEN: token de página permanente (pages_messaging, instagram_manage_messages…).
  * - META_PAGE_ID: id de la página de Facebook.
  * - META_IG_ACCOUNT_ID: id de la cuenta de Instagram profesional (opcional; filtra el webhook).
@@ -13,8 +15,8 @@ const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 export const MESSENGER_ENV = ["META_PAGE_ACCESS_TOKEN", "META_PAGE_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"] as const;
 
-export function missingMessengerEnv(): string[] {
-  return MESSENGER_ENV.filter((k) => !process.env[k]);
+export function missingMessengerEnv(): Promise<string[]> {
+  return missingCredentials(MESSENGER_ENV);
 }
 
 export type MetaPlatform = "INSTAGRAM" | "FACEBOOK";
@@ -36,15 +38,15 @@ export function describeMessengerError(code: number | undefined, subcode: number
     return "Pasaron más de 24 horas desde el último mensaje del cliente: Meta ya no permite escribirle por este canal.";
   }
   if (code === 551 || subcode === 2018108) return "Esta persona no está disponible para recibir mensajes.";
-  if (code === 190) return "El token de la página venció o no es válido (META_PAGE_ACCESS_TOKEN).";
+  if (code === 190) return "El token de la página venció o no es válido (Configuración → Credenciales).";
   if (code === 200 || code === 10) return "La app de Meta no tiene permiso para enviar este mensaje (revisa la revisión de la app).";
   return fallback;
 }
 
 /** Llamada a la Graph API con el token de la página. */
 export async function pageGraph<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = process.env.META_PAGE_ACCESS_TOKEN;
-  if (!token) throw new ChannelSendError("Falta META_PAGE_ACCESS_TOKEN en las variables de entorno.");
+  const token = await credential("META_PAGE_ACCESS_TOKEN");
+  if (!token) throw new ChannelSendError("Falta el token de la página de Facebook en Configuración → Credenciales.");
   const res = await fetch(`${GRAPH}/${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },
@@ -63,8 +65,8 @@ export async function pageGraph<T>(path: string, init: RequestInit = {}): Promis
 }
 
 async function send(to: string, message: Record<string, unknown>): Promise<string> {
-  const pageId = process.env.META_PAGE_ID;
-  if (!pageId) throw new ChannelSendError("Falta META_PAGE_ID en las variables de entorno.");
+  const pageId = await credential("META_PAGE_ID");
+  if (!pageId) throw new ChannelSendError("Falta el id de la página de Facebook en Configuración → Credenciales.");
   const res = await pageGraph<{ message_id?: string }>(`${pageId}/messages`, {
     method: "POST",
     body: JSON.stringify({ recipient: { id: to }, messaging_type: "RESPONSE", message }),
@@ -160,10 +162,10 @@ export function platformOf(payload: MessengerWebhook): MetaPlatform | null {
 }
 
 /** Eventos de mensajería dirigidos a la página o cuenta de Instagram configurada. */
-export function messagingEvents(payload: MessengerWebhook): MsgEvent[] {
+export async function messagingEvents(payload: MessengerWebhook): Promise<MsgEvent[]> {
   const platform = platformOf(payload);
   if (!platform) return [];
-  const own = platform === "INSTAGRAM" ? process.env.META_IG_ACCOUNT_ID : process.env.META_PAGE_ID;
+  const own = await credential(platform === "INSTAGRAM" ? "META_IG_ACCOUNT_ID" : "META_PAGE_ID");
   return (payload.entry ?? []).filter((e) => !own || e.id === own).flatMap((e) => e.messaging ?? []);
 }
 

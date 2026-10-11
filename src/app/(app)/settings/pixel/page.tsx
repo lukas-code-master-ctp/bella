@@ -1,7 +1,8 @@
 import { Activity, Crosshair, RotateCcw } from "lucide-react";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
-import { getPixelSettings, pixelToken } from "@/lib/domain/conversions";
+import { credentials } from "@/lib/credentials";
+import { getPixelSettings } from "@/lib/domain/conversions";
 import { EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
 import { EnvChecklist, EventList, Panel, PanelBody, PanelFooter, StatusPill, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -29,8 +30,9 @@ export default async function PixelSettingsPage() {
       include: { lead: { select: { id: true, contact: { select: { name: true } } } } },
     }),
   ]);
-  const hasToken = Boolean(pixelToken());
-  const hasWaba = Boolean(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID);
+  const creds = await credentials();
+  const hasToken = Boolean(creds.META_CAPI_TOKEN);
+  const hasWaba = Boolean(creds.WHATSAPP_BUSINESS_ACCOUNT_ID);
   const failed = events.some((e) => e.status === "FAILED");
   const on = s.enabled && Boolean(s.datasetId) && hasToken;
 
@@ -50,11 +52,11 @@ export default async function PixelSettingsPage() {
           <PanelBody>
             <EnvChecklist
               items={[
-                ["META_CAPI_TOKEN", hasToken, "Token de acceso de la API de Conversiones (Administrador de eventos → tu píxel → Configuración → Generar token)."],
+                ["Token de la API de Conversiones", hasToken, "En Configuración → Credenciales. Token de acceso de la API de Conversiones (Administrador de eventos → tu píxel → Configuración → Generar token)."],
                 [
-                  "WHATSAPP_BUSINESS_ACCOUNT_ID",
+                  "Id de la cuenta de WhatsApp Business",
                   hasWaba,
-                  "Opcional. Id de la cuenta de WhatsApp Business (WhatsApp Manager); mejora la atribución de los anuncios de clic a WhatsApp.",
+                  "Opcional, en Credenciales. Está en WhatsApp Manager; mejora la atribución de los anuncios de clic a WhatsApp.",
                 ],
               ]}
             />

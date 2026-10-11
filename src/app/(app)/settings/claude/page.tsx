@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
+import { missingCredentials, type CredentialKey } from "@/lib/credentials";
 import { API_KEY_ENV } from "@/lib/ai/config";
 import { MESSENGER_ENV } from "@/lib/channels/messenger";
 import { WHATSAPP_ENV } from "@/lib/channels/whatsapp";
@@ -14,7 +15,7 @@ import { assistantSetupPrompt, metaSetupPrompt, type SetupStatus } from "@/lib/s
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { CopyPrompt } from "./copy-prompt";
 
-const ENV_KEYS = [
+const ENV_KEYS: CredentialKey[] = [
   ...WHATSAPP_ENV,
   ...MESSENGER_ENV,
   "WHATSAPP_BUSINESS_ACCOUNT_ID",
@@ -27,7 +28,7 @@ const ENV_KEYS = [
 export default async function ClaudeSetupPage() {
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
-  const [attribution, pixel, legal, assistant, followUps, inventory, stages, knowledgeDocs, fields, executives] = await Promise.all([
+  const [attribution, pixel, legal, assistant, followUps, inventory, stages, knowledgeDocs, fields, executives, missingEnv] = await Promise.all([
     getAttributionSettings(),
     getPixelSettings(),
     getLegalSettings(),
@@ -38,10 +39,11 @@ export default async function ClaudeSetupPage() {
     db.knowledgeDoc.count(),
     db.customField.count(),
     db.user.count({ where: { role: "EXECUTIVE", active: true } }),
+    missingCredentials([...new Set(ENV_KEYS)]),
   ]);
   const status: SetupStatus = {
     origin,
-    missingEnv: [...new Set(ENV_KEYS)].filter((k) => !process.env[k]),
+    missingEnv,
     whatsappNumber: attribution.whatsappNumber,
     pixel: {
       enabled: pixel.enabled,
@@ -67,7 +69,7 @@ export default async function ClaudeSetupPage() {
       <Card className="p-5">
         <CardHeader
           title="Prompt para Claude"
-          description="Tú inicias sesión y apruebas los permisos; Claude te avisa cuando te necesita. Los tokens van directo a Vercel y nunca se escriben en el chat."
+          description="Tú inicias sesión y apruebas los permisos; Claude te avisa cuando te necesita. Los tokens se pegan directo en Credenciales y nunca se escriben en el chat."
         />
         <CopyPrompt prompts={{ meta: metaSetupPrompt(status), assistant: assistantSetupPrompt(status) }} />
       </Card>

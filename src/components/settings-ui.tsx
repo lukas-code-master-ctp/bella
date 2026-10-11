@@ -317,7 +317,7 @@ export function EnvChecklist({ items }: { items: readonly (readonly [key: string
             <CircleDashed aria-label="Falta" className="mt-0.5 size-4 shrink-0 text-slate-400" />
           )}
           <span className="min-w-0">
-            <code className="font-mono text-[13px] font-semibold text-slate-900">{key}</code>
+            <span className="font-medium text-slate-900">{key}</span>
             <span className="block text-xs text-slate-600">{help}</span>
           </span>
         </li>

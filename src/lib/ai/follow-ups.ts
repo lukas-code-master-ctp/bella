@@ -26,7 +26,7 @@ export async function runDueFollowUps(
   if (!s.enabled) return { ...result, reason: "Los seguimientos están desactivados." };
   if ((await getAiOperation()).paused) return { ...result, reason: "La IA está apagada en Configuración → Funcionamiento IA." };
   if (!withinSendingHours(s, now)) return { ...result, reason: "Fuera del horario de envío." };
-  const missing = clients.anthropic || clients.openrouter ? null : missingKeyMessage((await getAiConfig()).provider);
+  const missing = clients.anthropic || clients.openrouter ? null : await missingKeyMessage((await getAiConfig()).provider);
   if (missing) return { ...result, reason: missing };
 
   const due = await db.lead.findMany({

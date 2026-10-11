@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Bot, Cpu, Sparkles, Wallet } from "lucide-react";
 import { getAssistantSettings } from "@/lib/settings";
-import { API_KEY_ENV, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
+import { credentials } from "@/lib/credentials";
+import { DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
 import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
 import { Avatar, buttonClass, Field, inputClass, PageHeader } from "@/components/ui";
 import { Panel, PanelBody, PanelFooter } from "@/components/settings-ui";
@@ -12,16 +13,17 @@ import { AiForm } from "./ai-form";
 import { AiSpend } from "./ai-spend";
 
 export default async function AssistantSettingsPage() {
-  const [s, config, models, keyInfo, spend] = await Promise.all([
+  const [s, config, models, keyInfo, spend, creds] = await Promise.all([
     getAssistantSettings(),
     getAiConfig(),
     listOpenRouterModels(),
     getOpenRouterKeyInfo(),
     aiSpendSummary(),
+    credentials(),
   ]);
   const keys = {
-    openrouter: Boolean(process.env[API_KEY_ENV.openrouter]),
-    anthropic: Boolean(process.env[API_KEY_ENV.anthropic]),
+    openrouter: Boolean(creds.OPENROUTER_API_KEY),
+    anthropic: Boolean(creds.ANTHROPIC_API_KEY),
   };
   return (
     <div className="space-y-6">

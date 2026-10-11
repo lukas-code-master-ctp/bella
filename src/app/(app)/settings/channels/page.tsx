@@ -6,6 +6,7 @@ import { missingMessengerEnv, MESSENGER_ENV } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
 import { getChannelSettings, MAX_REPLY_DELAY_SECONDS, openLeadsByChannel } from "@/lib/domain/channels";
 import { db } from "@/lib/db";
+import { credentials, CREDENTIALS } from "@/lib/credentials";
 import { getLegalSettings } from "@/lib/domain/privacy";
 import { listFunnels } from "@/lib/domain/funnels";
 import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
@@ -17,21 +18,12 @@ import { ChannelList, type ChannelRow } from "./channel-list";
 import { WhatsAppStatus } from "./whatsapp-status";
 import { AddWhatsAppNumberForm, FunnelSelect } from "./whatsapp-numbers";
 
-const ENV_HELP: Record<string, string> = {
-  WHATSAPP_TOKEN: "Token permanente de un usuario del sistema (Business Manager → Usuarios del sistema).",
-  WHATSAPP_PHONE_NUMBER_ID: "Identificador del número en la app de Meta (WhatsApp → Configuración de la API).",
-  META_PAGE_ACCESS_TOKEN: "Token permanente de la página de Facebook, generado con un usuario del sistema.",
-  META_PAGE_ID: "Id de la página de Facebook. La cuenta profesional de Instagram debe estar vinculada a ella.",
-  META_APP_SECRET: "Clave secreta de la app (Configuración de la app → Básica).",
-  META_VERIFY_TOKEN: "Un texto cualquiera que inventas; se pega igual en Meta al registrar el webhook.",
-};
-
 const checkClass = "size-4 rounded border-slate-300 accent-brand-600";
 
 function EnvList({ keys, missing }: { keys: readonly string[]; missing: string[] }) {
   return (
     <ul className="space-y-2 text-sm">
-      {keys.map((key) => (
+      {CREDENTIALS.filter((c) => keys.includes(c.key)).map(({ key, label, help }) => (
         <li key={key} className="flex gap-2">
           {missing.includes(key) ? (
             <CircleDashed aria-label="Falta" className="mt-0.5 size-4 shrink-0 text-slate-400" />
@@ -39,8 +31,8 @@ function EnvList({ keys, missing }: { keys: readonly string[]; missing: string[]
             <CircleCheck aria-label="Configurada" className="mt-0.5 size-4 shrink-0 text-emerald-600" />
           )}
           <span>
-            <code className="font-mono text-[13px] font-semibold text-slate-900">{key}</code>
-            <span className="block text-xs text-slate-600">{ENV_HELP[key]}</span>
+            <span className="font-medium text-slate-900">{label}</span>
+            <span className="block text-xs text-slate-600">{help}</span>
           </span>
         </li>
       ))}
@@ -54,28 +46,28 @@ function Webhook({ url, where, fields }: { url: string; where: string; fields: s
       <p className="font-medium text-slate-800">URL del webhook (en Meta: {where})</p>
       <code className="mt-1 block break-all font-mono text-[13px] text-brand-700">{url}</code>
       <p className="mt-1 text-xs text-slate-600">
-        Token de verificación: el mismo valor de META_VERIFY_TOKEN. Suscribe {fields}.
+        Token de verificación: el mismo que guardaste en Credenciales. Suscribe {fields}.
       </p>
     </div>
   );
 }
 
 export default async function ChannelsSettingsPage() {
-  const [s, legal, leads, stages, numbers, funnels] = await Promise.all([
+  const [s, legal, leads, stages, numbers, funnels, env, waMissing, metaMissing] = await Promise.all([
     getChannelSettings(),
     getLegalSettings(),
     openLeadsByChannel(),
     db.stage.count(),
     listWhatsAppNumbers(),
     listFunnels(),
+    credentials(),
+    missingWhatsAppEnv(),
+    missingMessengerEnv(),
   ]);
   const funnelOptions = funnels.map(({ id, name }) => ({ id, name }));
-  const waMissing = missingWhatsAppEnv();
-  const metaMissing = missingMessengerEnv();
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
   const base = `${origin}/api/webhooks`;
-  const env = process.env;
   const metaOk = metaMissing.length === 0;
 
   const rows: ChannelRow[] = [
@@ -184,7 +176,11 @@ export default async function ChannelsSettingsPage() {
         Agregar o configurar un canal
       </h2>
       <p className="mb-4 text-sm text-slate-600">
-        Bella se conecta directo con Meta. Carga estas variables en Vercel y registra el webhook en la app de Meta.
+        Bella se conecta directo con Meta. Carga los datos en{" "}
+        <Link href="/settings/credentials" className="font-medium text-brand-700 hover:underline">
+          Credenciales
+        </Link>{" "}
+        y registra el webhook en la app de Meta.
       </p>
       <div className="space-y-6">
         <Card id="whatsapp" className="scroll-mt-6 p-5">

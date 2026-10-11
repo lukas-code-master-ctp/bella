@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { Code2, Link2, Megaphone } from "lucide-react";
 import { adsToken } from "@/lib/channels/ads";
+import { credentials } from "@/lib/credentials";
 import { getAttributionSettings } from "@/lib/domain/attribution";
 import { Field, inputClass, PageHeader } from "@/components/ui";
 import { EnvChecklist, FieldGroup, Panel, PanelBody, PanelFooter, StatusPill } from "@/components/settings-ui";
@@ -13,7 +14,9 @@ export default async function AttributionSettingsPage() {
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
   const example = `${origin}/wa?utm_source=google&utm_medium=cpc&utm_campaign=campana-octubre&text=${encodeURIComponent("Hola, quiero información")}`;
-  const hasAdsToken = Boolean(process.env.META_ADS_TOKEN);
+  const creds = await credentials();
+  const hasAdsToken = Boolean(creds.META_ADS_TOKEN);
+  const fallbackToken = Boolean(await adsToken());
   const snippet = `<script>
 document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
   var url = new URL(a.href);
@@ -40,12 +43,12 @@ document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
           <EnvChecklist
             items={[
               [
-                "META_ADS_TOKEN",
+                "Token de anuncios (en Credenciales)",
                 hasAdsToken,
                 <>
                   Opcional. Token de un usuario del sistema con permiso ads_read sobre la cuenta publicitaria, para ver el
                   nombre de la campaña y del conjunto de anuncios.
-                  {!hasAdsToken && adsToken() && " Mientras no esté, Bella prueba con el token de WhatsApp o de la página."}
+                  {!hasAdsToken && fallbackToken && " Mientras no esté, Bella prueba con el token de WhatsApp o de la página."}
                 </>,
               ],
             ]}

@@ -283,7 +283,7 @@ export async function receiveMessenger(payload: MessengerWebhook, deps: InboundD
   if (!platform) return [];
   const aiOn = (await getChannelSettings())[AI_KEY[platform]];
   const toAnswer = new Set<string>();
-  for (const event of messagingEvents(payload)) {
+  for (const event of await messagingEvents(payload)) {
     if (event.read) {
       await applyRead(platform, event);
       continue;

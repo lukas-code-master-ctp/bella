@@ -60,8 +60,6 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
    estas variables de entorno:
    - `DATABASE_URL` y `DIRECT_URL` (del paso 1)
    - `SESSION_SECRET`: un texto largo al azar (`openssl rand -base64 32`)
-   - `OPENROUTER_API_KEY`: clave de https://openrouter.ai/keys (o `ANTHROPIC_API_KEY` para usar
-     la API de Anthropic directo)
    - `SEED_ADMIN_EMAIL` y `SEED_ADMIN_PASSWORD`: el usuario admin inicial
    - `CRON_SECRET`: un texto largo al azar; Vercel lo usa para llamar la sincronización diaria del
      inventario, el cierre automático y la revisión de seguimientos (`vercel.json`)
@@ -70,9 +68,15 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
      la página **Avisos**.
    - Notas de voz: en *Storage → Create → Blob* crea un Blob store y conéctalo al proyecto; Vercel
      agrega solo `BLOB_STORE_ID` (o `BLOB_READ_WRITE_TOKEN` en conexiones antiguas). Los audios se transcriben con OpenRouter
-     (`OPENROUTER_API_KEY`; el modelo se puede cambiar con `TRANSCRIPTION_MODEL`, por defecto
+     (el modelo se puede cambiar con `TRANSCRIPTION_MODEL`, por defecto
      `google/gemini-2.5-flash`).
-3. Despliega. Entra con el correo y la clave del admin y prueba en **Simulador**.
+3. Despliega. Entra con el correo y la clave del admin, pega la clave de OpenRouter en
+   **Configuración → Credenciales** y prueba en **Simulador**.
+
+Las credenciales de cada empresa (Meta, WhatsApp, OpenRouter o Anthropic, Resend) se cargan en
+**Configuración → Credenciales** y se guardan cifradas con una clave derivada de `SESSION_SECRET`
+(si la cambias, hay que volver a cargarlas). Si una no está ahí, Bella usa la variable de entorno
+del mismo nombre, así las instalaciones que ya las tienen en Vercel siguen funcionando.
 4. Para el resto (Meta, la asistente, el funnel y los ejecutivos), entra a **Configuración →
    Configurar con Claude**, copia los prompts y pégalos en Claude con acceso a tu navegador. Sirven
    para una empresa que parte desde cero en Meta.
@@ -113,11 +117,11 @@ Bella usa la API oficial de WhatsApp Cloud, directa con Meta. Pasos:
 
 1. En [developers.facebook.com](https://developers.facebook.com) crea una app tipo "Empresa" con el
    producto WhatsApp y agrega el número.
-2. En Vercel define `WHATSAPP_TOKEN` (token permanente de un usuario del sistema del Business
-   Manager con `whatsapp_business_messaging` y `whatsapp_business_management`),
-   `WHATSAPP_PHONE_NUMBER_ID`, `META_APP_SECRET` y `META_VERIFY_TOKEN` (un texto que inventas).
+2. En Configuración → Credenciales carga el token de WhatsApp (token permanente de un usuario del
+   sistema del Business Manager con `whatsapp_business_messaging` y `whatsapp_business_management`),
+   el id del número, la clave secreta de la app y el token de verificación (un texto que inventas).
 3. En la app de Meta, WhatsApp → Configuración → Webhook: URL `https://<tu-dominio>/api/webhooks/whatsapp`,
-   el mismo `META_VERIFY_TOKEN`, y suscribe el campo `messages`.
+   el mismo token de verificación, y suscribe el campo `messages`.
 4. En Configuración → Canales revisa que todo esté en verde y, cuando quieras, enciende "La
    asistente responde sola en WhatsApp" (viene apagado: el equipo responde a mano).
 
@@ -134,8 +138,9 @@ misma app de Meta:
 
 1. Vincula la cuenta profesional de Instagram a la página de Facebook y agrega a la app los
    productos Messenger e Instagram.
-2. En Vercel define `META_PAGE_ACCESS_TOKEN` (token permanente de la página), `META_PAGE_ID` y,
-   opcional, `META_IG_ACCOUNT_ID`. `META_APP_SECRET` y `META_VERIFY_TOKEN` son los mismos de WhatsApp.
+2. En Configuración → Credenciales carga el token permanente de la página, el id de la página y,
+   opcional, el id de la cuenta de Instagram. La clave secreta y el token de verificación son los
+   mismos de WhatsApp.
 3. En Webhooks registra `https://<tu-dominio>/api/webhooks/meta` para los objetos Page e Instagram y
    suscribe `messages`, `messaging_postbacks`, `message_reads`, `comments` (Instagram) y `feed`
    (Page); suscribe la página a la app.

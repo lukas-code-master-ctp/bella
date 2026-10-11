@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
+import { credential, credentials } from "../credentials";
 import { getSetting, setSetting } from "../settings";
 import { GRAPH_VERSION } from "../channels/whatsapp";
 
@@ -40,8 +41,8 @@ export async function savePixelSettings(s: Partial<PixelSettings>) {
   await setSetting("pixel", next);
 }
 
-export function pixelToken(): string | undefined {
-  return process.env.META_CAPI_TOKEN || undefined;
+export function pixelToken(): Promise<string | undefined> {
+  return credential("META_CAPI_TOKEN");
 }
 
 export type ConversionKind = "QUALIFIED" | "PURCHASE";
@@ -76,8 +77,8 @@ export type ConversionsApi = { send(datasetId: string, events: CapiEvent[], test
 
 export const conversionsApi: ConversionsApi = {
   async send(datasetId, events, testEventCode) {
-    const token = pixelToken();
-    if (!token) throw new Error("Falta META_CAPI_TOKEN en las variables de entorno.");
+    const token = await pixelToken();
+    if (!token) throw new Error("Falta el token de la API de Conversiones en Configuración → Credenciales.");
     const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${datasetId}/events`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -99,8 +100,10 @@ type EventWithLead = Prisma.ConversionEventGetPayload<{
   include: { lead: { include: { contact: true; source: true } } };
 }>;
 
+type MetaIds = { waba?: string; pageId?: string; igId?: string };
+
 /** Arma el evento como lo pide Meta, o null si no hay cómo identificar al cliente. */
-export function buildEvent(e: EventWithLead): CapiEvent | null {
+export function buildEvent(e: EventWithLead, ids: MetaIds): CapiEvent | null {
   const { contact, source } = e.lead;
   const base = {
     event_id: e.id,
@@ -114,7 +117,7 @@ export function buildEvent(e: EventWithLead): CapiEvent | null {
   };
 
   if (source?.ctwaClid && contact.channel === "WHATSAPP") {
-    const waba = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
+    const waba = ids.waba;
     return {
       ...base,
       event_name: e.kind === "PURCHASE" ? "Purchase" : "QualifiedLead",
@@ -125,7 +128,7 @@ export function buildEvent(e: EventWithLead): CapiEvent | null {
   }
   if (source?.kind === "AD" && contact.externalId && (contact.channel === "INSTAGRAM" || contact.channel === "FACEBOOK")) {
     const ig = contact.channel === "INSTAGRAM";
-    const owner = ig ? process.env.META_IG_ACCOUNT_ID : process.env.META_PAGE_ID;
+    const owner = ig ? ids.igId : ids.pageId;
     if (owner) {
       return {
         ...base,
@@ -158,13 +161,15 @@ export async function deliverPendingConversions(api: ConversionsApi = conversion
     const settings = await getPixelSettings();
     if (!settings.enabled || !settings.datasetId) return result;
     // Sin token los eventos esperan pendientes, sin gastar reintentos.
-    if (api === conversionsApi && !pixelToken()) return result;
+    if (api === conversionsApi && !(await pixelToken())) return result;
     const pending = await db.conversionEvent.findMany({
       where: { OR: [{ status: "PENDING" }, { status: "FAILED", attempts: { lt: MAX_ATTEMPTS } }] },
       include: { lead: { include: { contact: true, source: true } } },
       orderBy: { createdAt: "asc" },
       take: 50,
     });
+    const c = await credentials();
+    const ids: MetaIds = { waba: c.WHATSAPP_BUSINESS_ACCOUNT_ID, pageId: c.META_PAGE_ID, igId: c.META_IG_ACCOUNT_ID };
     for (const e of pending) {
       // Se toma antes de enviarlo, así dos llamadas simultáneas no lo mandan dos veces.
       const claimed = await db.conversionEvent.updateMany({
@@ -172,7 +177,7 @@ export async function deliverPendingConversions(api: ConversionsApi = conversion
         data: { status: "SENDING", attempts: { increment: 1 } },
       });
       if (!claimed.count) continue;
-      const event = buildEvent(e);
+      const event = buildEvent(e, ids);
       if (!event) {
         await db.conversionEvent.update({
           where: { id: e.id },

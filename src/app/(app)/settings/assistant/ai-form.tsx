@@ -7,6 +7,7 @@ import type { ModelOption, OpenRouterKeyInfo } from "@/lib/ai/models";
 import { Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, PanelBody, PanelFooter, Segmented } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
+import Link from "next/link";
 import { saveAiAction } from "../actions";
 
 const PROVIDERS = [
@@ -109,8 +110,11 @@ export function AiForm({
         />
         {!keys[provider] && (
           <Callout tone="danger" title="Falta la clave">
-            Agrega la variable {provider === "openrouter" ? "OPENROUTER_API_KEY" : "ANTHROPIC_API_KEY"} en Vercel y vuelve a
-            desplegar.
+            Pega la clave de {provider === "openrouter" ? "OpenRouter" : "Anthropic"} en{" "}
+            <Link href="/settings/credentials" className="font-medium underline">
+              Credenciales
+            </Link>
+            .
           </Callout>
         )}
       </PanelBody>

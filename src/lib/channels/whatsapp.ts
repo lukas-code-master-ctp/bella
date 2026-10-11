@@ -1,8 +1,9 @@
 import type { FileKind } from "../media";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { credential, missingCredentials } from "../credentials";
 
 /**
- * WhatsApp Cloud API (directa con Meta). Credenciales en variables de entorno:
+ * WhatsApp Cloud API (directa con Meta). Credenciales (Configuración → Credenciales, ver credentials.ts):
  * - WHATSAPP_TOKEN: token permanente de un usuario del sistema con permiso whatsapp_business_messaging.
  * - WHATSAPP_PHONE_NUMBER_ID: id del número (no el número en sí) en WhatsApp Manager.
  * - META_APP_SECRET: clave secreta de la app de Meta; firma los webhooks.
@@ -13,8 +14,8 @@ const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 export const WHATSAPP_ENV = ["WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "META_APP_SECRET", "META_VERIFY_TOKEN"] as const;
 
-export function missingWhatsAppEnv(): string[] {
-  return WHATSAPP_ENV.filter((k) => !process.env[k]);
+export function missingWhatsAppEnv(): Promise<string[]> {
+  return missingCredentials(WHATSAPP_ENV);
 }
 
 /** Error de Meta al enviar, con un motivo legible para el ejecutivo. */
@@ -49,7 +50,7 @@ export function describeMetaError(code: number | undefined, fallback: string): s
     case 131056:
       return "Demasiados mensajes seguidos a este cliente; espera un momento.";
     case 190:
-      return "El token de WhatsApp venció o no es válido (WHATSAPP_TOKEN).";
+      return "El token de WhatsApp venció o no es válido (Configuración → Credenciales).";
     case 131031:
       return "La cuenta de WhatsApp Business está bloqueada o restringida por Meta.";
     default:
@@ -58,8 +59,8 @@ export function describeMetaError(code: number | undefined, fallback: string): s
 }
 
 async function graph<T>(path: string, init: RequestInit = {}, what = "el envío"): Promise<T> {
-  const token = process.env.WHATSAPP_TOKEN;
-  if (!token) throw new ChannelSendError("Falta WHATSAPP_TOKEN en las variables de entorno.");
+  const token = await credential("WHATSAPP_TOKEN");
+  if (!token) throw new ChannelSendError("Falta el token de WhatsApp en Configuración → Credenciales.");
   const res = await fetch(`${GRAPH}/${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...init.headers },
@@ -76,8 +77,8 @@ async function graph<T>(path: string, init: RequestInit = {}, what = "el envío"
 }
 
 async function send(to: string, payload: Record<string, unknown>, from?: string): Promise<string> {
-  const phoneId = from || process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!phoneId) throw new ChannelSendError("Falta WHATSAPP_PHONE_NUMBER_ID en las variables de entorno.");
+  const phoneId = from || (await credential("WHATSAPP_PHONE_NUMBER_ID"));
+  if (!phoneId) throw new ChannelSendError("Falta el id del número de WhatsApp en Configuración → Credenciales.");
   const res = await graph<{ messages?: { id: string }[] }>(`${phoneId}/messages`, {
     method: "POST",
     body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, ...payload }),
@@ -101,7 +102,7 @@ export const cloudApi: WhatsAppApi = {
     }, from),
   async downloadMedia(mediaId) {
     const meta = await graph<{ url: string; mime_type: string }>(mediaId);
-    const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}` } });
+    const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${await credential("WHATSAPP_TOKEN")}` } });
     if (!res.ok) throw new Error(`No se pudo descargar el archivo de WhatsApp (HTTP ${res.status}).`);
     return { bytes: new Uint8Array(await res.arrayBuffer()), mimeType: meta.mime_type };
   },
@@ -177,10 +178,7 @@ export type WaWebhook = {
  * Cambios de mensajes de los números configurados (ignora otros números de la misma cuenta).
  * Sin números configurados no filtra.
  */
-export function webhookValues(
-  payload: WaWebhook,
-  phoneNumberIds: string | string[] | undefined = process.env.WHATSAPP_PHONE_NUMBER_ID,
-): WaValue[] {
+export function webhookValues(payload: WaWebhook, phoneNumberIds: string | string[] | undefined): WaValue[] {
   if (payload.object !== "whatsapp_business_account") return [];
   const allowed = (Array.isArray(phoneNumberIds) ? phoneNumberIds : [phoneNumberIds]).filter((id): id is string => Boolean(id));
   return (payload.entry ?? [])
@@ -265,7 +263,7 @@ type DebugToken = {
 };
 
 async function tokenInfo() {
-  const token = process.env.WHATSAPP_TOKEN ?? "";
+  const token = (await credential("WHATSAPP_TOKEN")) ?? "";
   const res = await graph<DebugToken>(`debug_token?input_token=${encodeURIComponent(token)}`, {}, "la consulta del token");
   const wabas = res.data?.granular_scopes?.find((s) => s.scope === "whatsapp_business_management")?.target_ids ?? [];
   return { appId: res.data?.app_id ?? null, wabas };
@@ -273,7 +271,7 @@ async function tokenInfo() {
 
 /** Pregunta a Meta por el número configurado y por la suscripción de la app a su cuenta. */
 export async function checkWhatsApp(): Promise<WhatsAppCheck> {
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const phoneId = await credential("WHATSAPP_PHONE_NUMBER_ID");
   const result: WhatsAppCheck = { phone: { error: "Falta WHATSAPP_PHONE_NUMBER_ID." }, wabaId: null, subscribed: null };
   if (phoneId) {
     try {
@@ -289,10 +287,10 @@ export async function checkWhatsApp(): Promise<WhatsAppCheck> {
   }
   try {
     const { appId, wabas } = await tokenInfo();
-    result.wabaId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || (wabas.length === 1 ? wabas[0] : null);
+    result.wabaId = (await credential("WHATSAPP_BUSINESS_ACCOUNT_ID")) || (wabas.length === 1 ? wabas[0] : null);
     if (!result.wabaId) {
       result.error = wabas.length
-        ? "El token tiene acceso a varias cuentas de WhatsApp Business: agrega WHATSAPP_BUSINESS_ACCOUNT_ID en Vercel."
+        ? "El token tiene acceso a varias cuentas de WhatsApp Business: agrega el id de la cuenta de WhatsApp Business en Configuración → Credenciales."
         : "El token no tiene acceso a ninguna cuenta de WhatsApp Business (permiso whatsapp_business_management).";
       return result;
     }
