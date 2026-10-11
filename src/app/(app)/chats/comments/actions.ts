@@ -6,7 +6,7 @@ import { replyToComment, setCommentDone, setCommentHidden } from "@/lib/domain/c
 import { DomainError } from "@/lib/domain/leads";
 
 function done() {
-  revalidatePath("/comments");
+  revalidatePath("/chats/comments");
   revalidatePath("/", "layout");
 }
 
