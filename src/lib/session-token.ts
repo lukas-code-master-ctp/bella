@@ -14,8 +14,9 @@ function secret() {
   return new TextEncoder().encode(value);
 }
 
-export async function signSession(userId: string, maxAgeSeconds = SHORT_MAX_AGE_SECONDS) {
-  return new SignJWT({})
+/** `companyId` va en el token para filtrar las consultas sin buscar al usuario (ver tenant.ts). */
+export async function signSession(userId: string, maxAgeSeconds = SHORT_MAX_AGE_SECONDS, companyId?: string) {
+  return new SignJWT(companyId ? { cid: companyId } : {})
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuedAt()
@@ -23,12 +24,15 @@ export async function signSession(userId: string, maxAgeSeconds = SHORT_MAX_AGE_
     .sign(secret());
 }
 
-/** Usuario y momento de emisión (segundos) de un token válido. */
-export async function readSession(token: string | undefined): Promise<{ userId: string; issuedAt: number } | null> {
+/** Usuario, empresa (null en tokens anteriores) y momento de emisión (segundos) de un token válido. */
+export async function readSession(
+  token: string | undefined,
+): Promise<{ userId: string; companyId: string | null; issuedAt: number } | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    return payload.sub ? { userId: payload.sub, issuedAt: payload.iat ?? 0 } : null;
+    if (!payload.sub) return null;
+    return { userId: payload.sub, companyId: typeof payload.cid === "string" ? payload.cid : null, issuedAt: payload.iat ?? 0 };
   } catch {
     return null;
   }

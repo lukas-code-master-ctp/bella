@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { currentCompanyId } from "../tenant";
 import { getSetting, setSetting } from "../settings";
 import { closeLead } from "./leads";
 
@@ -54,9 +55,11 @@ export async function runAutoClose(now = new Date()): Promise<number> {
   if (!settings.enabled) return 0;
   const cutoff = new Date(now.getTime() - (await effectiveDays(settings.days)) * DAY_MS);
 
+  // Las consultas en SQL no pasan por el filtro de empresa de `db`: va explícito.
+  const companyId = await currentCompanyId();
   const inactive = await db.$queryRaw<{ id: string }[]>`
     SELECT l.id FROM "Lead" l
-    WHERE l.status = 'OPEN'
+    WHERE l.status = 'OPEN' AND l."companyId" = ${companyId}
       AND GREATEST(
         l."createdAt",
         (SELECT max(m."createdAt") FROM "Message" m WHERE m."leadId" = l.id),

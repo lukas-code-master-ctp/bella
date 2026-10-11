@@ -6,7 +6,7 @@ import type { AssignStrategy, Channel, Role, RuleTrigger } from "@prisma/client"
 import { hashPassword, requireAdmin } from "@/lib/auth";
 import { DEFAULT_SUMMARY_MODEL, type AiConfig, type AiEffort, type AiProvider } from "@/lib/ai/config";
 import { listOpenRouterModels } from "@/lib/ai/models";
-import { db } from "@/lib/db";
+import { db, rootDb } from "@/lib/db";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
@@ -376,7 +376,7 @@ export async function createUserAction(_prev: string | null, form: FormData): Pr
   const email = str(form, "email").toLowerCase();
   const password = str(form, "password");
   if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
-  if (await db.user.findUnique({ where: { email } })) return "Ya existe un usuario con ese correo.";
+  if (await rootDb.user.findUnique({ where: { email } })) return "Ya existe un usuario con ese correo.";
   await db.user.create({
     data: {
       name: str(form, "name"),

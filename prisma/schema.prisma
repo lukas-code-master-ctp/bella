@@ -62,14 +62,23 @@ enum AssignStrategy {
   LEAST_LOADED
 }
 
+/// Empresa que usa Bella. Todos los datos llevan su companyId; "default" es la primera.
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+}
+
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(EXECUTIVE)
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id                String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId         String    @default("default")
+  name              String
+  email             String    @unique
+  passwordHash      String
+  role              Role      @default(EXECUTIVE)
+  active            Boolean   @default(true)
+  createdAt         DateTime  @default(now())
   /// Último cambio de contraseña: invalida las sesiones abiertas antes de esa fecha.
   passwordChangedAt DateTime?
 
@@ -84,6 +93,8 @@ model User {
   pushSubscriptions PushSubscription[]
   comments          SocialComment[]
   passwordResets    PasswordResetToken[]
+
+  @@index([companyId])
 }
 
 /// Enlace de un solo uso para recuperar la contraseña. Se guarda solo el hash del token.
@@ -103,6 +114,8 @@ model PasswordResetToken {
 /// al entrar, la IA se pausa y se asigna un ejecutivo.
 model Stage {
   id            String  @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId     String  @default("default")
   /// Embudo al que pertenece. "default" es el embudo que crea la migración (ver DEFAULT_FUNNEL_ID).
   funnelId      String  @default("default")
   name          String
@@ -120,12 +133,15 @@ model Stage {
 
   @@unique([funnelId, name])
   @@index([funnelId, position])
+  @@index([companyId])
 }
 
 /// Embudo de ventas: una línea de negocio con sus etapas y, si se configura, su propia asistente
 /// (nombre e instrucciones). Los leads nuevos de un canal entran al embudo que tiene ese canal.
 model Funnel {
   id            String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId     String    @default("default")
   name          String    @unique
   position      Int
   /// Canales cuyos leads nuevos entran a este embudo. Un canal sin embudo va al primero.
@@ -138,12 +154,16 @@ model Funnel {
 
   stages          Stage[]
   whatsAppNumbers WhatsAppNumber[]
+
+  @@index([companyId])
 }
 
 /// Número de WhatsApp adicional de la misma app de Meta (usa WHATSAPP_TOKEN). Los leads nuevos
 /// que le escriben entran a su embudo; sin embudo, al del canal WhatsApp.
 model WhatsAppNumber {
   id            String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId     String   @default("default")
   phoneNumberId String   @unique
   label         String
   displayPhone  String?
@@ -151,33 +171,40 @@ model WhatsAppNumber {
   createdAt     DateTime @default(now())
 
   funnel Funnel? @relation(fields: [funnelId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
 }
 
 /// Etiqueta de contacto agrupada por categoría (ej. "Producto" / "Interés").
 model Tag {
-  id       String @id @default(cuid())
-  category String
-  name     String
-  color    String @default("#0ea5e9")
+  id        String @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String @default("default")
+  category  String
+  name      String
+  color     String @default("#0ea5e9")
 
   contacts ContactTag[]
   rules    AssignmentRule[]
 
   @@unique([category, name])
+  @@index([companyId])
 }
 
 model Contact {
-  id         String   @id @default(cuid())
-  name       String
-  phone      String?
-  email      String?
-  channel    Channel
-  externalId String?
-  createdAt  DateTime @default(now())
+  id              String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId       String    @default("default")
+  name            String
+  phone           String?
+  email           String?
+  channel         Channel
+  externalId      String?
+  createdAt       DateTime  @default(now())
   /// Contacto bloqueado (spam, mensajes personales, postulantes): sus mensajes nuevos se
   /// descartan y ni la IA ni el equipo le escriben (ver src/lib/domain/contacts.ts).
-  blockedAt     DateTime?
-  blockedReason String?
+  blockedAt       DateTime?
+  blockedReason   String?
   /// Número de WhatsApp (phone_number_id) al que escribió por última vez; las respuestas salen
   /// por ese número. Vacío usa WHATSAPP_PHONE_NUMBER_ID.
   waPhoneNumberId String?
@@ -187,6 +214,7 @@ model Contact {
   fields ContactFieldValue[]
 
   @@unique([channel, externalId])
+  @@index([companyId])
 }
 
 model ContactTag {
@@ -205,6 +233,8 @@ model ContactTag {
 /// completa con set_contact_field a medida que el cliente entrega el dato.
 model CustomField {
   id          String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String    @default("default")
   name        String    @unique
   type        FieldType @default(TEXT)
   /// Valores permitidos cuando el tipo es OPTIONS.
@@ -214,6 +244,8 @@ model CustomField {
   position    Int
 
   values ContactFieldValue[]
+
+  @@index([companyId])
 }
 
 /// Valor de un campo del cliente, ya validado y normalizado según el tipo del campo.
@@ -233,6 +265,8 @@ model ContactFieldValue {
 /// Un lead (ticket) es una oportunidad de venta de un contacto que avanza por el funnel.
 model Lead {
   id             String     @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId      String     @default("default")
   contactId      String
   stageId        String
   status         LeadStatus @default(OPEN)
@@ -283,12 +317,15 @@ model Lead {
   @@index([assigneeId])
   @@index([followUpAt])
   @@index([variantId])
+  @@index([companyId])
 }
 
 /// Variante de la asistente en una prueba A/B por canal. Cada lead nuevo del canal recibe una
 /// variante activa al azar según su peso y la mantiene toda la conversación.
 model AssistantVariant {
   id            String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId     String   @default("default")
   name          String
   channel       Channel
   /// Nombre de la asistente en esta variante; vacío usa el del embudo o el general.
@@ -301,10 +338,14 @@ model AssistantVariant {
   createdAt     DateTime @default(now())
 
   leads Lead[]
+
+  @@index([companyId])
 }
 
 model Message {
   id             String        @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId      String        @default("default")
   leadId         String
   author         MessageAuthor
   userId         String?
@@ -332,12 +373,15 @@ model Message {
   agentRun AgentRun?
 
   @@index([leadId, createdAt])
+  @@index([companyId])
 }
 
 /// Monitor de actividad: cómo la IA construyó una respuesta (contexto, pasos del modelo y
 /// herramientas usadas). Uno por turno; se guarda junto al mensaje que envió.
 model AgentRun {
   id         String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId  String   @default("default")
   leadId     String
   messageId  String   @unique
   provider   String
@@ -360,11 +404,14 @@ model AgentRun {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([companyId])
 }
 
 /// Historial de la conversación con Claude tal como se envía a la API (incluye
 /// bloques de herramientas y de razonamiento). Solo se agrega al final, nunca se edita.
 model AgentTranscript {
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String   @default("default")
   leadId      String   @id
   /// Formato de API del historial ("anthropic" u "openai"); depende del proveedor configurado.
   format      String   @default("anthropic")
@@ -374,10 +421,14 @@ model AgentTranscript {
   updatedAt   DateTime @updatedAt
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
 }
 
 model LeadEvent {
   id        String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String   @default("default")
   leadId    String
   type      String
   actor     Actor
@@ -390,12 +441,15 @@ model LeadEvent {
   user User? @relation(fields: [userId], references: [id])
 
   @@index([leadId, createdAt])
+  @@index([companyId])
 }
 
 /// Tarea con plazo sobre un lead, para un ejecutivo. La crea un ejecutivo a mano o la IA
 /// (herramienta create_task). Si el lead cambia de ejecutivo, sus tareas pendientes lo siguen.
 model Task {
   id          String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String    @default("default")
   leadId      String
   title       String
   notes       String?
@@ -414,12 +468,15 @@ model Task {
 
   @@index([assigneeId, completedAt, dueAt])
   @@index([leadId])
+  @@index([companyId])
 }
 
 /// Regla de asignación automática: cuando ocurre el disparador, se asigna un ejecutivo
 /// de la lista (o de todos los ejecutivos activos si la lista está vacía).
 model AssignmentRule {
   id                 String         @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId          String         @default("default")
   name               String
   priority           Int            @default(0)
   active             Boolean        @default(true)
@@ -439,12 +496,16 @@ model AssignmentRule {
   stage      Stage? @relation(fields: [stageId], references: [id], onDelete: Cascade)
   tag        Tag?   @relation(fields: [tagId], references: [id], onDelete: Cascade)
   executives User[] @relation("RuleExecutives")
+
+  @@index([companyId])
 }
 
 /// Archivo que la IA puede enviar a los leads (masterplan, ficha técnica, fotos), cargado en
 /// Configuración → Archivos. `description` le dice a la IA cuándo enviarlo.
 model MediaFile {
   id          String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String   @default("default")
   title       String
   description String   @default("")
   url         String
@@ -453,32 +514,48 @@ model MediaFile {
   size        Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 model KnowledgeDoc {
   id        String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String   @default("default")
   title     String
   content   String
   updatedAt DateTime @updatedAt
+
+  @@index([companyId])
 }
 
 model InventoryItem {
   id         String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId  String   @default("default")
   rowNumber  Int
   data       Json
   searchText String
   syncedAt   DateTime @default(now())
+
+  @@index([companyId])
 }
 
 model Setting {
-  key   String @id
-  value Json
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String @default("default")
+  key       String @id
+  value     Json
+
+  @@index([companyId])
 }
 
 /// Aviso al ejecutivo sobre un lead (ver src/lib/domain/notifications.ts). Hay a lo más uno
 /// sin leer por usuario y lead: los avisos nuevos lo actualizan con el último motivo.
 model Notification {
   id        String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String    @default("default")
   userId    String
   leadId    String
   /// HUMAN_STAGE, ASSIGNED, CONTACT_MESSAGE o TASK_DUE.
@@ -495,11 +572,14 @@ model Notification {
 
   @@index([userId, createdAt])
   @@index([pushedAt])
+  @@index([companyId])
 }
 
 /// Suscripción Web Push de un navegador (uno por dispositivo del usuario).
 model PushSubscription {
   id        String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String   @default("default")
   userId    String
   endpoint  String   @unique
   p256dh    String
@@ -509,12 +589,15 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([companyId])
 }
 
 /// Comentario en una publicación de Instagram o de la página de Facebook. El equipo lo responde
 /// en público o por mensaje privado (ver src/lib/domain/comments.ts).
 model SocialComment {
   id         String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId  String   @default("default")
   channel    Channel
   /// Id del comentario en Meta.
   externalId String   @unique
@@ -538,47 +621,54 @@ model SocialComment {
   doneAt       DateTime?
 
   /// Regla que lo atendió sola (ver CommentRule); null si lo atendió el equipo.
-  ruleId       String?
+  ruleId    String?
   /// Lo borró una regla en Meta; se guarda acá para el historial.
-  removedAt    DateTime?
+  removedAt DateTime?
 
   repliedBy User?        @relation(fields: [repliedById], references: [id])
   rule      CommentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
 
   @@index([doneAt, createdAt])
   @@index([ruleId])
+  @@index([companyId])
 }
 
 /// Respuesta automática a comentarios nuevos, por publicación y palabras clave. Se crea
 /// inactiva: solo actúa cuando alguien la activa (ver src/lib/domain/comment-rules.ts).
 model CommentRule {
-  id        String   @id @default(cuid())
-  name      String
-  active    Boolean  @default(false)
+  id           String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId    String   @default("default")
+  name         String
+  active       Boolean  @default(false)
   /// INSTAGRAM o FACEBOOK; null = ambas.
-  channel   Channel?
+  channel      Channel?
   /// Publicación a la que aplica; null = todas.
-  postId    String?
+  postId       String?
   /// Texto o enlace de la publicación, para mostrarla en la configuración.
-  postLabel String?
+  postLabel    String?
   /// Palabras o frases a buscar en el comentario; vacío = cualquier comentario.
-  keywords  String[]
+  keywords     String[]
   /// Respuesta pública en el hilo. {nombre} se reemplaza por el autor.
   publicReply  String?
   /// Mensaje privado al autor; si contesta, entra al funnel como lead.
   privateReply String?
-  hide      Boolean  @default(false)
+  hide         Boolean  @default(false)
   /// Borra el comentario en Meta (no se puede deshacer).
-  remove    Boolean  @default(false)
-  createdAt DateTime @default(now())
+  remove       Boolean  @default(false)
+  createdAt    DateTime @default(now())
 
   comments SocialComment[]
+
+  @@index([companyId])
 }
 
 /// Pedido de una persona (vía Meta) para borrar sus datos. El código se le muestra para que
 /// pueda consultar el estado en /eliminacion-de-datos.
 model DataDeletionRequest {
   id             String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId      String   @default("default")
   code           String   @unique
   /// Id de la persona en Meta (app-scoped) que pidió el borrado.
   externalUserId String
@@ -586,12 +676,16 @@ model DataDeletionRequest {
   contacts       Int      @default(0)
   comments       Int      @default(0)
   createdAt      DateTime @default(now())
+
+  @@index([companyId])
 }
 
 /// Origen de un lead (ver src/lib/domain/attribution.ts): el anuncio de Meta por el que escribió
 /// (clic a WhatsApp, Instagram o Messenger) o los UTM del enlace de Bella que usó una landing.
 /// Se guarda con el primer mensaje que lo trae y no se reemplaza.
 model LeadSource {
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId    String   @default("default")
   leadId       String   @id
   /// AD (anuncio o publicación de Meta) o LINK (enlace /wa con UTM).
   kind         String
@@ -619,11 +713,15 @@ model LeadSource {
   createdAt    DateTime @default(now())
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
 }
 
 /// Clic en el enlace /wa desde una landing: guarda los UTM y entrega un código que viaja en el
 /// mensaje prellenado de WhatsApp. Cuando llega ese mensaje, los UTM pasan al lead.
 model SourceLink {
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String   @default("default")
   code        String   @id
   utmSource   String?
   utmMedium   String?
@@ -636,12 +734,15 @@ model SourceLink {
   leadId      String?
 
   @@index([createdAt])
+  @@index([companyId])
 }
 
 /// Evento para la API de Conversiones de Meta (ver src/lib/domain/conversions.ts): el lead llegó a
 /// la etapa de "lead calificado" o se ganó. Uno por lead y tipo; se reintenta si Meta falla.
 model ConversionEvent {
   id        String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String    @default("default")
   leadId    String
   /// QUALIFIED (lead calificado) o PURCHASE (venta ganada).
   kind      String
@@ -658,12 +759,15 @@ model ConversionEvent {
 
   @@unique([leadId, kind])
   @@index([status, createdAt])
+  @@index([companyId])
 }
 
 /// Gasto de cada llamada a la IA (lo informa OpenRouter en la respuesta). Alimenta la tabla de
 /// consumo de Configuración → Asistente IA.
 model AiUsage {
   id           String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId    String   @default("default")
   model        String
   inputTokens  Int      @default(0)
   outputTokens Int      @default(0)
@@ -672,12 +776,15 @@ model AiUsage {
   createdAt    DateTime @default(now())
 
   @@index([createdAt])
+  @@index([companyId])
 }
 
 /// Webhook saliente (ver src/lib/domain/webhooks.ts): cuando un lead entra a la etapa, Bella envía un
 /// POST con los datos del lead a la URL (ej. Zapier, Make, n8n o el sistema del cliente).
 model Webhook {
   id        String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String   @default("default")
   name      String
   url       String
   stageId   String
@@ -690,6 +797,7 @@ model Webhook {
   deliveries WebhookDelivery[]
 
   @@index([stageId])
+  @@index([companyId])
 }
 
 /// Envío de un webhook: el cuerpo se arma al entrar a la etapa y se reintenta si la URL falla.
@@ -718,6 +826,8 @@ model WebhookDelivery {
 /// piden los clientes, dónde se traba el embudo, fortalezas y oportunidades. Se ve en Métricas.
 model WeeklyInsight {
   id          String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String   @default("default")
   periodStart DateTime
   periodEnd   DateTime @unique
   /// Secciones del informe (WeeklyReport en weekly-insights.ts).
@@ -730,4 +840,5 @@ model WeeklyInsight {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+  @@index([companyId])
 }
