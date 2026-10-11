@@ -1,9 +1,9 @@
-import { Card, LoadingScreen, PageHeaderSkeleton, Skeleton } from "@/components/ui";
+import { Card, LoadingScreen, Skeleton } from "@/components/ui";
 
 export default function SimulatorLoading() {
   return (
     <LoadingScreen label="Cargando el simulador…">
-      <PageHeaderSkeleton action={false} />
+      <Skeleton className="mb-4 h-4 w-80 max-w-[70vw]" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="h-fit space-y-4 p-5">
           <div className="flex gap-3">

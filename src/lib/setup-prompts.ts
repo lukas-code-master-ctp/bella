@@ -105,5 +105,5 @@ Estado actual: asistente "${s.assistant.assistantName}"${namedCompany(s) ? ` de 
 7. Usuarios: crea a cada ejecutivo con su nombre y correo (pregúntame la lista); la clave inicial la escribo yo en el formulario.
 8. Asignación: reglas para repartir los leads entre los ejecutivos (pregúntame quién atiende qué).
 9. Seguimientos y cierre automático: propón tiempos razonables, pero déjalos como estén y pregúntame antes de encenderlos.
-10. Prueba en el Simulador (${s.origin}/simulator) con 3 conversaciones distintas: un cliente interesado, uno que pregunta precio y stock, y uno que pide hablar con una persona. Revisa que la IA no invente precios, que mueva de etapa, que etiquete y que derive bien. Ajusta las instrucciones si algo falla y cuéntame qué cambiaste.`;
+10. Prueba en el Simulador (${s.origin}/chats/simulator) con 3 conversaciones distintas: un cliente interesado, uno que pregunta precio y stock, y uno que pide hablar con una persona. Revisa que la IA no invente precios, que mueva de etapa, que etiquete y que derive bien. Ajusta las instrucciones si algo falla y cuéntame qué cambiaste.`;
 }

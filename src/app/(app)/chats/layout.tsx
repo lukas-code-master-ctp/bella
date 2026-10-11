@@ -8,7 +8,7 @@ export default async function ChatsLayout({ children }: { children: React.ReactN
   const pendingComments = await countPendingComments();
   return (
     <>
-      <PageHeader title="Chats" description="Todas las conversaciones con tus leads y los comentarios de Instagram y Facebook, en un solo lugar." />
+      <PageHeader title="Chats" description="Las conversaciones con tus leads, los comentarios de Instagram y Facebook, y el simulador para probar a la asistente." />
       <ChatsTabs pendingComments={pendingComments} />
       {children}
     </>

@@ -60,7 +60,7 @@ export default async function FunnelPage({
   return (
     <>
       <PageHeader title={funnels.length > 1 && funnel ? `Funnel: ${funnel.name}` : "Funnel de ventas"} description="Arrastra los leads entre etapas o abre uno para ver la conversación.">
-        <Link href="/simulator" className={buttonClass("primary")}>
+        <Link href="/chats/simulator" className={buttonClass("primary")}>
           <FlaskConical aria-hidden />
           Probar en simulador
         </Link>
