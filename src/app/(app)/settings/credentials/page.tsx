@@ -1,28 +1,30 @@
+import { Bot, Mail, MessageCircle, Share2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { CREDENTIALS, credentialStatus, type CredentialGroup } from "@/lib/credentials";
-import { Badge, Card, CardHeader, inputClass, PageHeader } from "@/components/ui";
+import { Badge, inputClass, PageHeader } from "@/components/ui";
+import { Panel, PanelBody, SaveBar } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveCredentialsAction } from "./actions";
 
-const GROUPS: { id: CredentialGroup; title: string; description: string }[] = [
-  { id: "whatsapp", title: "WhatsApp", description: "API oficial de WhatsApp Cloud, con la app de Meta de la empresa." },
-  { id: "meta", title: "Meta", description: "App de Meta, página de Facebook, Instagram, anuncios y píxel." },
-  { id: "ai", title: "Inteligencia artificial", description: "La clave del proveedor que se elige en Asistente IA." },
-  { id: "email", title: "Correo", description: "Para mandar el resumen semanal." },
+const GROUPS: { id: CredentialGroup; title: string; description: string; icon: ReactNode }[] = [
+  { id: "whatsapp", title: "WhatsApp", description: "API oficial de WhatsApp Cloud, con la app de Meta de la empresa.", icon: <MessageCircle /> },
+  { id: "meta", title: "Meta", description: "App de Meta, página de Facebook, Instagram, anuncios y píxel.", icon: <Share2 /> },
+  { id: "ai", title: "Inteligencia artificial", description: "La clave del proveedor que se elige en Asistente IA.", icon: <Bot /> },
+  { id: "email", title: "Correo", description: "Para mandar el resumen semanal.", icon: <Mail /> },
 ];
 
 export default async function CredentialsPage() {
   const status = new Map((await credentialStatus()).map((s) => [s.key, s]));
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
         title="Credenciales"
         description="Tokens y claves de las cuentas de la empresa. Se guardan cifrados y nunca se vuelven a mostrar completos: para cambiar uno, pega el nuevo; si dejas el campo vacío, queda como está."
       />
       <form action={saveCredentialsAction} className="space-y-6">
         {GROUPS.map((g) => (
-          <Card key={g.id} className="p-5">
-            <CardHeader title={g.title} description={g.description} />
-            <div className="space-y-5">
+          <Panel key={g.id} icon={g.icon} title={g.title} description={g.description}>
+            <PanelBody>
               {CREDENTIALS.filter((c) => c.group === g.id).map((c) => {
                 const s = status.get(c.key);
                 return (
@@ -58,11 +60,13 @@ export default async function CredentialsPage() {
                   </div>
                 );
               })}
-            </div>
-          </Card>
+            </PanelBody>
+          </Panel>
         ))}
-        <SubmitButton>Guardar credenciales</SubmitButton>
+        <SaveBar note="Las credenciales guardadas aquí reemplazan a las variables del servidor.">
+          <SubmitButton>Guardar credenciales</SubmitButton>
+        </SaveBar>
       </form>
-    </>
+    </div>
   );
 }
