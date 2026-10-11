@@ -23,18 +23,18 @@ export async function addFileAction(_prev: string | null, form: FormData): Promi
     console.error(e);
     return "No se pudo guardar el archivo. Intenta de nuevo.";
   }
-  revalidatePath("/settings/files");
+  revalidatePath("/settings/knowledge", "layout");
   return "Archivo agregado.";
 }
 
 export async function updateFileAction(id: string, form: FormData) {
   await requireAdmin();
   await updateMediaFile(id, { title: str(form, "title"), description: str(form, "description") });
-  revalidatePath("/settings/files");
+  revalidatePath("/settings/knowledge", "layout");
 }
 
 export async function deleteFileAction(id: string) {
   await requireAdmin();
   await deleteMediaFile(id);
-  revalidatePath("/settings/files");
+  revalidatePath("/settings/knowledge", "layout");
 }

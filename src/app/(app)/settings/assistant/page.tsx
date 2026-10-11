@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Bot, Cpu, Sparkles, Wallet } from "lucide-react";
 import { getAssistantSettings } from "@/lib/settings";
 import { API_KEY_ENV, DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
 import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
-import { buttonClass, Card, Field, inputClass, PageHeader } from "@/components/ui";
+import { Avatar, buttonClass, Field, inputClass, PageHeader } from "@/components/ui";
+import { Panel, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAssistantAction } from "../actions";
 import { aiSpendSummary } from "@/lib/domain/ai-usage";
@@ -23,34 +24,49 @@ export default async function AssistantSettingsPage() {
     anthropic: Boolean(process.env[API_KEY_ENV.anthropic]),
   };
   return (
-    <>
-      <PageHeader title="Asistente IA">
+    <div className="space-y-6">
+      <PageHeader title="Asistente IA" description="Quién es la asistente, cómo habla y con qué modelo piensa.">
         <Link href="/settings/claude" className={buttonClass("secondary")}>
           <Sparkles aria-hidden />
           Configurar con Claude
         </Link>
       </PageHeader>
-      <Card className="p-5">
-        <form action={saveAssistantAction} className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Nombre de la asistente">
-              <input name="assistantName" defaultValue={s.assistantName} className={inputClass} />
+
+      <Panel
+        icon={<Bot />}
+        title="Identidad e instrucciones"
+        description="Así se presenta la asistente ante tus clientes."
+        aside={
+          <span className="hidden items-center gap-2 rounded-full bg-slate-50 py-1 pl-1 pr-3 text-sm font-medium text-slate-700 ring-1 ring-slate-200 sm:inline-flex">
+            <Avatar name={s.assistantName} size="sm" />
+            {s.assistantName}
+          </span>
+        }
+      >
+        <form action={saveAssistantAction}>
+          <PanelBody>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Nombre de la asistente">
+                <input name="assistantName" defaultValue={s.assistantName} className={inputClass} />
+              </Field>
+              <Field label="Nombre de la empresa">
+                <input name="companyName" defaultValue={s.companyName} className={inputClass} />
+              </Field>
+            </div>
+            <Field
+              label="Instrucciones"
+              hint="Tono, qué preguntar para calificar, qué no decir, cuándo derivar. La información de productos y políticas va en Conocimiento."
+            >
+              <textarea name="instructions" rows={12} defaultValue={s.instructions} className={`${inputClass} leading-relaxed`} />
             </Field>
-            <Field label="Nombre de la empresa">
-              <input name="companyName" defaultValue={s.companyName} className={inputClass} />
-            </Field>
-          </div>
-          <Field
-            label="Instrucciones"
-            hint="Tono, qué preguntar para calificar, qué no decir, cuándo derivar. La información de productos y políticas va en la base de conocimiento y el inventario."
-          >
-            <textarea name="instructions" rows={10} defaultValue={s.instructions} className={inputClass} />
-          </Field>
-          <SubmitButton>Guardar</SubmitButton>
+          </PanelBody>
+          <PanelFooter note={`${s.instructions.length.toLocaleString("es-CL")} caracteres guardados`}>
+            <SubmitButton>Guardar</SubmitButton>
+          </PanelFooter>
         </form>
-      </Card>
-      <h2 className="mb-3 mt-8 text-base font-semibold text-slate-900">Modelo de IA</h2>
-      <Card className="p-5">
+      </Panel>
+
+      <Panel icon={<Cpu />} title="Modelo de IA" description="El proveedor y el modelo que usa la asistente para conversar y para resumir.">
         <AiForm
           config={config}
           models={models}
@@ -59,8 +75,11 @@ export default async function AssistantSettingsPage() {
           keys={keys}
           keyInfo={keyInfo}
         />
+      </Panel>
+
+      <Panel icon={<Wallet />} title="Consumo" description="Gasto en IA por período, comparado con el período anterior equivalente.">
         <AiSpend rows={spend} />
-      </Card>
-    </>
+      </Panel>
+    </div>
   );
 }

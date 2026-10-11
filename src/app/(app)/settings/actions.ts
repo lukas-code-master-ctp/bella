@@ -238,13 +238,13 @@ export async function saveDocAction(form: FormData) {
   if (!data.title || !data.content) return;
   if (id) await db.knowledgeDoc.update({ where: { id }, data });
   else await db.knowledgeDoc.create({ data });
-  revalidatePath("/settings/knowledge");
+  revalidatePath("/settings/knowledge", "layout");
 }
 
 export async function deleteDocAction(id: string) {
   await requireAdmin();
   await db.knowledgeDoc.delete({ where: { id } });
-  revalidatePath("/settings/knowledge");
+  revalidatePath("/settings/knowledge", "layout");
 }
 
 // Inventario
@@ -255,10 +255,10 @@ export async function saveInventoryAction(_prev: string | null, form: FormData):
   await setSetting<InventorySettings>("inventory", { ...current, sheetUrl: str(form, "sheetUrl") });
   try {
     const rows = await syncInventory();
-    revalidatePath("/settings/inventory");
+    revalidatePath("/settings/knowledge", "layout");
     return `Sincronizado: ${rows} productos.`;
   } catch (e) {
-    revalidatePath("/settings/inventory");
+    revalidatePath("/settings/knowledge", "layout");
     return e instanceof Error ? e.message : "No se pudo sincronizar.";
   }
 }
