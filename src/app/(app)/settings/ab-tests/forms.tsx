@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import type { Channel } from "@prisma/client";
 import { Plus, Trash2 } from "lucide-react";
 import { Field, FormMessage, inputClass } from "@/components/ui";
+import { Chip, PanelBody, PanelFooter, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { createVariantAction, deleteVariantAction, updateVariantAction } from "./actions";
@@ -16,8 +17,6 @@ type Variant = {
   weight: number;
   active: boolean;
 };
-
-const checkClass = "size-4 rounded border-slate-300 accent-brand-600";
 
 function VariantFields({ variant, defaultAssistant }: { variant?: Variant; defaultAssistant: string }) {
   return (
@@ -42,10 +41,7 @@ function VariantFields({ variant, defaultAssistant }: { variant?: Variant; defau
           className={inputClass}
         />
       </Field>
-      <label className="flex min-h-10 items-center gap-2 text-sm text-slate-700">
-        <input type="checkbox" name="active" defaultChecked={variant?.active ?? true} className={checkClass} />
-        Activa: recibe leads nuevos
-      </label>
+      <ToggleRow name="active" defaultChecked={variant?.active ?? true} title="Activa" description="Recibe leads nuevos del canal." />
     </>
   );
 }
@@ -53,24 +49,26 @@ function VariantFields({ variant, defaultAssistant }: { variant?: Variant; defau
 export function NewVariantForm({ channels, defaultAssistant }: { channels: Channel[]; defaultAssistant: string }) {
   const [error, action] = useActionState(createVariantAction, null);
   return (
-    <form action={action} className="space-y-4">
-      <Field label="Canal">
-        <select name="channel" required className={`${inputClass} sm:max-w-xs`}>
-          {channels.map((c) => (
-            <option key={c} value={c}>
-              {CHANNEL_LABEL[c]}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <VariantFields defaultAssistant={defaultAssistant} />
-      <div className="flex flex-wrap items-center gap-3">
+    <form action={action}>
+      <PanelBody>
+        <fieldset className="space-y-1.5">
+          <legend className="text-sm font-medium text-slate-800">Canal</legend>
+          <div className="flex flex-wrap gap-2">
+            {channels.map((c, i) => (
+              <Chip key={c} type="radio" name="channel" value={c} defaultChecked={i === 0} required>
+                {CHANNEL_LABEL[c]}
+              </Chip>
+            ))}
+          </div>
+        </fieldset>
+        <VariantFields defaultAssistant={defaultAssistant} />
+      </PanelBody>
+      <PanelFooter note={error && <FormMessage>{error}</FormMessage>}>
         <SubmitButton>
           <Plus aria-hidden />
           Crear variante
         </SubmitButton>
-        {error && <FormMessage>{error}</FormMessage>}
-      </div>
+      </PanelFooter>
     </form>
   );
 }
@@ -82,13 +80,13 @@ export function VariantForm({ variant, defaultAssistant }: { variant: Variant; d
     <div className="space-y-4">
       <form action={action} className="space-y-4">
         <VariantFields variant={variant} defaultAssistant={defaultAssistant} />
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton variant="secondary">Guardar</SubmitButton>
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {error && <FormMessage>{error}</FormMessage>}
+          <SubmitButton>Guardar cambios</SubmitButton>
         </div>
       </form>
-      <form action={remove} className="flex flex-wrap items-center gap-3">
-        <SubmitButton variant="ghost-danger" size="sm" confirm={`¿Borrar la variante "${variant.name}"?`}>
+      <form action={remove} className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+        <SubmitButton variant="ghost-danger" size="sm" confirm={`¿Borrar la variante "${variant.name}"?`} pendingText="Borrando…">
           <Trash2 aria-hidden />
           Borrar variante
         </SubmitButton>

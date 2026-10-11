@@ -1,6 +1,8 @@
+import { UserPlus } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Avatar, Badge, Button, Card, CardHeader, PageHeader } from "@/components/ui";
+import { Avatar, Badge, PageHeader } from "@/components/ui";
+import { Panel, SwitchSubmit } from "@/components/settings-ui";
 import { toggleUserAction } from "../actions";
 import { NewUserForm } from "./form";
 
@@ -11,37 +13,45 @@ export default async function UsersPage() {
     db.lead.groupBy({ by: ["assigneeId"], where: { status: "OPEN" }, _count: { _all: true } }),
   ]);
   const openLeads = (id: string) => load.find((l) => l.assigneeId === id)?._count._all ?? 0;
+  const maxLoad = Math.max(1, ...users.map((u) => openLeads(u.id)));
+  const active = users.filter((u) => u.active).length;
 
   return (
-    <>
-      <PageHeader title="Usuarios" />
-      <Card className="mb-6 divide-y divide-slate-100">
+    <div className="space-y-6">
+      <PageHeader title="Usuarios" description={`${active} ${active === 1 ? "usuario activo" : "usuarios activos"} de ${users.length}.`} />
+      <ul className="stagger overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         {users.map((u) => (
-          <div key={u.id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
+          <li key={u.id} className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4 text-sm last:border-0">
             <div className={`flex min-w-0 flex-1 items-center gap-3 ${u.active ? "" : "opacity-60"}`}>
-              <Avatar name={u.name} />
+              <Avatar name={u.name} size="lg" />
               <div className="min-w-0">
-                <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <div className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
                   {u.name}
-                  {!u.active && <Badge>Inactivo</Badge>}
+                  <Badge tone={u.role === "ADMIN" ? "brand" : "neutral"}>{u.role === "ADMIN" ? "Admin" : "Ejecutivo"}</Badge>
+                  {u.id === me.id && <Badge>Tú</Badge>}
                 </div>
                 <div className="truncate text-slate-600">{u.email}</div>
               </div>
             </div>
-            <Badge tone={u.role === "ADMIN" ? "brand" : "neutral"}>{u.role === "ADMIN" ? "Admin" : "Ejecutivo"}</Badge>
-            <span className="w-28 text-right text-xs tabular-nums text-slate-600">{openLeads(u.id)} leads abiertos</span>
-            {u.id !== me.id && (
-              <form action={toggleUserAction.bind(null, u.id, !u.active)}>
-                <Button variant="ghost">{u.active ? "Desactivar" : "Activar"}</Button>
-              </form>
-            )}
-          </div>
+            <div className="w-36" title={`${openLeads(u.id)} leads abiertos`}>
+              <p className="text-right text-xs tabular-nums text-slate-600">{openLeads(u.id)} leads abiertos</p>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-brand-500 transition-[width] duration-500" style={{ width: `${(openLeads(u.id) / maxLoad) * 100}%` }} />
+              </div>
+            </div>
+            <div className="flex w-11 justify-end">
+              {u.id !== me.id && (
+                <form action={toggleUserAction.bind(null, u.id, !u.active)}>
+                  <SwitchSubmit on={u.active} label={u.active ? `Desactivar a ${u.name}` : `Activar a ${u.name}`} />
+                </form>
+              )}
+            </div>
+          </li>
         ))}
-      </Card>
-      <Card className="p-5">
-        <CardHeader title="Nuevo usuario" />
+      </ul>
+      <Panel icon={<UserPlus />} title="Nuevo usuario">
         <NewUserForm />
-      </Card>
-    </>
+      </Panel>
+    </div>
   );
 }
