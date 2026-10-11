@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "../db";
+import { currentCompanyId } from "../tenant";
 import { startOfLocalDay } from "../dates";
 import { campaignOf } from "../domain/attribution";
 import { getMetrics } from "../domain/metrics";
@@ -185,7 +186,7 @@ export async function generateWeeklyInsight(
 
   const data = { periodStart: from, report, stats, model: config.model, seenBy: [] };
   const insight = await db.weeklyInsight.upsert({
-    where: { periodEnd: to },
+    where: { companyId_periodEnd: { companyId: await currentCompanyId(), periodEnd: to } },
     create: { periodEnd: to, ...data },
     update: { ...data, createdAt: new Date() },
   });
@@ -206,7 +207,7 @@ export function lastWeekPeriod(now = new Date()) {
 /** Para el cron del lunes: genera el de la semana pasada si aún no existe. */
 export async function runWeeklyInsight(now = new Date(), clients: ProviderClients = {}) {
   const period = lastWeekPeriod(now);
-  if (await db.weeklyInsight.findUnique({ where: { periodEnd: period.to } })) return { created: false, insightId: null };
+  if (await db.weeklyInsight.findUnique({ where: { companyId_periodEnd: { companyId: await currentCompanyId(), periodEnd: period.to } } })) return { created: false, insightId: null };
   const insight = await generateWeeklyInsight({ ...period, clients });
   return { created: true, insightId: insight.id };
 }

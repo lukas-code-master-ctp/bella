@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { applyPreset, type Preset } from "@/lib/domain/presets";
+import { primaryFunnelId } from "@/lib/domain/default-funnel";
 import { COMPRA_TU_PARCELA } from "@/lib/presets/compra-tu-parcela";
 import { getAssistantSettings, getSetting, setSetting } from "@/lib/settings";
 
@@ -50,8 +51,8 @@ describe("presets de configuración", () => {
   });
 
   it("arma el funnel reutilizando las etapas existentes y sin perder leads", async () => {
-    const nuevo = await db.stage.create({ data: { name: "Nuevo", position: 0 } });
-    const extra = await db.stage.create({ data: { name: "Otra", position: 1 } });
+    const nuevo = await db.stage.create({ data: { funnelId: await primaryFunnelId(), name: "Nuevo", position: 0 } });
+    const extra = await db.stage.create({ data: { funnelId: await primaryFunnelId(), name: "Otra", position: 1 } });
     await applyPreset(db, {
       ...preset,
       stages: [
@@ -77,7 +78,7 @@ describe("presets de configuración", () => {
 
   it("aplica el preset completo de Compra Tu Parcela sobre el funnel de ejemplo", async () => {
     for (const [position, name] of ["Nuevo", "Calificado", "Interesado", "Atención humana"].entries()) {
-      await db.stage.create({ data: { name, position, requiresHuman: name === "Atención humana" } });
+      await db.stage.create({ data: { funnelId: await primaryFunnelId(), name, position, requiresHuman: name === "Atención humana" } });
     }
     await applyPreset(db, COMPRA_TU_PARCELA);
     const stages = await db.stage.findMany({ orderBy: { position: "asc" } });

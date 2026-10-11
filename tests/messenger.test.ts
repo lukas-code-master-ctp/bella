@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import { ChannelSendError } from "@/lib/channels/whatsapp";
 import type { MessengerApi, MessengerWebhook, MsgEvent, MetaPlatform } from "@/lib/channels/messenger";
@@ -50,13 +51,9 @@ function fakeMessenger(fail?: ChannelSendError) {
   return { api, sent, lookups };
 }
 
-beforeEach(() => {
-  process.env.META_PAGE_ID = PAGE_ID;
-  process.env.META_IG_ACCOUNT_ID = IG_ID;
-});
-afterEach(() => {
-  delete process.env.META_PAGE_ID;
-  delete process.env.META_IG_ACCOUNT_ID;
+beforeEach(async () => {
+  await saveCredentials({ META_PAGE_ID: PAGE_ID });
+  await saveCredentials({ META_IG_ACCOUNT_ID: IG_ID });
 });
 
 describe("Instagram y Messenger: mensajes entrantes", () => {

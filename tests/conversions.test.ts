@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import { closeLead, createLead, moveStage, reopenLead } from "@/lib/domain/leads";
 import {
@@ -23,9 +24,6 @@ function fakeApi(fail = false) {
   return { api, sent };
 }
 
-afterEach(() => {
-  delete process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
-});
 
 describe("API de Conversiones", () => {
   it("apagada por defecto: no deja eventos pendientes", async () => {
@@ -38,7 +36,7 @@ describe("API de Conversiones", () => {
 
   it("envía lead calificado y venta: mensajería de negocio con ctwa_clid si vino de un anuncio a WhatsApp", async () => {
     const [, calificado] = await seedFunnel();
-    process.env.WHATSAPP_BUSINESS_ACCOUNT_ID = "waba-1";
+    await saveCredentials({ WHATSAPP_BUSINESS_ACCOUNT_ID: "waba-1" });
     await savePixelSettings({ enabled: true, datasetId: "px 123", qualifiedStageId: calificado.id, testEventCode: "TEST1" });
     const lead = await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56 9 1111 2222", externalId: "56911112222" });
     await db.leadSource.create({ data: { leadId: lead.id, kind: "AD", adId: "1", ctwaClid: "clid-abc" } });

@@ -1,7 +1,8 @@
 import type { AssignStrategy, FieldType, Prisma, PrismaClient } from "@prisma/client";
 import type { AssistantSettings } from "../settings";
 import type { InventorySettings } from "../inventory";
-import { DEFAULT_FUNNEL_ID, ensureDefaultFunnel } from "./default-funnel";
+import { currentCompanyId } from "../tenant";
+import { ensureDefaultFunnel, primaryFunnelId } from "./default-funnel";
 
 /**
  * Configuración predefinida para una empresa: instrucciones de la asistente, base de
@@ -33,14 +34,15 @@ type Db = PrismaClient | Prisma.TransactionClient;
 const presetKey = (id: string) => `preset:${id}`;
 
 async function readSetting<T>(tx: Db, key: string): Promise<T | undefined> {
-  const row = await tx.setting.findUnique({ where: { key } });
+  const row = await tx.companySetting.findUnique({ where: { companyId_key: { companyId: await currentCompanyId(), key } } });
   return row ? (row.value as T) : undefined;
 }
 
 async function writeSetting<T>(tx: Db, key: string, value: T) {
-  await tx.setting.upsert({
-    where: { key },
-    create: { key, value: value as object },
+  const companyId = await currentCompanyId();
+  await tx.companySetting.upsert({
+    where: { companyId_key: { companyId, key } },
+    create: { companyId, key, value: value as object },
     update: { value: value as object },
   });
 }
@@ -85,7 +87,7 @@ export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boo
     });
 
     for (const rule of preset.stageRules ?? []) {
-      const stage = await tx.stage.findFirst({ where: { name: rule.stage, funnelId: DEFAULT_FUNNEL_ID } });
+      const stage = await tx.stage.findFirst({ where: { name: rule.stage, funnelId: await primaryFunnelId() } });
       if (!stage || (await tx.assignmentRule.findFirst({ where: { name: rule.name } }))) continue;
       await tx.assignmentRule.create({
         data: { name: rule.name, trigger: "STAGE_ENTERED", stageId: stage.id, strategy: rule.strategy },
@@ -101,14 +103,15 @@ export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boo
 
 async function applyStages(tx: Prisma.TransactionClient, stages: NonNullable<Preset["stages"]>) {
   // El preset arma el primer embudo; los embudos que se agreguen después no se tocan.
-  await ensureDefaultFunnel(tx);
-  const existing = await tx.stage.findMany({ where: { funnelId: DEFAULT_FUNNEL_ID }, orderBy: { position: "asc" } });
+  const { id: funnelId } = await ensureDefaultFunnel(tx);
+  const existing = await tx.stage.findMany({ where: { funnelId }, orderBy: { position: "asc" } });
   const used = new Set<string>();
   for (const [position, s] of stages.entries()) {
     const match =
       existing.find((e) => e.name === s.name) ??
       existing.find((e) => !used.has(e.id) && s.replaces?.includes(e.name) && !stages.some((o) => o.name === e.name));
     const data = {
+      funnelId,
       name: s.name,
       color: s.color,
       requiresHuman: s.requiresHuman ?? false,

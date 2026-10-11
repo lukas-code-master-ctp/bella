@@ -1,5 +1,6 @@
 import type { Channel } from "@prisma/client";
 import { db } from "../db";
+import { currentCompanyId } from "../tenant";
 import { getSetting, setSetting } from "../settings";
 import {
   canSendAudio,
@@ -177,7 +178,7 @@ async function openLeadFor(
   funnelId?: () => Promise<string | null>,
 ) {
   const contact = await db.contact.findUnique({
-    where: { channel_externalId: { channel, externalId } },
+    where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel, externalId } },
     include: { leads: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1 } },
   });
   if (contact?.leads[0]) return contact.leads[0].id;
@@ -309,7 +310,7 @@ async function receiveMessengerEvent(
   // Un clic en un anuncio sin mensaje (conversación que ya existía) solo marca el origen.
   if (referral && !m && !event.postback) {
     const contact = await db.contact.findUnique({
-      where: { channel_externalId: { channel: platform, externalId: event.sender.id } },
+      where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel: platform, externalId: event.sender.id } },
       include: { leads: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1 } },
     });
     if (contact?.leads[0]) await attachReferral(contact.leads[0].id, referral, deps);
@@ -351,7 +352,7 @@ async function attachReferral(leadId: string, r: MsgReferral, deps: InboundDeps)
 /** El cliente leyó: todo lo enviado hasta ese momento queda como leído. */
 async function applyRead(platform: MetaPlatform, event: MsgEvent) {
   const contact = await db.contact.findUnique({
-    where: { channel_externalId: { channel: platform, externalId: event.sender.id } },
+    where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel: platform, externalId: event.sender.id } },
   });
   if (!contact) return;
   const until = event.read?.watermark ? new Date(event.read.watermark) : new Date(event.timestamp ?? Date.now());

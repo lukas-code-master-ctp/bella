@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest";
 import { db, rootDb } from "@/lib/db";
 import { readSession, signSession } from "@/lib/session-token";
 import { currentCompanyId, DEFAULT_COMPANY_ID, withCompany } from "@/lib/tenant";
+import { getSetting, setSetting } from "@/lib/settings";
+import { TEST_COMPANY_ID } from "./company";
 
 const inA = <T>(fn: () => Promise<T>) => withCompany("empresa-a", fn);
 const inB = <T>(fn: () => Promise<T>) => withCompany("empresa-b", fn);
 
 describe("Empresas: cada consulta queda en la empresa en curso", () => {
-  it("sin empresa explícita ni sesión usa la empresa por defecto", async () => {
-    expect(await currentCompanyId()).toBe(DEFAULT_COMPANY_ID);
+  it("sin empresa explícita ni sesión usa la de respaldo (en producción, la por defecto)", async () => {
+    expect(DEFAULT_COMPANY_ID).toBe("default");
+    expect(await currentCompanyId()).toBe(TEST_COMPANY_ID);
     const doc = await db.knowledgeDoc.create({ data: { title: "FAQ", content: "x" } });
-    expect(doc.companyId).toBe(DEFAULT_COMPANY_ID);
+    expect(doc.companyId).toBe(TEST_COMPANY_ID);
   });
 
   it("crea, lee, cuenta, actualiza y borra solo en su empresa", async () => {
@@ -33,12 +36,11 @@ describe("Empresas: cada consulta queda en la empresa en curso", () => {
 
   it("upsert y createMany llevan la empresa", async () => {
     await inA(() => db.knowledgeDoc.createMany({ data: [{ title: "1", content: "" }, { title: "2", content: "" }] }));
-    await inB(() =>
-      db.setting.upsert({ where: { key: "assistant" }, create: { key: "assistant", value: {} }, update: { value: {} } }),
-    );
+    await inB(() => setSetting("assistant", { companyName: "B" }));
     expect((await rootDb.knowledgeDoc.findMany()).map((d) => d.companyId)).toEqual(["empresa-a", "empresa-a"]);
-    expect((await rootDb.setting.findUniqueOrThrow({ where: { key: "assistant" } })).companyId).toBe("empresa-b");
-    expect(await inA(() => db.setting.findUnique({ where: { key: "assistant" } }))).toBeNull();
+    expect((await rootDb.companySetting.findFirstOrThrow({ where: { key: "assistant" } })).companyId).toBe("empresa-b");
+    expect(await inA(() => getSetting("assistant", null))).toBeNull();
+    expect(await inB(() => getSetting("assistant", null))).toEqual({ companyName: "B" });
   });
 
   it("las transacciones también quedan en la empresa", async () => {
