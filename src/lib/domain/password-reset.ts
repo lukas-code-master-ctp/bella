@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { db } from "../db";
+import type { User } from "@prisma/client";
+import { db, rootDb } from "../db";
+import { withCompany } from "../tenant";
 import { emailConfigured, escapeHtml, resendSender, type EmailSender } from "../email";
 import { getWeeklyEmailSettings } from "./weekly-email";
 
@@ -59,8 +61,13 @@ export async function requestPasswordReset(
   baseUrl: string,
   { sender = resendSender, now = new Date() }: { sender?: EmailSender; now?: Date } = {},
 ): Promise<void> {
-  const user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+  // El correo es único entre todas las empresas; el resto corre en la empresa del usuario.
+  const user = await rootDb.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user?.active) return;
+  return withCompany(user.companyId, () => sendResetLink(user, baseUrl, sender, now));
+}
+
+async function sendResetLink(user: User, baseUrl: string, sender: EmailSender, now: Date): Promise<void> {
   const recent = await db.passwordResetToken.findFirst({
     where: { userId: user.id, createdAt: { gt: new Date(now.getTime() - RESEND_COOLDOWN_MS) } },
   });
@@ -100,6 +107,10 @@ export async function resetPassword(token: string, password: string, now = new D
   const row = await validToken(token, now);
   if (!row) return { ok: false, error: "El enlace no es válido o ya venció. Pide uno nuevo." };
   const passwordHash = await bcrypt.hash(password, 10);
+  return withCompany(row.user.companyId, () => spendAndReset(row, passwordHash, now));
+}
+
+async function spendAndReset(row: { id: string; userId: string; user: { email: string } }, passwordHash: string, now: Date): Promise<ResetResult> {
   // Se marca usado solo si nadie lo gastó entre la lectura y ahora (dos envíos simultáneos).
   const spent = await db.passwordResetToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: now } });
   if (spent.count === 0) return { ok: false, error: "El enlace no es válido o ya venció. Pide uno nuevo." };

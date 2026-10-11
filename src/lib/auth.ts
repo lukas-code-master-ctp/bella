@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
-import { db } from "./db";
+import { db, rootDb } from "./db";
 import {
   REMEMBER_MAX_AGE_SECONDS,
   SESSION_COOKIE,
@@ -21,12 +21,13 @@ export async function hashPassword(password: string) {
 
 /** `remember`: la sesión sobrevive al cierre del navegador por 30 días ("Recordarme"). */
 export async function login(email: string, password: string, remember = false): Promise<boolean> {
-  const user = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+  // El correo es único entre todas las empresas: se busca sin filtro y la sesión lleva la empresa.
+  const user = await rootDb.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user || !user.active) return false;
   if (!(await bcrypt.compare(password, user.passwordHash))) return false;
   const jar = await cookies();
   const maxAge = remember ? REMEMBER_MAX_AGE_SECONDS : SHORT_MAX_AGE_SECONDS;
-  jar.set(SESSION_COOKIE, await signSession(user.id, maxAge), sessionCookieOptions(remember));
+  jar.set(SESSION_COOKIE, await signSession(user.id, maxAge, user.companyId), sessionCookieOptions(remember));
   return true;
 }
 
