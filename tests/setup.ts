@@ -6,7 +6,7 @@ process.env.SESSION_SECRET ??= "test-secret-test-secret";
 
 const { db, rootDb } = await import("@/lib/db");
 const { clearCredentialCache } = await import("@/lib/credentials");
-const { setFallbackCompanyId } = await import("@/lib/tenant");
+const { DEFAULT_COMPANY_ID, setFallbackCompanyId } = await import("@/lib/tenant");
 const { primaryFunnelIdFor } = await import("@/lib/domain/default-funnel");
 const { TEST_COMPANY_ID } = await import("./company");
 
@@ -41,7 +41,8 @@ afterEach(async () => {
   const leaked: string[] = [];
   for (const { table_name } of tables) {
     const [{ n }] = await rootDb.$queryRawUnsafe<{ n: number }[]>(
-      `SELECT count(*)::int AS n FROM "${table_name}" WHERE "companyId" NOT IN ('${TEST_COMPANY_ID}', 'empresa-a', 'empresa-b')`,
+      `SELECT count(*)::int AS n FROM "${table_name}" WHERE "companyId" NOT IN ('${TEST_COMPANY_ID}', 'empresa-a', 'empresa-b')
+       AND "companyId" NOT IN (SELECT "id" FROM "Company" WHERE "id" <> '${DEFAULT_COMPANY_ID}')`,
     );
     if (n) leaked.push(`${table_name} (${n})`);
   }

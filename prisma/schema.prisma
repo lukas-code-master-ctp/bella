@@ -78,6 +78,8 @@ model User {
   passwordHash      String
   role              Role      @default(EXECUTIVE)
   active            Boolean   @default(true)
+  /// Dueño de Bella: crea empresas y puede entrar a cualquiera (Configuración → Empresas).
+  superadmin        Boolean   @default(false)
   createdAt         DateTime  @default(now())
   /// Último cambio de contraseña: invalida las sesiones abiertas antes de esa fecha.
   passwordChangedAt DateTime?
@@ -142,7 +144,7 @@ model Funnel {
   id            String    @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
   companyId     String    @default("default")
-  name          String    @unique
+  name          String
   position      Int
   /// Canales cuyos leads nuevos entran a este embudo. Un canal sin embudo va al primero.
   channels      Channel[]
@@ -188,7 +190,6 @@ model Tag {
   contacts ContactTag[]
   rules    AssignmentRule[]
 
-  @@unique([category, name])
   @@unique([companyId, category, name])
   @@index([companyId])
 }
@@ -215,7 +216,6 @@ model Contact {
   leads  Lead[]
   fields ContactFieldValue[]
 
-  @@unique([channel, externalId])
   @@unique([companyId, channel, externalId])
   @@index([companyId])
 }
@@ -238,7 +238,7 @@ model CustomField {
   id          String    @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
   companyId   String    @default("default")
-  name        String    @unique
+  name        String
   type        FieldType @default(TEXT)
   /// Valores permitidos cuando el tipo es OPTIONS.
   options     String[]
@@ -844,7 +844,7 @@ model WeeklyInsight {
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
   companyId   String   @default("default")
   periodStart DateTime
-  periodEnd   DateTime @unique
+  periodEnd   DateTime
   /// Secciones del informe (WeeklyReport en weekly-insights.ts).
   report      Json
   /// Números del período: leads, abiertos, ganados, perdidos y monto.

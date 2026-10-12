@@ -1,4 +1,4 @@
-import { Archive, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
+import { Archive, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 import { ScrollActiveIntoView } from "./scroll-active";
@@ -48,14 +48,18 @@ const GROUPS = [
   ],
 ] as const;
 
+/** Solo el dueño de Bella. */
+const OWNER_GROUP = ["Bella", [["/settings/companies", "Empresas", <Building2 key="i" />]]] as const;
+
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
-  await requireAdmin();
+  const user = await requireAdmin();
+  const groups = user.superadmin ? [...GROUPS, OWNER_GROUP] : GROUPS;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:gap-8">
       <nav aria-label="Configuración" className="min-w-0 md:sticky md:top-8 md:max-h-[calc(100dvh-4rem)] md:self-start md:overflow-y-auto">
         {/* En móvil, una tira que se desliza de lado; en escritorio, grupos con su título. */}
         <div data-strip className="relative -mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 [scrollbar-width:none] md:mx-0 md:flex-col md:gap-3 md:overflow-visible md:px-0 md:pb-0 [&_a]:shrink-0 [&_a]:whitespace-nowrap">
-          {GROUPS.map(([group, tabs]) => (
+          {groups.map(([group, tabs]) => (
             <div key={group} role="group" aria-label={group} className="flex gap-1 md:flex-col md:gap-0.5">
               <p className="hidden px-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 md:block">{group}</p>
               {tabs.map(([href, label, icon]) => (
