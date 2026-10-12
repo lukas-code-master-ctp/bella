@@ -14,6 +14,8 @@ import { Badge, buttonClass, Card, CardHeader, Field, inputClass, PageHeader } f
 import { SubmitButton } from "@/components/submit-button";
 import { deleteWhatsAppNumberAction, saveChannelsAction, saveLegalAction, updateWhatsAppNumberAction } from "../actions";
 import { ChannelIcon } from "./channel-icon";
+import { companyUrls } from "@/lib/company-urls";
+import { currentCompanyId } from "@/lib/tenant";
 import { ChannelList, type ChannelRow } from "./channel-list";
 import { WhatsAppStatus } from "./whatsapp-status";
 import { AddWhatsAppNumberForm, FunnelSelect } from "./whatsapp-numbers";
@@ -67,7 +69,7 @@ export default async function ChannelsSettingsPage() {
   const funnelOptions = funnels.map(({ id, name }) => ({ id, name }));
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
-  const base = `${origin}/api/webhooks`;
+  const urls = companyUrls(origin, await currentCompanyId());
   const metaOk = metaMissing.length === 0;
 
   const rows: ChannelRow[] = [
@@ -188,7 +190,7 @@ export default async function ChannelsSettingsPage() {
             {waMissing.length ? <Badge>Sin conectar</Badge> : <Badge tone="success">Conectado</Badge>}
           </CardHeader>
           <EnvList keys={WHATSAPP_ENV} missing={waMissing} />
-          <Webhook url={`${base}/whatsapp`} where="WhatsApp → Configuración" fields="el campo messages" />
+          <Webhook url={urls.whatsappWebhook} where="WhatsApp → Configuración" fields="el campo messages" />
           {waMissing.length === 0 && (
             <Suspense
               fallback={<div className="mt-4 h-28 animate-pulse rounded-lg bg-slate-100" aria-label="Revisando la conexión con Meta" />}
@@ -249,7 +251,7 @@ export default async function ChannelsSettingsPage() {
           </CardHeader>
           <EnvList keys={MESSENGER_ENV} missing={metaMissing} />
           <Webhook
-            url={`${base}/meta`}
+            url={urls.metaWebhook}
             where="Webhooks, para los objetos Page e Instagram"
             fields="messages, messaging_postbacks y comments en Instagram; messages, messaging_postbacks, message_reads y feed en Page"
           />
@@ -267,8 +269,8 @@ export default async function ChannelsSettingsPage() {
           />
           <dl className="space-y-3 text-sm">
             {[
-              ["Política de privacidad (Configuración de la app → Básica)", `${origin}/privacidad`],
-              ["URL de devolución de llamada de eliminación de datos", `${base}/meta/data-deletion`],
+              ["Política de privacidad (Configuración de la app → Básica)", urls.privacy],
+              ["URL de devolución de llamada de eliminación de datos", urls.dataDeletionCallback],
             ].map(([label, url]) => (
               <div key={url} className="rounded-lg bg-slate-50 p-3">
                 <dt className="font-medium text-slate-800">{label}</dt>

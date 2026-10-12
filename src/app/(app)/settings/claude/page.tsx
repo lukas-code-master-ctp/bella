@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { currentCompanyId } from "@/lib/tenant";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { missingCredentials, type CredentialKey } from "@/lib/credentials";
@@ -43,6 +44,7 @@ export default async function ClaudeSetupPage() {
   ]);
   const status: SetupStatus = {
     origin,
+    companyId: await currentCompanyId(),
     missingEnv,
     whatsappNumber: attribution.whatsappNumber,
     pixel: {

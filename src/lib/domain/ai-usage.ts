@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { localMonthName, startOfLocalMonth } from "../dates";
+import { unstable_rethrow } from "next/navigation";
 
 const DAY_MS = 86_400_000;
 
@@ -36,6 +37,8 @@ export async function aiSpendSummary(now = new Date()): Promise<SpendRow[] | nul
   try {
     return await summarize(now);
   } catch (err) {
+    // Next marca la página como dinámica con un error (al leer la sesión): ese debe seguir.
+    unstable_rethrow(err);
     // Ej. un preview que usa la base de producción antes de que exista la tabla.
     console.error("[ai-usage] no se pudo leer el consumo:", err);
     return null;

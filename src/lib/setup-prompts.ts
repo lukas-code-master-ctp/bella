@@ -6,12 +6,16 @@
  * que está listo. Nunca incluyen valores secretos, solo qué credenciales faltan.
  */
 
+import { companyUrls } from "./company-urls";
 import { CREDENTIALS } from "./credentials";
+import { DEFAULT_COMPANY_ID } from "./tenant";
 import { DEFAULT_ASSISTANT } from "./settings";
 
 export type SetupStatus = {
   /** Dirección de esta instalación, ej. https://crm.empresa.cl */
   origin: string;
+  /** Empresa a configurar; cambia las URLs de los webhooks y de las páginas legales. */
+  companyId?: string;
   /** Credenciales que faltan (claves de CREDENTIALS, ej. WHATSAPP_TOKEN). */
   missingEnv: string[];
   whatsappNumber: string;
@@ -49,7 +53,7 @@ const namedCompany = (s: SetupStatus) =>
 const company = (s: SetupStatus) => (namedCompany(s) ? ` de ${namedCompany(s)}` : "");
 
 export function metaSetupPrompt(s: SetupStatus): string {
-  const base = `${s.origin}/api/webhooks`;
+  const urls = companyUrls(s.origin, s.companyId ?? DEFAULT_COMPANY_ID);
   const missing = s.missingEnv.filter((k) => k !== "OPENROUTER_API_KEY");
   return `Quiero que conectes Meta (WhatsApp, Instagram, Messenger y el píxel) con Bella, el CRM de leads${company(s)} que está en ${s.origin}. Puede que mi empresa parta desde cero en Meta. Toma el control del navegador y hazlo paso a paso.
 
@@ -75,11 +79,11 @@ ${envLine(s, "META_IG_ACCOUNT_ID", "id de la cuenta profesional de Instagram vin
 ${envLine(s, "META_ADS_TOKEN", "opcional: token del usuario del sistema con ads_read, para ver los nombres de campaña.")}
 ${envLine(s, "META_CAPI_TOKEN", "Administrador de eventos → el píxel → Configuración → API de Conversiones → Generar token de acceso.")}
 8. Webhooks en la app (usa el mismo token de verificación del webhook que guardaste en Bella):
-   - WhatsApp → Configuración: URL ${base}/whatsapp, suscribe el campo messages.
-   - Webhooks → objeto Page: URL ${base}/meta, campos messages, messaging_postbacks, message_reads y feed.
-   - Webhooks → objeto Instagram: URL ${base}/meta, campos messages, messaging_postbacks y comments.
+   - WhatsApp → Configuración: URL ${urls.whatsappWebhook}, suscribe el campo messages.
+   - Webhooks → objeto Page: URL ${urls.metaWebhook}, campos messages, messaging_postbacks, message_reads y feed.
+   - Webhooks → objeto Instagram: URL ${urls.metaWebhook}, campos messages, messaging_postbacks y comments.
    - Suscribe la página a la app (Messenger → Configuración → Generar tokens de acceso → la página → agregar suscripciones).
-9. Publicar la app.${s.legal.contactEmail ? "" : ` Primero, en ${s.origin}/settings/channels completa la empresa responsable y el correo de privacidad (pregúntame cuáles).`} En Configuración de la app → Básica pon la política de privacidad ${s.origin}/privacidad, la URL de eliminación de datos ${base}/meta/data-deletion, un ícono y la categoría; luego cambia el modo de la app a Publicado. WhatsApp funciona sin revisión. Para que Instagram y Messenger respondan a clientes que no tienen rol en la app, Meta exige acceso avanzado a pages_messaging, instagram_manage_messages e instagram_manage_comments en Revisión de la app: prepara la solicitud y pregúntame antes de enviarla.
+9. Publicar la app.${s.legal.contactEmail ? "" : ` Primero, en ${s.origin}/settings/channels completa la empresa responsable y el correo de privacidad (pregúntame cuáles).`} En Configuración de la app → Básica pon la política de privacidad ${urls.privacy}, la URL de eliminación de datos ${urls.dataDeletionCallback}, un ícono y la categoría; luego cambia el modo de la app a Publicado. WhatsApp funciona sin revisión. Para que Instagram y Messenger respondan a clientes que no tienen rol en la app, Meta exige acceso avanzado a pages_messaging, instagram_manage_messages e instagram_manage_comments en Revisión de la app: prepara la solicitud y pregúntame antes de enviarla.
 10. En Bella (${s.origin}/settings):
    - Origen de leads: ${s.whatsappNumber ? `el número de WhatsApp ya está (${s.whatsappNumber}).` : "pon el número de WhatsApp con código de país, solo dígitos."}
    - Píxel de Meta: ${s.pixel.datasetId ? `el id del píxel ya está (${s.pixel.datasetId}).` : "pega el id del píxel (Administrador de eventos → Orígenes de datos)."}${s.pixel.qualifiedStage ? "" : " Pregúntame qué etapa del funnel cuenta como lead calificado."} ${s.pixel.enabled ? "Ya está encendido." : "Déjalo apagado y pregúntame antes de encenderlo."}

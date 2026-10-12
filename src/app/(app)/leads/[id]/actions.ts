@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { after } from "next/server";
+import { afterInCompany } from "@/lib/company-request";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
@@ -42,8 +42,8 @@ function done(leadId: string) {
 }
 
 /** Recalcula el resumen y el puntaje después de responder, sin demorar la respuesta. */
-function refreshInsightsLater(leadId: string) {
-  after(() => refreshLeadInsights(leadId));
+async function refreshInsightsLater(leadId: string) {
+  await afterInCompany(() => refreshLeadInsights(leadId));
 }
 
 /** Simulador: escribe (o manda una nota de voz) como si fueras el cliente y deja que la IA responda. */
@@ -75,7 +75,7 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
     }
     await runAgent(leadId);
   }
-  refreshInsightsLater(leadId);
+  await refreshInsightsLater(leadId);
   done(leadId);
   return null;
 }
@@ -114,7 +114,7 @@ export async function sendAsUserAction(leadId: string, form: FormData): Promise<
   if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
   // En WhatsApp el mensaje sale al cliente; si no se pudo, el ejecutivo ve el motivo.
   const failed = await deliverOutbound(leadId);
-  refreshInsightsLater(leadId);
+  await refreshInsightsLater(leadId);
   done(leadId);
   return failed;
 }
@@ -137,7 +137,7 @@ export async function toggleAiAction(leadId: string, enabled: boolean) {
   await setAiEnabled(leadId, enabled, by);
   if (enabled) {
     await runAgent(leadId).catch((e) => console.error(e));
-    refreshInsightsLater(leadId);
+    await refreshInsightsLater(leadId);
   }
   done(leadId);
 }

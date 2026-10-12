@@ -1,8 +1,8 @@
 "use server";
 
-import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
+import { afterInCompany } from "@/lib/company-request";
 import { answerWaitingLeads } from "@/lib/ai/respond";
 import { saveAiOperation } from "@/lib/domain/ai-operation";
 
@@ -13,7 +13,7 @@ const hour = (form: FormData, key: string, max: number) =>
 export async function setAiPausedAction(paused: boolean) {
   await requireAdmin();
   await saveAiOperation({ paused });
-  if (!paused) after(() => answerWaitingLeads().catch((err) => console.error("[ia] pendientes al encender:", err)));
+  if (!paused) await afterInCompany(() => answerWaitingLeads().catch((err) => console.error("[ia] pendientes al encender:", err)));
   revalidatePath("/settings/ai-operation");
 }
 

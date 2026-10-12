@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import { db } from "./db";
 import { getSetting, setSetting } from "./settings";
+import { currentCompanyId } from "./tenant";
 import { normalize, score, tokens } from "./text";
 
 export type InventorySettings = {
@@ -55,8 +56,9 @@ export async function syncInventory(fetchImpl: typeof fetch = fetch) {
     const rows = await fetchSheetRows(settings.sheetUrl, fetchImpl);
     const syncedAt = new Date();
     await db.$transaction(async (tx) => {
-      // Dos sincronizaciones simultáneas (cron y asistente) duplicarían filas sin este lock.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${SYNC_LOCK_KEY})`;
+      // Dos sincronizaciones simultáneas (cron y asistente) duplicarían filas sin este lock; es
+      // por empresa, así una no espera a otra.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${SYNC_LOCK_KEY}::int4, hashtext(${await currentCompanyId()}))`;
       await tx.inventoryItem.deleteMany();
       await tx.inventoryItem.createMany({
         data: rows.map((row, i) => ({

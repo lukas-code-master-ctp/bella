@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
 import { Code2, Link2, Megaphone } from "lucide-react";
 import { adsToken } from "@/lib/channels/ads";
+import { companyUrls, withParams } from "@/lib/company-urls";
 import { credentials } from "@/lib/credentials";
+import { currentCompanyId } from "@/lib/tenant";
 import { getAttributionSettings } from "@/lib/domain/attribution";
 import { Field, inputClass, PageHeader } from "@/components/ui";
 import { EnvChecklist, FieldGroup, Panel, PanelBody, PanelFooter, StatusPill } from "@/components/settings-ui";
@@ -13,7 +15,7 @@ export default async function AttributionSettingsPage() {
   const s = await getAttributionSettings();
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
-  const example = `${origin}/wa?utm_source=google&utm_medium=cpc&utm_campaign=campana-octubre&text=${encodeURIComponent("Hola, quiero información")}`;
+  const example = withParams(companyUrls(origin, await currentCompanyId()).wa, `utm_source=google&utm_medium=cpc&utm_campaign=campana-octubre&text=${encodeURIComponent("Hola, quiero información")}`);
   const creds = await credentials();
   const hasAdsToken = Boolean(creds.META_ADS_TOKEN);
   const fallbackToken = Boolean(await adsToken());

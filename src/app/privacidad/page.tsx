@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { publicCompanyId } from "@/lib/company-request";
+import { withCompany } from "@/lib/tenant";
 import { LegalPage } from "@/components/legal-page";
 import { getLegalSettings } from "@/lib/domain/privacy";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Política de privacidad" };
 
-export default async function PrivacyPage() {
-  const { legalName, contactEmail } = await getLegalSettings();
+/** Cada empresa tiene la suya: /privacidad?c=<empresa>; sin `c`, la de la empresa por defecto. */
+export default async function PrivacyPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
+  const { c } = await searchParams;
+  const companyId = await publicCompanyId(c);
+  if (!companyId) notFound();
+  const { legalName, contactEmail } = await withCompany(companyId, getLegalSettings);
+  const query = c ? `?c=${encodeURIComponent(companyId)}` : "";
   const contact = contactEmail ? <a href={`mailto:${contactEmail}`}>{contactEmail}</a> : "los canales de atención de la empresa";
   return (
     <LegalPage title="Política de privacidad" updated="9 de octubre de 2026">
@@ -46,7 +54,7 @@ export default async function PrivacyPage() {
         Puedes pedir acceso, rectificación o eliminación de tus datos, y oponerte a recibir mensajes, escribiendo a{" "}
         {contact}, conforme a la Ley N° 19.628 sobre protección de la vida privada y la Ley N° 21.719. También puedes
         pedir el borrado desde la configuración de tu cuenta de Facebook o Instagram; revisa{" "}
-        <a href="/eliminacion-de-datos">cómo eliminar tus datos</a>.
+        <a href={`/eliminacion-de-datos${query}`}>cómo eliminar tus datos</a>.
       </p>
 
       <h2>Responsable</h2>
