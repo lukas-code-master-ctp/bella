@@ -4,7 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
-import { db, rootDb } from "./db";
+import { rootDb } from "./db";
+import { canWorkIn } from "./domain/companies";
+import { DEFAULT_COMPANY_ID } from "./tenant";
 import {
   REMEMBER_MAX_AGE_SECONDS,
   SESSION_COOKIE,
@@ -41,8 +43,10 @@ export const currentUser = cache(async function currentUser(): Promise<User | nu
   const jar = await cookies();
   const session = await readSession(jar.get(SESSION_COOKIE)?.value);
   if (!session) return null;
-  const user = await db.user.findUnique({ where: { id: session.userId } });
+  // Sin filtro de empresa: el dueño de Bella puede estar trabajando en otra empresa que la suya.
+  const user = await rootDb.user.findUnique({ where: { id: session.userId } });
   if (!user?.active || sessionStale(session.issuedAt, user.passwordChangedAt)) return null;
+  if (!canWorkIn(user, session.companyId ?? DEFAULT_COMPANY_ID)) return null;
   return user;
 });
 
@@ -56,6 +60,19 @@ export async function requireAdmin(): Promise<User> {
   const user = await requireUser();
   if (user.role !== "ADMIN") redirect("/funnel");
   return user;
+}
+
+/** Dueño de Bella: Configuración → Empresas. */
+export async function requireSuperadmin(): Promise<User> {
+  const user = await requireAdmin();
+  if (!user.superadmin) redirect("/settings");
+  return user;
+}
+
+/** El dueño de Bella pasa a trabajar en otra empresa: la sesión se vuelve a firmar con ella. */
+export async function enterCompany(user: User, companyId: string) {
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, await signSession(user.id, SHORT_MAX_AGE_SECONDS, companyId), sessionCookieOptions(false));
 }
 
 /** Un ejecutivo solo puede ver y operar sus leads asignados; el admin ve todo. */

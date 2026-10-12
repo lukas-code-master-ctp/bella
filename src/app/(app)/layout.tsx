@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Bell, ChartNoAxesColumn, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { afterInCompany } from "@/lib/company-request";
@@ -5,6 +6,8 @@ import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
 import { countUrgentTasks } from "@/lib/domain/tasks";
 import { countPendingComments } from "@/lib/domain/comments";
 import { hasUnseenInsight } from "@/lib/ai/weekly-insights";
+import { companyName } from "@/lib/domain/companies";
+import { currentCompanyId } from "@/lib/tenant";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
@@ -23,6 +26,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     countPendingComments(),
     user.role === "ADMIN" && hasUnseenInsight(user.id),
   ]);
+  // El dueño de Bella puede estar en cualquier empresa: se le muestra en cuál.
+  const company = user.superadmin ? await companyName(await currentCompanyId()) : null;
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
       <a
@@ -95,7 +100,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <p className="truncate text-sm font-semibold text-slate-900" title={user.name}>
               {user.name}
             </p>
-            <p className="text-xs text-slate-600">{user.role === "ADMIN" ? "Administrador" : "Ejecutivo"}</p>
+            {company ? (
+              <Link href="/settings/companies" className="block truncate text-xs text-brand-700 hover:underline" title="Cambiar de empresa">
+                {company}
+              </Link>
+            ) : (
+              <p className="text-xs text-slate-600">{user.role === "ADMIN" ? "Administrador" : "Ejecutivo"}</p>
+            )}
           </div>
           <form action={logoutAction}>
             <button
