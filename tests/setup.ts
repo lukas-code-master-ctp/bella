@@ -1,4 +1,4 @@
-import { afterEach, beforeEach } from "vitest";
+import { afterAll, afterEach, beforeEach } from "vitest";
 
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/bella_test";
@@ -17,12 +17,16 @@ const { TEST_COMPANY_ID } = await import("./company");
  */
 setFallbackCompanyId(TEST_COMPANY_ID);
 
-beforeEach(async () => {
+async function truncateAll() {
   const tables = await db.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
   await db.$executeRawUnsafe(
     `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`,
   );
+}
+
+beforeEach(async () => {
+  await truncateAll();
   await db.$executeRawUnsafe(`INSERT INTO "Company" ("id", "name") VALUES ('${TEST_COMPANY_ID}', 'Empresa de prueba')`);
   // Como una empresa recién creada: con su embudo principal.
   await db.$executeRawUnsafe(
@@ -43,3 +47,7 @@ afterEach(async () => {
   }
   if (leaked.length) throw new Error(`Datos fuera de la empresa en curso: ${leaked.join(", ")}`);
 });
+
+// La base queda vacía al terminar: el build de CI corre el seed sobre ella, y el embudo
+// "Principal" de la empresa de prueba chocaría con el de la empresa por defecto.
+afterAll(truncateAll);
