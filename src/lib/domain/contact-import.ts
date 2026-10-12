@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import type { Channel, Contact, Prisma } from "@prisma/client";
 import { db } from "../db";
+import { currentCompanyId } from "../tenant";
 import { CHANNEL_LABEL } from "../labels";
 import { normalize } from "../text";
 import { displayFieldValue, findField, parseFieldValue } from "./fields";
@@ -226,7 +227,7 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
 
 async function findExisting(tx: Tx, phone: string | null, email: string | null): Promise<Contact | null> {
   if (phone) {
-    const byWhatsApp = await tx.contact.findUnique({ where: { channel_externalId: { channel: "WHATSAPP", externalId: phone } } });
+    const byWhatsApp = await tx.contact.findUnique({ where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel: "WHATSAPP", externalId: phone } } });
     if (byWhatsApp) return byWhatsApp;
     const byPhone = await tx.contact.findFirst({ where: { phone: `+${phone}`, channel: { not: "SIMULATOR" } }, orderBy: { createdAt: "asc" } });
     if (byPhone) return byPhone;
@@ -243,7 +244,7 @@ async function findExisting(tx: Tx, phone: string | null, email: string | null):
 /** Igual que en la ficha: una sola etiqueta por categoría; la importada reemplaza a la anterior. */
 async function addTagToContact(tx: Tx, contactId: string, t: { category: string; name: string }, by: ActorRef) {
   const tag = await tx.tag.upsert({
-    where: { category_name: { category: t.category, name: t.name } },
+    where: { companyId_category_name: { companyId: await currentCompanyId(), category: t.category, name: t.name } },
     create: { category: t.category, name: t.name },
     update: {},
   });

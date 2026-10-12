@@ -1,10 +1,10 @@
 import type { Channel, Funnel, Prisma, Stage } from "@prisma/client";
 import { db } from "../db";
 import type { AssistantSettings } from "../settings";
-import { DEFAULT_FUNNEL_ID } from "./default-funnel";
+import { primaryFunnelId } from "./default-funnel";
 import { DomainError } from "./leads";
 
-export { DEFAULT_FUNNEL_ID, ensureDefaultFunnel } from "./default-funnel";
+export { ensureDefaultFunnel, primaryFunnelId } from "./default-funnel";
 
 type Client = Prisma.TransactionClient | typeof db;
 
@@ -96,7 +96,7 @@ export async function updateFunnel(
 
 /** Solo se borra un embudo sin leads, y nunca el original. Sus etapas se borran con él. */
 export async function deleteFunnel(id: string) {
-  if (id === DEFAULT_FUNNEL_ID) throw new DomainError("El primer embudo no se puede borrar (puedes cambiarle el nombre).");
+  if (id === (await primaryFunnelId())) throw new DomainError("El primer embudo no se puede borrar (puedes cambiarle el nombre).");
   if (await db.lead.count({ where: { stage: { funnelId: id } } })) {
     throw new DomainError("El embudo tiene leads: muévelos a otro embudo antes de borrarlo.");
   }

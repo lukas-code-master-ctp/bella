@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, Plus, Settings2, SquareKanban, Tags, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { DEFAULT_FUNNEL_ID, ensureDefaultFunnel, listFunnels } from "@/lib/domain/funnels";
+import { ensureDefaultFunnel, listFunnels, primaryFunnelId } from "@/lib/domain/funnels";
 import { getAssistantSettings } from "@/lib/settings";
 import { Badge, Card, EmptyState, inputClass, PageHeader, TagPill } from "@/components/ui";
 import { colorInputClass, InlineSwitch, Panel, PanelBody, reorderButtonClass } from "@/components/settings-ui";
@@ -19,7 +19,7 @@ import { FunnelForm, NewFunnelForm } from "./funnel-forms";
 
 export default async function FunnelSettingsPage({ searchParams }: { searchParams: Promise<{ funnel?: string }> }) {
   const { funnel: selected } = await searchParams;
-  await ensureDefaultFunnel(db);
+  const { id: primaryId } = await ensureDefaultFunnel(db);
   const [funnels, tags, counts, assistant] = await Promise.all([
     listFunnels(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
@@ -65,7 +65,7 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
       </Card>
 
       <Panel icon={<Settings2 />} title={`Ajustes de ${funnel.name}`} description="Canales, asistente e instrucciones propias de este embudo.">
-        <FunnelForm key={funnel.id} funnel={funnel} defaultAssistant={assistant.assistantName} removable={funnel.id !== DEFAULT_FUNNEL_ID} />
+        <FunnelForm key={funnel.id} funnel={funnel} defaultAssistant={assistant.assistantName} removable={funnel.id !== primaryId} />
       </Panel>
 
       <section className="space-y-3">

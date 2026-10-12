@@ -7,6 +7,7 @@ import { hashPassword, requireAdmin } from "@/lib/auth";
 import { DEFAULT_SUMMARY_MODEL, type AiConfig, type AiEffort, type AiProvider } from "@/lib/ai/config";
 import { listOpenRouterModels } from "@/lib/ai/models";
 import { db, rootDb } from "@/lib/db";
+import { currentCompanyId } from "@/lib/tenant";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
@@ -16,7 +17,7 @@ import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { saveLegalSettings } from "@/lib/domain/privacy";
-import { createFunnel, DEFAULT_FUNNEL_ID, deleteFunnel, updateFunnel } from "@/lib/domain/funnels";
+import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
 import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
@@ -68,7 +69,7 @@ export async function saveAiAction(_prev: string | null, form: FormData): Promis
 export async function createStageAction(form: FormData) {
   await requireAdmin();
   const name = str(form, "name");
-  const funnelId = str(form, "funnelId") || DEFAULT_FUNNEL_ID;
+  const funnelId = str(form, "funnelId") || (await primaryFunnelId());
   if (!name) return;
   if (await db.stage.findFirst({ where: { funnelId, name: { equals: name, mode: "insensitive" } } })) return;
   const last = await db.stage.findFirst({ where: { funnelId }, orderBy: { position: "desc" } });
@@ -175,7 +176,7 @@ export async function createTagAction(form: FormData) {
   const name = str(form, "name");
   if (!category || !name) return;
   await db.tag.upsert({
-    where: { category_name: { category, name } },
+    where: { companyId_category_name: { companyId: await currentCompanyId(), category, name } },
     create: { category, name, color: str(form, "color") || "#0ea5e9" },
     update: {},
   });

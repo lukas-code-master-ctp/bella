@@ -1,5 +1,6 @@
 import type { Channel } from "@prisma/client";
 import { db } from "../db";
+import { currentCompanyId } from "../tenant";
 import type { ActorRef } from "./leads";
 
 /** Motivo de pérdida con el que se cierran los leads abiertos de un contacto al bloquearlo. */
@@ -46,7 +47,7 @@ export async function unblockContact(leadId: string, by: ActorRef) {
 /** Si el contacto de ese canal está bloqueado (sus mensajes entrantes se descartan). */
 export async function isBlocked(channel: Channel, externalId: string) {
   const contact = await db.contact.findUnique({
-    where: { channel_externalId: { channel, externalId } },
+    where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel, externalId } },
     select: { blockedAt: true },
   });
   return Boolean(contact?.blockedAt);

@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { publicCompanyId } from "@/lib/company-request";
+import { withCompany } from "@/lib/tenant";
 import { LegalPage } from "@/components/legal-page";
 import { findDeletionRequest, getLegalSettings } from "@/lib/domain/privacy";
 import { formatChileDateTime } from "@/lib/domain/follow-ups";
@@ -6,12 +9,15 @@ import { formatChileDateTime } from "@/lib/domain/follow-ups";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Eliminación de datos" };
 
-export default async function DataDeletionPage({ searchParams }: { searchParams: Promise<{ codigo?: string }> }) {
-  const { codigo } = await searchParams;
-  const [request, { legalName, contactEmail }] = await Promise.all([
-    codigo ? findDeletionRequest(codigo) : null,
-    getLegalSettings(),
-  ]);
+/** Cada empresa tiene la suya: /eliminacion-de-datos?c=<empresa>; sin `c`, la de la empresa por defecto. */
+export default async function DataDeletionPage({ searchParams }: { searchParams: Promise<{ codigo?: string; c?: string }> }) {
+  const { codigo, c } = await searchParams;
+  const companyId = await publicCompanyId(c);
+  if (!companyId) notFound();
+  const [request, { legalName, contactEmail }] = await withCompany(companyId, () =>
+    Promise.all([codigo ? findDeletionRequest(codigo) : null, getLegalSettings()]),
+  );
+  const query = c ? `?c=${encodeURIComponent(companyId)}` : "";
   return (
     <LegalPage title="Eliminación de datos">
       {codigo && (
@@ -43,7 +49,7 @@ export default async function DataDeletionPage({ searchParams }: { searchParams:
         </li>
       </ul>
       <p>
-        Más detalles en nuestra <a href="/privacidad">política de privacidad</a>.
+        Más detalles en nuestra <a href={`/privacidad${query}`}>política de privacidad</a>.
       </p>
     </LegalPage>
   );

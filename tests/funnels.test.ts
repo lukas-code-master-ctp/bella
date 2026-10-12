@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { executeTool } from "@/lib/ai/tools";
 import { buildSystemPrompt } from "@/lib/ai/agent";
-import { assistantFor, createFunnel, deleteFunnel, DEFAULT_FUNNEL_ID, stageOptions, updateFunnel } from "@/lib/domain/funnels";
+import { assistantFor, createFunnel, deleteFunnel, primaryFunnelId, stageOptions, updateFunnel } from "@/lib/domain/funnels";
 import { createLead, handoffToHumanTx } from "@/lib/domain/leads";
 import { DEFAULT_ASSISTANT } from "@/lib/settings";
 import { importContactsCsv } from "@/lib/domain/contact-import";
@@ -30,9 +30,9 @@ describe("varios embudos", () => {
 
   it("un canal queda en un solo embudo", async () => {
     await seedFunnel();
-    await updateFunnel(DEFAULT_FUNNEL_ID, { name: "Principal", channels: ["WHATSAPP", "INSTAGRAM"], assistantName: "", instructions: "" });
+    await updateFunnel(await primaryFunnelId(), { name: "Principal", channels: ["WHATSAPP", "INSTAGRAM"], assistantName: "", instructions: "" });
     await onlineFunnel(["WHATSAPP"]);
-    expect((await db.funnel.findUniqueOrThrow({ where: { id: DEFAULT_FUNNEL_ID } })).channels).toEqual(["INSTAGRAM"]);
+    expect((await db.funnel.findUniqueOrThrow({ where: { id: await primaryFunnelId() } })).channels).toEqual(["INSTAGRAM"]);
   });
 
   it("la IA solo mueve y deriva dentro del embudo del lead", async () => {
@@ -66,6 +66,6 @@ describe("varios embudos", () => {
     const { funnel } = await onlineFunnel();
     await createLead({ name: "Ana", channel: "SIMULATOR" }, { funnelId: funnel.id });
     await expect(deleteFunnel(funnel.id)).rejects.toThrow(/tiene leads/);
-    await expect(deleteFunnel(DEFAULT_FUNNEL_ID)).rejects.toThrow(/no se puede borrar/);
+    await expect(deleteFunnel(await primaryFunnelId())).rejects.toThrow(/no se puede borrar/);
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import type { CommentsApi } from "@/lib/channels/comments";
 import type { MessengerWebhook } from "@/lib/channels/messenger";
@@ -63,11 +64,8 @@ async function activeRule(input: Partial<CommentRuleInput>) {
   return r;
 }
 
-beforeEach(() => {
-  process.env.META_IG_ACCOUNT_ID = "ig-1";
-});
-afterEach(() => {
-  delete process.env.META_IG_ACCOUNT_ID;
+beforeEach(async () => {
+  await saveCredentials({ META_IG_ACCOUNT_ID: "ig-1" });
 });
 
 describe("reglas de comentarios", () => {

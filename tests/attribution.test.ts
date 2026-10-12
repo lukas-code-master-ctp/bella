@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import type { AdsApi } from "@/lib/channels/ads";
 import type { MessengerApi, MsgEvent } from "@/lib/channels/messenger";
@@ -62,13 +63,9 @@ const messenger: MessengerApi = {
   download: async () => ({ bytes: new Uint8Array(), mimeType: "audio/mp4" }),
 };
 
-beforeEach(() => {
-  process.env.WHATSAPP_PHONE_NUMBER_ID = PHONE_ID;
-  process.env.META_PAGE_ID = "page-1";
-});
-afterEach(() => {
-  delete process.env.WHATSAPP_PHONE_NUMBER_ID;
-  delete process.env.META_PAGE_ID;
+beforeEach(async () => {
+  await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: PHONE_ID });
+  await saveCredentials({ META_PAGE_ID: "page-1" });
 });
 
 describe("Origen: anuncios de Meta", () => {

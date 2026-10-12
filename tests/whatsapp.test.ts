@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import { answerLead, answerLeadWhenQuiet } from "@/lib/ai/respond";
 import type { AiConfig } from "@/lib/ai/config";
@@ -79,11 +80,8 @@ function fakeChat(reply: string) {
 }
 
 beforeEach(async () => {
-  process.env.WHATSAPP_PHONE_NUMBER_ID = PHONE_ID;
+  await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: PHONE_ID });
   await setSetting<AiConfig>("ai", { provider: "openrouter", model: "modelo-x", effort: "medium" });
-});
-afterEach(() => {
-  delete process.env.WHATSAPP_PHONE_NUMBER_ID;
 });
 
 describe("WhatsApp: mensajes entrantes", () => {
@@ -393,11 +391,10 @@ describe("WhatsApp: diagnóstico del webhook", () => {
 describe("WhatsApp: diagnóstico con Meta", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    delete process.env.WHATSAPP_TOKEN;
   });
 
-  function stubGraph(apps: string[]) {
-    process.env.WHATSAPP_TOKEN = "token";
+  async function stubGraph(apps: string[]) {
+    await saveCredentials({ WHATSAPP_TOKEN: "token" });
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -412,13 +409,13 @@ describe("WhatsApp: diagnóstico con Meta", () => {
   }
 
   it("detecta que la app no está suscrita a la cuenta de WhatsApp Business", async () => {
-    stubGraph(["otra-app"]);
+    await stubGraph(["otra-app"]);
     const check = await checkWhatsApp();
     expect(check).toMatchObject({ wabaId: "waba1", subscribed: false, phone: { display: "+56 9 1111 2222", platform: "CLOUD_API" } });
   });
 
   it("confirma la suscripción", async () => {
-    stubGraph(["app1"]);
+    await stubGraph(["app1"]);
     expect((await checkWhatsApp()).subscribed).toBe(true);
   });
 });

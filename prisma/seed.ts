@@ -9,6 +9,7 @@ import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { ensureDefaultFunnel } from "../src/lib/domain/default-funnel";
 import { applyPreset } from "../src/lib/domain/presets";
+import { getSetting } from "../src/lib/settings";
 import { COMPRA_TU_PARCELA } from "../src/lib/presets/compra-tu-parcela";
 
 const db = new PrismaClient();
@@ -52,7 +53,7 @@ async function main() {
 
   const preset = COMPRA_TU_PARCELA;
   const wanted =
-    process.env.SEED_PRESET === preset.id || (await db.setting.findUnique({ where: { key: `preset:${preset.id}` } }));
+    process.env.SEED_PRESET === preset.id || (await getSetting(`preset:${preset.id}`, null));
   if (wanted && (await applyPreset(db, preset))) {
     console.log(`Configuración "${preset.id}" v${preset.version} cargada.`);
   }

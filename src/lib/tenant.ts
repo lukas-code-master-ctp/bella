@@ -10,6 +10,13 @@ import { readSession, SESSION_COOKIE } from "./session-token";
  */
 export const DEFAULT_COMPANY_ID = "default";
 
+let fallbackCompanyId = DEFAULT_COMPANY_ID;
+
+/** Solo pruebas: corren como otra empresa para detectar datos que caen en la por defecto. */
+export function setFallbackCompanyId(id: string) {
+  fallbackCompanyId = id;
+}
+
 const store = new AsyncLocalStorage<string>();
 
 /**
@@ -37,5 +44,5 @@ async function sessionCompanyId(): Promise<string | null> {
 }
 
 export async function currentCompanyId(): Promise<string> {
-  return store.getStore() ?? (await sessionCompanyId()) ?? DEFAULT_COMPANY_ID;
+  return store.getStore() ?? (await sessionCompanyId()) ?? fallbackCompanyId;
 }

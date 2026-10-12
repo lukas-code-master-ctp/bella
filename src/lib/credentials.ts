@@ -1,11 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { db } from "./db";
+import { getSetting, setSetting } from "./settings";
+import { currentCompanyId, DEFAULT_COMPANY_ID } from "./tenant";
 
 /**
  * Credenciales de cada empresa (Meta, WhatsApp, IA, correo). Se cargan en Configuración →
- * Credenciales y se guardan cifradas en Setting("credentials"); si una no está guardada se usa
- * la variable de entorno del mismo nombre, así las instalaciones que ya las tienen en Vercel
- * siguen funcionando. La clave de cifrado sale de SESSION_SECRET: si se cambia, hay que volver
+ * Credenciales y se guardan cifradas en la configuración de la empresa ("credentials"). Solo la
+ * empresa por defecto usa, si falta una, la variable de entorno del mismo nombre: así las
+ * instalaciones que ya las tienen en Vercel siguen funcionando, y una empresa nueva nunca usa
+ * las cuentas de otra. La clave de cifrado sale de SESSION_SECRET: si se cambia, hay que volver
  * a cargar las credenciales.
  */
 
@@ -150,38 +152,42 @@ export function decryptValue(stored: string): string | null {
 // Las credenciales se leen varias veces por mensaje (token, número…): se guardan unos segundos
 // en memoria. Al guardar se limpia; otras instancias del servidor las ven al vencer.
 const TTL_MS = 10_000;
-let cached: { at: number; values: Partial<Record<CredentialKey, string>> } | null = null;
+const cache = new Map<string, { at: number; values: Partial<Record<CredentialKey, string>> }>();
 
 export function clearCredentialCache() {
-  cached = null;
+  cache.clear();
 }
 
 async function stored(): Promise<Partial<Record<CredentialKey, string>>> {
-  if (cached && Date.now() - cached.at < TTL_MS) return cached.values;
-  const row = await db.setting.findUnique({ where: { key: SETTING_KEY } });
-  const raw = (row?.value ?? {}) as Record<string, unknown>;
+  const companyId = await currentCompanyId();
+  const hit = cache.get(companyId);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.values;
+  const raw = await getSetting<Record<string, unknown>>(SETTING_KEY, {});
   const values: Partial<Record<CredentialKey, string>> = {};
   for (const key of CREDENTIAL_KEYS) {
     const v = raw[key];
     const plain = typeof v === "string" ? decryptValue(v) : null;
     if (plain) values[key] = plain;
   }
-  cached = { at: Date.now(), values };
+  cache.set(companyId, { at: Date.now(), values });
   return values;
 }
 
-/** Valor de una credencial: la guardada en la app o, si no hay, la variable de entorno. */
+/** Variable de entorno de respaldo: solo para la empresa por defecto. */
+async function fromEnv(key: CredentialKey): Promise<string | undefined> {
+  return (await currentCompanyId()) === DEFAULT_COMPANY_ID ? process.env[key] || undefined : undefined;
+}
+
+/** Valor de una credencial: la guardada en la app o, en la empresa por defecto, la variable de entorno. */
 export async function credential(key: CredentialKey): Promise<string | undefined> {
-  return (await stored())[key] || process.env[key] || undefined;
+  return (await stored())[key] || (await fromEnv(key));
 }
 
 /** Todas las credenciales de una vez, para las funciones que necesitan varias. */
 export async function credentials(): Promise<Record<CredentialKey, string | undefined>> {
   const saved = await stored();
-  return Object.fromEntries(CREDENTIAL_KEYS.map((k) => [k, saved[k] || process.env[k] || undefined])) as Record<
-    CredentialKey,
-    string | undefined
-  >;
+  const entries = await Promise.all(CREDENTIAL_KEYS.map(async (k) => [k, saved[k] || (await fromEnv(k))] as const));
+  return Object.fromEntries(entries) as Record<CredentialKey, string | undefined>;
 }
 
 export async function missingCredentials(keys: readonly CredentialKey[]): Promise<CredentialKey[]> {
@@ -200,11 +206,13 @@ export type CredentialStatus = {
 export async function credentialStatus(): Promise<CredentialStatus[]> {
   clearCredentialCache();
   const saved = await stored();
+  const useEnv = (await currentCompanyId()) === DEFAULT_COMPANY_ID;
   return CREDENTIALS.map((c) => {
-    const value = saved[c.key] || process.env[c.key] || null;
+    const env = useEnv ? process.env[c.key] : undefined;
+    const value = saved[c.key] || env || null;
     return {
       key: c.key,
-      source: saved[c.key] ? "app" : process.env[c.key] ? "env" : null,
+      source: saved[c.key] ? "app" : env ? "env" : null,
       preview: !value ? null : c.secret ? `••••${value.slice(-4)}` : value,
     };
   });
@@ -215,17 +223,12 @@ export async function credentialStatus(): Promise<CredentialStatus[]> {
  * secreto ya guardado no se pierde por dejar su campo vacío (el formulario nunca lo muestra).
  */
 export async function saveCredentials(values: Partial<Record<string, string>>, clear: readonly string[] = []) {
-  const row = await db.setting.findUnique({ where: { key: SETTING_KEY } });
-  const next = { ...((row?.value ?? {}) as Record<string, string>) };
+  const next = { ...(await getSetting<Record<string, string>>(SETTING_KEY, {})) };
   for (const key of CREDENTIAL_KEYS) {
     const v = values[key]?.trim();
     if (clear.includes(key)) delete next[key];
     else if (v) next[key] = encryptValue(v);
   }
-  await db.setting.upsert({
-    where: { key: SETTING_KEY },
-    create: { key: SETTING_KEY, value: next },
-    update: { value: next },
-  });
+  await setSetting(SETTING_KEY, next);
   clearCredentialCache();
 }

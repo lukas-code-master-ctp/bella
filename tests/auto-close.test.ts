@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { runAutoClose } from "@/lib/domain/auto-close";
 import { createLead, moveStage } from "@/lib/domain/leads";
-import { setSetting } from "@/lib/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 import { seedFunnel } from "./factories";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -101,7 +101,6 @@ describe("cierre automático por inactividad", () => {
     const lead = await leadInactiveFor(20, "AI");
     await db.lead.update({ where: { id: lead.id }, data: { status: "WON" } });
     expect(await runAutoClose(now)).toBe(0);
-    const run = await db.setting.findUniqueOrThrow({ where: { key: "autoCloseRun" } });
-    expect(run.value).toEqual({ at: now.toISOString(), closed: 0 });
+    expect(await getSetting("autoCloseRun", null)).toEqual({ at: now.toISOString(), closed: 0 });
   });
 });

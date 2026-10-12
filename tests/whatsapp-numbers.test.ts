@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import { ChannelSendError, type WaWebhook, type WhatsAppApi } from "@/lib/channels/whatsapp";
 import { deliverOutbound, getWhatsAppWebhookLog, logWhatsAppWebhook, receiveWhatsApp } from "@/lib/domain/channels";
@@ -52,11 +53,8 @@ async function onlineFunnel() {
 let principal: Awaited<ReturnType<typeof seedFunnel>>;
 
 beforeEach(async () => {
-  process.env.WHATSAPP_PHONE_NUMBER_ID = MAIN;
+  await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: MAIN });
   principal = await seedFunnel();
-});
-afterEach(() => {
-  delete process.env.WHATSAPP_PHONE_NUMBER_ID;
 });
 
 describe("varios números de WhatsApp", () => {

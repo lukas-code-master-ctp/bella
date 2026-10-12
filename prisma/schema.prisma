@@ -155,6 +155,7 @@ model Funnel {
   stages          Stage[]
   whatsAppNumbers WhatsAppNumber[]
 
+  @@unique([companyId, name])
   @@index([companyId])
 }
 
@@ -188,6 +189,7 @@ model Tag {
   rules    AssignmentRule[]
 
   @@unique([category, name])
+  @@unique([companyId, category, name])
   @@index([companyId])
 }
 
@@ -214,6 +216,7 @@ model Contact {
   fields ContactFieldValue[]
 
   @@unique([channel, externalId])
+  @@unique([companyId, channel, externalId])
   @@index([companyId])
 }
 
@@ -245,6 +248,7 @@ model CustomField {
 
   values ContactFieldValue[]
 
+  @@unique([companyId, name])
   @@index([companyId])
 }
 
@@ -541,6 +545,8 @@ model InventoryItem {
   @@index([companyId])
 }
 
+/// Configuración de antes de multi-empresa. Ya no se usa: se copió a CompanySetting y queda solo
+/// para que el código anterior siga funcionando mientras se despliega.
 model Setting {
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
   companyId String @default("default")
@@ -548,6 +554,15 @@ model Setting {
   value     Json
 
   @@index([companyId])
+}
+
+/// Configuración de cada empresa, por clave (ver src/lib/settings.ts).
+model CompanySetting {
+  companyId String @default("default")
+  key       String
+  value     Json
+
+  @@id([companyId, key])
 }
 
 /// Aviso al ejecutivo sobre un lead (ver src/lib/domain/notifications.ts). Hay a lo más uno
@@ -839,6 +854,7 @@ model WeeklyInsight {
   seenBy      String[] @default([])
   createdAt   DateTime @default(now())
 
+  @@unique([companyId, periodEnd])
   @@index([createdAt])
   @@index([companyId])
 }

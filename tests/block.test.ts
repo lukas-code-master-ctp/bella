@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import type { WaWebhook, WhatsAppApi } from "@/lib/channels/whatsapp";
 import type { MessengerApi } from "@/lib/channels/messenger";
@@ -43,7 +44,7 @@ function fakeWa() {
 }
 
 beforeEach(async () => {
-  process.env.WHATSAPP_PHONE_NUMBER_ID = PHONE_ID;
+  await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: PHONE_ID });
   await seedFunnel();
   await saveChannelSettings({ whatsappAi: true, instagramAi: true });
 });

@@ -1,41 +1,10 @@
-import { after, NextResponse, type NextRequest } from "next/server";
-import { credential } from "@/lib/credentials";
-import { answerLeadWhenQuiet } from "@/lib/ai/respond";
-import type { MessengerWebhook } from "@/lib/channels/messenger";
-import { validSignature } from "@/lib/channels/whatsapp";
-import { receiveMessenger } from "@/lib/domain/channels";
-import { applyCommentRules } from "@/lib/domain/comment-rules";
-import { receiveComments } from "@/lib/domain/comments";
+import { defaultCompanyRoute } from "@/lib/company-request";
+import { receiveWebhook, verifyWebhook } from "@/lib/webhooks/meta";
 
 export const dynamic = "force-dynamic";
 // La respuesta de la IA corre después de contestarle a Meta y puede tomar varios pasos.
 export const maxDuration = 300;
 
-/** Meta verifica el webhook una vez, al registrarlo: hay que devolver el challenge. */
-export async function GET(request: NextRequest) {
-  const params = request.nextUrl.searchParams;
-  const token = await credential("META_VERIFY_TOKEN");
-  if (params.get("hub.mode") === "subscribe" && token && params.get("hub.verify_token") === token) {
-    return new NextResponse(params.get("hub.challenge") ?? "", { status: 200 });
-  }
-  return NextResponse.json({ error: "Token de verificación inválido" }, { status: 403 });
-}
-
-/** Mensajes directos y comentarios de Instagram (object "instagram") y de la página (object "page"). */
-export async function POST(request: NextRequest) {
-  const raw = await request.text();
-  if (!validSignature(raw, request.headers.get("x-hub-signature-256"), await credential("META_APP_SECRET"))) {
-    return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
-  }
-  let payload: MessengerWebhook;
-  try {
-    payload = JSON.parse(raw) as MessengerWebhook;
-  } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
-  }
-  const comments = await receiveComments(payload);
-  if (comments.length) after(() => applyCommentRules(comments));
-  const leads = await receiveMessenger(payload);
-  if (leads.length) after(() => Promise.all(leads.map((id) => answerLeadWhenQuiet(id))));
-  return NextResponse.json({ ok: true });
-}
+// URL de antes, sin empresa: es la de la empresa por defecto. Las demás usan ./[companyId].
+export const GET = defaultCompanyRoute(verifyWebhook);
+export const POST = defaultCompanyRoute(receiveWebhook);
