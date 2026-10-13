@@ -260,7 +260,8 @@ describe("seguimientos", () => {
     const lead = await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56911112222" });
     await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Hola" } });
     await runAgent(lead.id, fakeAnthropic([say("¡Hola!")]).clients);
-    await db.message.updateMany({ where: { leadId: lead.id }, data: { createdAt: new Date(Date.now() - 30 * HOUR) } });
+    await db.message.updateMany({ where: { leadId: lead.id, author: "CONTACT" }, data: { createdAt: new Date(Date.now() - 30 * HOUR) } });
+    await db.message.updateMany({ where: { leadId: lead.id, author: "AI" }, data: { createdAt: new Date(Date.now() - 29 * HOUR) } });
     await makeDue(lead.id);
 
     expect(await sendFollowUpNow(lead.id, fakeAnthropic([]).clients)).toBe("skipped");

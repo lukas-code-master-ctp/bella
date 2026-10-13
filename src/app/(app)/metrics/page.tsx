@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { startOfLocalDay } from "@/lib/dates";
 import { CHANNEL_LABEL } from "@/lib/labels";
-import { hasUnseenInsight } from "@/lib/ai/weekly-insights";
+import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
 import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration, getMetrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
@@ -37,6 +37,8 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     isAdmin && hasUnseenInsight(user.id),
   ]);
+  // Entrar a Métricas apaga el "Nuevo" del menú; el botón del resumen lo sigue mostrando en esta visita.
+  if (newInsight) await markInsightSeen(user.id);
   const t = m.totals;
   const closed = t.won + t.lost;
 

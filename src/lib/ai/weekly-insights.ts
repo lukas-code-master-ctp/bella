@@ -226,3 +226,11 @@ export async function hasUnseenInsight(userId: string) {
   const latest = await db.weeklyInsight.findFirst({ orderBy: { createdAt: "desc" }, select: { seenBy: true } });
   return !!latest && !latest.seenBy.includes(userId);
 }
+
+/** Marca como visto el último resumen (apaga el "nuevo" del menú). */
+export async function markInsightSeen(userId: string) {
+  const latest = await db.weeklyInsight.findFirst({ orderBy: { createdAt: "desc" }, select: { id: true, seenBy: true } });
+  if (latest && !latest.seenBy.includes(userId)) {
+    await db.weeklyInsight.update({ where: { id: latest.id }, data: { seenBy: { push: userId } } });
+  }
+}
