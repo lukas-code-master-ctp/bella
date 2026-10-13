@@ -1,9 +1,12 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { createLead, moveStage } from "@/lib/domain/leads";
-import { createWebhook, deliverPendingWebhooks, sendTestWebhook, type WebhookSender } from "@/lib/domain/webhooks";
+import { createWebhook, deliverPendingWebhooks, httpSender, isInternalIp, sendTestWebhook, type WebhookSender } from "@/lib/domain/webhooks";
 import { seedFunnel } from "./factories";
+
+// Sin DNS en las pruebas: un nombre que resuelve a la red interna.
+vi.mock("node:dns/promises", () => ({ lookup: async () => [{ address: "10.1.2.3", family: 4 }] }));
 
 /** URL donde no escucha nadie: el envío inmediato falla sin salir a internet. */
 const LOCAL = "http://127.0.0.1:9/hook";
@@ -93,5 +96,20 @@ describe("webhooks al entrar a una etapa", () => {
     expect(JSON.parse(ok.calls[0].body)).toMatchObject({ test: true, stage: { name: "Nuevo" } });
     expect(await sendTestWebhook(hook.id, fakeSender(404).send)).toMatchObject({ ok: false });
     expect(await db.webhookDelivery.count()).toBe(0);
+  });
+
+  it("no deja apuntar a la red interna (SSRF)", async () => {
+    const [nuevo] = await seedFunnel();
+    for (const url of ["https://10.0.0.5/x", "https://169.254.169.254/latest", "https://[::1]/x", "https://0xa000001/x", "https://[::ffff:127.0.0.1]/x"]) {
+      await expect(createWebhook({ name: "X", url, stageId: nuevo.id })).rejects.toThrow("red interna");
+    }
+    expect([isInternalIp("192.168.1.10"), isInternalIp("fe80::1"), isInternalIp("8.8.8.8"), isInternalIp("2606:4700::1111")]).toEqual([true, true, false, false]);
+    // Un nombre que resuelve a la red interna se rechaza al enviar.
+    await expect(httpSender("https://interno.example.com/x", { body: "{}", headers: {} })).rejects.toThrow("red interna");
+    // localhost solo vale fuera de producción.
+    vi.stubEnv("NODE_ENV", "production");
+    await expect(createWebhook({ name: "X", url: "http://localhost:3000/x", stageId: nuevo.id })).rejects.toThrow("https://");
+    await expect(createWebhook({ name: "X", url: "https://localhost/x", stageId: nuevo.id })).rejects.toThrow("red interna");
+    vi.unstubAllEnvs();
   });
 });

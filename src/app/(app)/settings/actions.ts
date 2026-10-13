@@ -71,6 +71,7 @@ export async function createStageAction(form: FormData) {
   const name = str(form, "name");
   const funnelId = str(form, "funnelId") || (await primaryFunnelId());
   if (!name) return;
+  await db.funnel.findUniqueOrThrow({ where: { id: funnelId } }); // el id viene del formulario: que sea de esta empresa
   if (await db.stage.findFirst({ where: { funnelId, name: { equals: name, mode: "insensitive" } } })) return;
   const last = await db.stage.findFirst({ where: { funnelId }, orderBy: { position: "desc" } });
   await db.stage.create({
@@ -200,7 +201,8 @@ export async function createRuleAction(form: FormData) {
   else if ((await db.stage.count({ where: { id: target } })) > 0) trigger = "STAGE_ENTERED";
   else if ((await db.tag.count({ where: { id: target } })) > 0) trigger = "TAG_ADDED";
   else return;
-  const executiveIds = form.getAll("executives").map(String);
+  // Prisma no filtra empresa al conectar relaciones: solo se conectan usuarios de esta empresa.
+  const executives = await db.user.findMany({ where: { id: { in: form.getAll("executives").map(String) } }, select: { id: true } });
   await db.assignmentRule.create({
     data: {
       name: str(form, "name") || "Regla",
@@ -212,7 +214,7 @@ export async function createRuleAction(form: FormData) {
       strategy: str(form, "strategy") as AssignStrategy,
       reassign: form.get("reassign") === "on",
       priority: Number(str(form, "priority") || 0),
-      executives: { connect: executiveIds.map((id) => ({ id })) },
+      executives: { connect: executives },
     },
   });
   revalidatePath("/settings/rules");
