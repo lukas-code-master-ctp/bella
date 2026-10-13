@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, ChartNoAxesColumn, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban } from "lucide-react";
+import { Bell, ChartNoAxesColumn, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban, UserRoundCog } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { afterInCompany } from "@/lib/company-request";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
@@ -40,7 +40,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex items-center gap-3 px-4 py-2.5 lg:px-5 lg:py-5">
           <Logo />
           <div className="ml-auto flex items-center gap-1 lg:hidden">
-            <Avatar name={user.name} size="sm" />
+            <Link
+              href="/profile"
+              aria-label="Mi perfil"
+              title="Mi perfil"
+              className="flex size-10 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-slate-100"
+            >
+              <Avatar name={user.name} size="sm" />
+            </Link>
             <form action={logoutAction}>
               <button
                 aria-label="Cerrar sesión"
@@ -95,11 +102,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
         </nav>
         <div className="hidden items-center gap-3 border-t border-slate-200 p-4 lg:flex">
-          <Avatar name={user.name} />
+          <Link href="/profile" tabIndex={-1} aria-hidden className="rounded-full transition-opacity duration-150 hover:opacity-80">
+            <Avatar name={user.name} />
+          </Link>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-900" title={user.name}>
-              {user.name}
-            </p>
+            <Link
+              href="/profile"
+              className="flex items-center gap-1 text-sm font-semibold text-slate-900 hover:text-brand-700"
+              title="Mi perfil: nombre y contraseña"
+            >
+              <span className="truncate">{user.name}</span>
+              <UserRoundCog aria-hidden className="size-3.5 shrink-0 text-slate-400" />
+            </Link>
             {company ? (
               <Link href="/settings/companies" className="block truncate text-xs text-brand-700 hover:underline" title="Cambiar de empresa">
                 {company}

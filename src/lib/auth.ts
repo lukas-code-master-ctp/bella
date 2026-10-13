@@ -75,6 +75,19 @@ export async function enterCompany(user: User, companyId: string) {
   jar.set(SESSION_COOKIE, await signSession(user.id, SHORT_MAX_AGE_SECONDS, companyId), sessionCookieOptions(false));
 }
 
+/**
+ * Vuelve a firmar la sesión actual (misma empresa y duración) después de cambiar la contraseña,
+ * así este dispositivo sigue dentro y los demás quedan fuera.
+ */
+export async function renewSession() {
+  const jar = await cookies();
+  const session = await readSession(jar.get(SESSION_COOKIE)?.value);
+  if (!session) return;
+  const remember = session.maxAge > SHORT_MAX_AGE_SECONDS;
+  const maxAge = remember ? REMEMBER_MAX_AGE_SECONDS : SHORT_MAX_AGE_SECONDS;
+  jar.set(SESSION_COOKIE, await signSession(session.userId, maxAge, session.companyId ?? undefined), sessionCookieOptions(remember));
+}
+
 /** Un ejecutivo solo puede ver y operar sus leads asignados; el admin ve todo. */
 export function canAccessLead(user: User, lead: { assigneeId: string | null }) {
   return user.role === "ADMIN" || lead.assigneeId === user.id;
