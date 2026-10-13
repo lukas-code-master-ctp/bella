@@ -1,13 +1,14 @@
-import { ExternalLink, FileText, Film, Image as ImageIcon, Paperclip, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, ExternalLink, FileText, Film, Image as ImageIcon, Paperclip, Plus, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { fileKind } from "@/lib/media";
-import { FILE_MAX_BYTES, kindLabel } from "@/lib/domain/files";
+import { FILE_MAX_BYTES, META_MAX_BYTES, kindLabel } from "@/lib/domain/files";
 import { Badge, buttonClass, Card, EmptyState, Field, inputClass } from "@/components/ui";
 import { Callout, Disclosure, Panel } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { ConfirmButton } from "@/components/confirm-button";
 import { deleteFileAction, updateFileAction } from "./actions";
 import { AddFileForm } from "./add-form";
+import { ProductInput } from "./product-input";
 
 const ICONS = {
   image: <ImageIcon aria-hidden />,
@@ -15,6 +16,8 @@ const ICONS = {
   document: <FileText aria-hidden />,
   audio: <FileText aria-hidden />,
 };
+
+const mb = (bytes: number) => `${bytes / 1024 / 1024} MB`;
 
 function formatSize(bytes: number | null) {
   if (!bytes) return "enlace";
@@ -46,14 +49,18 @@ export default async function FilesPage() {
       ) : (
         <div className="space-y-6">
           {groups.map(([product, items = []]) => (
-            <section key={product} className="space-y-3">
-              {products.length > 0 && (
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  {product || "Sin producto"}
-                  <Badge>{items.length}</Badge>
-                </h3>
-              )}
-              <div className="stagger space-y-3">
+            <details key={product} open className="group/product">
+              <summary
+                className={`${products.length ? "flex" : "hidden"} cursor-pointer list-none items-center gap-2 rounded-lg py-1 text-sm font-semibold text-slate-900 select-none hover:text-brand-700 [&::-webkit-details-marker]:hidden`}
+              >
+                <ChevronRight
+                  aria-hidden
+                  className="size-4 text-slate-500 transition-transform duration-150 group-open/product:rotate-90"
+                />
+                {product || "Sin producto"}
+                <Badge>{items.length}</Badge>
+              </summary>
+              <div className={`stagger space-y-3 ${products.length ? "mt-3" : ""}`}>
                 {items.map((f) => (
                   <Disclosure
                     key={f.id}
@@ -84,7 +91,7 @@ export default async function FilesPage() {
                         </a>
                       </div>
                       <Field label="Producto o grupo">
-                        <input name="product" list="file-products" defaultValue={f.product} className={inputClass} />
+                        <ProductInput products={products} defaultValue={f.product} />
                       </Field>
                       <Field label="Cuándo enviarlo">
                         <textarea name="description" rows={3} defaultValue={f.description} className={inputClass} />
@@ -105,13 +112,17 @@ export default async function FilesPage() {
                   </Disclosure>
                 ))}
               </div>
-            </section>
+            </details>
           ))}
         </div>
       )}
 
       <Panel icon={<Plus />} title="Nuevo archivo" description="Súbelo aquí o pega un enlace público si pesa mucho.">
-        <AddFileForm maxMb={FILE_MAX_BYTES / 1024 / 1024} products={products} />
+        <AddFileForm
+          maxMb={FILE_MAX_BYTES / 1024 / 1024}
+          metaLimits={`${mb(META_MAX_BYTES.image)} en imágenes, ${mb(META_MAX_BYTES.video)} en videos y ${mb(META_MAX_BYTES.document)} en documentos.`}
+          products={products}
+        />
       </Panel>
     </div>
   );

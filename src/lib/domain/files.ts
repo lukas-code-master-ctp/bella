@@ -3,8 +3,34 @@ import { blobStore, fileKind, type AudioFile, type MediaStore } from "../media";
 import { normalize } from "../text";
 import { DomainError } from "./leads";
 
+const MB = 1024 * 1024;
+
 /** Tope de un archivo subido desde Bella (Vercel no acepta cuerpos de más de 4,5 MB). Más grande: por enlace. */
-export const FILE_MAX_BYTES = 4 * 1024 * 1024;
+export const FILE_MAX_BYTES = 4 * MB;
+
+/** Máximo que acepta WhatsApp (API de Meta) por tipo de archivo; más pesado, Meta no lo entrega. */
+export const META_MAX_BYTES = { image: 5 * MB, video: 16 * MB, audio: 16 * MB, document: 100 * MB } as const;
+
+const KIND_PLURAL = { image: "imágenes", video: "videos", audio: "audios", document: "documentos" } as const;
+const mb = (bytes: number) => `${bytes / MB} MB`;
+
+function checkMetaSize(fileName: string, mimeType: string, bytes: number) {
+  const kind = fileKind(mimeType);
+  if (bytes > META_MAX_BYTES[kind]) {
+    throw new DomainError(`"${fileName}" pesa ${(bytes / MB).toFixed(1)} MB y WhatsApp acepta hasta ${mb(META_MAX_BYTES[kind])} en ${KIND_PLURAL[kind]}.`);
+  }
+}
+
+/** Peso de un archivo por enlace según el servidor (null si no lo informa o no responde). */
+async function remoteSize(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(url, { method: "HEAD", redirect: "follow", signal: AbortSignal.timeout(5000) });
+    const length = Number(res.headers.get("content-length"));
+    return res.ok && length > 0 ? length : null;
+  } catch {
+    return null;
+  }
+}
 
 const MIME_BY_EXT: Record<string, string> = {
   pdf: "application/pdf",
@@ -54,11 +80,12 @@ export async function addMediaFile(input: NewMediaFile, store: MediaStore = blob
     const { file } = input;
     const title = input.title.trim() || baseName(file.fileName);
     if (!title) throw new DomainError("Ponle un nombre al archivo.");
-    if (file.bytes.byteLength > FILE_MAX_BYTES) {
-      throw new DomainError(`"${file.fileName}" pesa más de ${FILE_MAX_BYTES / 1024 / 1024} MB: súbelo a otro sitio y pega el enlace.`);
-    }
     const mimeType = file.mimeType || mimeFromName(file.fileName);
     if (fileKind(mimeType) === "audio") throw new DomainError("Los audios no se pueden cargar aquí.");
+    checkMetaSize(file.fileName, mimeType, file.bytes.byteLength);
+    if (file.bytes.byteLength > FILE_MAX_BYTES) {
+      throw new DomainError(`"${file.fileName}" pesa más de ${mb(FILE_MAX_BYTES)}: súbelo a otro sitio y pega el enlace.`);
+    }
     const url = await store({ ...file, mimeType }, "archivos");
     return db.mediaFile.create({
       data: { title, product, description, url, mimeType, fileName: file.fileName, size: file.bytes.byteLength },
@@ -76,8 +103,11 @@ export async function addMediaFile(input: NewMediaFile, store: MediaStore = blob
   const fileName = decodeURIComponent(parsed.pathname.split("/").pop() || "") || input.title.trim();
   const title = input.title.trim() || baseName(fileName);
   if (!title) throw new DomainError("Ponle un nombre al archivo.");
+  const mimeType = mimeFromName(fileName);
+  const size = await remoteSize(link);
+  if (size) checkMetaSize(fileName, mimeType, size);
   return db.mediaFile.create({
-    data: { title, product, description, url: link, mimeType: mimeFromName(fileName), fileName },
+    data: { title, product, description, url: link, mimeType, fileName, size },
   });
 }
 

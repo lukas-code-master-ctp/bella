@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { createLead } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
@@ -34,6 +34,10 @@ function fakeAnthropic(script: Scripted[]) {
   return { clients: { anthropic: client }, requests };
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 beforeEach(async () => {
   await seedFunnel();
   await setSetting<AiConfig>("ai", { provider: "anthropic", model: "modelo-x", effort: "medium" });
@@ -49,6 +53,16 @@ describe("archivos para la IA", () => {
     const unnamed = await addMediaFile({ title: "", product: " Proyecto Sur ", description: "", file: { ...pdf, fileName: "vista_aerea-2.kmz", mimeType: "" } }, store);
     expect([unnamed.title, unnamed.product, unnamed.mimeType]).toEqual(["vista aerea 2", "Proyecto Sur", "application/vnd.google-earth.kmz"]);
     await expect(addMediaFile({ title: "Y", description: "" })).rejects.toThrow(/enlace/);
+  });
+
+  it("rechaza enlaces que pasan el máximo de WhatsApp para su tipo", async () => {
+    const MB = 1024 * 1024;
+    vi.stubGlobal("fetch", async () => new Response(null, { headers: { "content-length": String(20 * MB) } }));
+    await expect(addMediaFile({ title: "", description: "", url: "https://cdn.test/recorrido.mp4" })).rejects.toThrow(
+      /20\.0 MB y WhatsApp acepta hasta 16 MB en videos/,
+    );
+    const brochure = await addMediaFile({ title: "", description: "", url: "https://cdn.test/brochure.pdf" });
+    expect([brochure.title, brochure.size]).toEqual(["brochure", 20 * MB]);
   });
 
   it("la IA ve el catálogo y envía un archivo antes de su respuesta", async () => {
