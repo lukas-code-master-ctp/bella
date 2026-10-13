@@ -159,32 +159,70 @@ const APP_URL =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "https://github.com/lukas-code-master-ctp/bella");
 
+/**
+ * Error pasajero del proveedor (saturado, límite de uso, caída breve): conviene volver a
+ * intentar más tarde en vez de pasarle el lead a un ejecutivo.
+ */
+export class TransientAiError extends Error {}
+
+/** 408, 429 y 5xx de OpenRouter suelen ser del proveedor de turno y pasan solos. */
+const isTransient = (status: number) => status === 408 || status === 429 || status >= 500;
+
+/** Esperas entre intentos ante un error pasajero (el último intento no espera). */
+export const RETRY_DELAYS_MS = [1500, 4000];
+const MAX_RETRY_AFTER_MS = 10_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const openRouterClient: ChatClient = {
   async complete(body) {
-    const res = await fetch(`${OPENROUTER_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${await credential("OPENROUTER_API_KEY")}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": APP_URL,
-        "X-Title": "Bella CRM",
-      },
-      body: JSON.stringify({ ...body, usage: { include: true } }),
-    });
-    const json = (await res.json().catch(() => ({}))) as ChatResponse;
-    if (!res.ok || json.error) {
-      throw new Error(`OpenRouter ${res.status}: ${json.error?.message ?? res.statusText}`);
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(`${OPENROUTER_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${await credential("OPENROUTER_API_KEY")}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": APP_URL,
+            "X-Title": "Bella CRM",
+          },
+          // allow_fallbacks: si el proveedor del modelo falla o está saturado, OpenRouter prueba otro.
+          body: JSON.stringify({ provider: { allow_fallbacks: true }, ...body, usage: { include: true } }),
+        });
+      } catch (err) {
+        // Falla de red: se reintenta igual que un 5xx.
+        if (attempt < RETRY_DELAYS_MS.length) {
+          await sleep(RETRY_DELAYS_MS[attempt]);
+          continue;
+        }
+        throw new TransientAiError(`OpenRouter sin conexión: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      const json = (await res.json().catch(() => ({}))) as ChatResponse;
+      if (!res.ok || json.error) {
+        // OpenRouter a veces responde 200 con el error del proveedor en el cuerpo.
+        const code = Number(json.error?.code);
+        const status = res.ok && Number.isFinite(code) ? code : res.status;
+        const message = `OpenRouter ${status}: ${json.error?.message ?? res.statusText}`;
+        if (!isTransient(status)) throw new Error(message);
+        if (attempt < RETRY_DELAYS_MS.length) {
+          const retryAfter = Number(res.headers.get("retry-after")) * 1000;
+          await sleep(retryAfter > 0 ? Math.min(retryAfter, MAX_RETRY_AFTER_MS) : RETRY_DELAYS_MS[attempt]);
+          continue;
+        }
+        throw new TransientAiError(message);
+      }
+      // Todas las llamadas (respuestas, resumen y puntaje, transcripciones) pasan por aquí.
+      if (typeof json.usage?.cost === "number") {
+        await recordAiUsage({
+          model: json.model ?? String(body.model),
+          inputTokens: json.usage.prompt_tokens ?? 0,
+          outputTokens: json.usage.completion_tokens ?? 0,
+          cost: json.usage.cost,
+        });
+      }
+      return json;
     }
-    // Todas las llamadas (respuestas, resumen y puntaje, transcripciones) pasan por aquí.
-    if (typeof json.usage?.cost === "number") {
-      await recordAiUsage({
-        model: json.model ?? String(body.model),
-        inputTokens: json.usage.prompt_tokens ?? 0,
-        outputTokens: json.usage.completion_tokens ?? 0,
-        cost: json.usage.cost,
-      });
-    }
-    return json;
   },
 };
 

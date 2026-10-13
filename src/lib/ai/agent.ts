@@ -19,7 +19,7 @@ import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { assistantFor, funnelStages } from "../domain/funnels";
 import { applyVariant } from "../domain/ab-tests";
 import { getAiConfig } from "./config";
-import { providerFor, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
+import { providerFor, TransientAiError, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
 import type { TraceStep } from "./trace";
 
@@ -28,6 +28,13 @@ const MAX_STEPS = 10;
 /** Respuesta al cliente cuando el modelo no puede continuar (rechazo o error). */
 export const FALLBACK_REPLY =
   "Gracias por tu mensaje. Un ejecutivo de nuestro equipo te responderá en breve.";
+
+/**
+ * Ante un error pasajero del proveedor (ver TransientAiError) el mensaje queda pendiente y el
+ * cron de respuestas en espera lo reintenta. Si el cliente lleva más que esto esperando, se
+ * responde el mensaje de respaldo como siempre.
+ */
+export const TRANSIENT_GRACE_MS = 30 * 60 * 1000;
 
 type KnowledgeDoc = { title: string; content: string };
 
@@ -368,6 +375,19 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     }
   } catch (err) {
     console.error(`[agent] lead ${leadId}:`, err);
+    // Error pasajero antes de que la IA hiciera algo: no se guarda nada y se reintenta luego
+    // (cron de respuestas en espera). El simulador no tiene cron, así que ahí se responde al tiro.
+    const oldest = pending.find((m) => m.author === "CONTACT" && m.createdAt > transcript.syncedUntil);
+    if (
+      err instanceof TransientAiError &&
+      !followUp &&
+      lead.contact.channel !== "SIMULATOR" &&
+      !trace.some((t) => t.type === "tool") &&
+      oldest &&
+      startedAt.getTime() - oldest.createdAt.getTime() < TRANSIENT_GRACE_MS
+    ) {
+      return "skipped";
+    }
     trace.push({ type: "error", message: err instanceof Error ? err.message : String(err) });
     reply = FALLBACK_REPLY;
     handedOff = true;

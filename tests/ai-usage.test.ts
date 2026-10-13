@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { aiSpendSummary } from "@/lib/domain/ai-usage";
-import { openRouterClient } from "@/lib/ai/providers";
+import { openRouterClient, RETRY_DELAYS_MS, TransientAiError } from "@/lib/ai/providers";
 import { parseLocalDateTime } from "@/lib/dates";
 
 const at = (s: string) => parseLocalDateTime(s)!;
@@ -31,6 +31,28 @@ describe("Consumo de IA", () => {
       ["Agosto", 8, 100],
       ["Julio", 4, 0],
     ]);
+  });
+
+  it("reintenta los errores pasajeros de OpenRouter y pide proveedores de respaldo", async () => {
+    process.env.OPENROUTER_API_KEY ??= "test";
+    const delays = RETRY_DELAYS_MS.splice(0, RETRY_DELAYS_MS.length, 0, 0);
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "Provider returned error", code: 429 } }), { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: "Provider returned error", code: 502 } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ model: "x/y", choices: [] })));
+    expect(await openRouterClient.complete({ model: "x/y", messages: [] })).toMatchObject({ model: "x/y" });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string).provider).toEqual({ allow_fallbacks: true });
+
+    // Si sigue fallando, el error se marca como pasajero; uno de la solicitud no se reintenta.
+    fetchMock.mockReset().mockImplementation(async () => new Response("{}", { status: 503 }));
+    await expect(openRouterClient.complete({ model: "x/y", messages: [] })).rejects.toBeInstanceOf(TransientAiError);
+    fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ error: { message: "bad" } }), { status: 400 }));
+    await expect(openRouterClient.complete({ model: "x/y", messages: [] })).rejects.not.toBeInstanceOf(TransientAiError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+    RETRY_DELAYS_MS.splice(0, RETRY_DELAYS_MS.length, ...delays);
   });
 
   it("registra el costo que informa OpenRouter en cada llamada", async () => {
