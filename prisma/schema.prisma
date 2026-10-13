@@ -267,6 +267,8 @@ model ContactFieldValue {
 }
 
 /// Un lead (ticket) es una oportunidad de venta de un contacto que avanza por el funnel.
+/// Un contacto tiene un solo lead OPEN: índice único parcial "Lead_contactId_open_key", creado a mano
+/// en la migración 20261013100000_lead_one_open (Prisma no lo declara; si `migrate dev` propone borrarlo, no lo hagas).
 model Lead {
   id             String     @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.

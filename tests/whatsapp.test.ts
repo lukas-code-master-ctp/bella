@@ -136,6 +136,22 @@ describe("WhatsApp: mensajes entrantes", () => {
     ]);
   });
 
+  it("dos mensajes simultáneos de un contacto nuevo crean un solo contacto y un solo lead", async () => {
+    await seedFunnel();
+    await Promise.all([receiveWhatsApp(webhook([text("wamid.1", "Hola")])), receiveWhatsApp(webhook([text("wamid.2", "¿Precio?")]))]);
+    expect(await db.contact.count()).toBe(1);
+    const leads = await db.lead.findMany({ include: { messages: true } });
+    expect(leads).toHaveLength(1);
+    expect(leads[0].messages).toHaveLength(2);
+  });
+
+  it("si la base falla al guardar el mensaje, el error sube para que Meta reintente", async () => {
+    await seedFunnel();
+    // Postgres rechaza el byte nulo en un texto: un error que no es de duplicado.
+    await expect(receiveWhatsApp(webhook([text("wamid.1", "Hola\u0000")]))).rejects.toThrow();
+    expect(await db.message.count()).toBe(0);
+  });
+
   it("ignora mensajes de otro número de la cuenta y las reacciones; describe imágenes y botones", async () => {
     await seedFunnel();
     await receiveWhatsApp(webhook([text("wamid.x", "otro número")], { phoneId: "999" }));

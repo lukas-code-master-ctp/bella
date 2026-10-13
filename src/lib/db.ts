@@ -62,3 +62,7 @@ const tenantScope = Prisma.defineExtension({
 // La extensión solo cambia las consultas, no la forma del cliente: se expone con el tipo de
 // PrismaClient para que las funciones que reciben `db` o una transacción sigan igual.
 export const db = rootDb.$extends(tenantScope) as unknown as PrismaClient;
+
+/** Choque con un índice único: otro proceso ya guardó lo mismo. */
+export const isDuplicate = (err: unknown) =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";

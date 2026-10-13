@@ -106,4 +106,19 @@ describe("fusionar duplicados", () => {
     expect(kept.leads).toHaveLength(1);
     expect(await db.contact.findUnique({ where: { id: wa.id } })).toBeNull();
   });
+
+  it("si ambos tienen un lead abierto, queda el más nuevo y el otro se cierra como fusionado", async () => {
+    const stages = await seedFunnel();
+    const wa = await db.contact.create({ data: { name: "Pedro WA", channel: "WHATSAPP", externalId: "56911112222" } });
+    const imported = await db.contact.create({ data: { name: "Pedro", channel: "WHATSAPP", phone: "+56911112222" } });
+    const older = await db.lead.create({ data: { contactId: imported.id, stageId: stages[0].id, createdAt: new Date(Date.now() - 60_000) } });
+    const newer = await db.lead.create({ data: { contactId: wa.id, stageId: stages[0].id } });
+
+    await mergeContacts(imported.id, [wa.id], admin);
+    const leads = await db.lead.findMany({ where: { contactId: imported.id } });
+    expect(Object.fromEntries(leads.map((l) => [l.id, [l.status, l.lostReason]]))).toEqual({
+      [older.id]: ["LOST", "Fusionado"],
+      [newer.id]: ["OPEN", null],
+    });
+  });
 });
