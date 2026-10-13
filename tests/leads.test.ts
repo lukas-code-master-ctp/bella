@@ -21,4 +21,13 @@ describe("ganado / perdido", () => {
     updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(updated).toMatchObject({ status: "OPEN", amount: null, closedAt: null });
   });
+
+  it("no reabre si el contacto ya tiene otro lead abierto; la base tampoco deja dos abiertos", async () => {
+    await seedFunnel();
+    const first = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    await closeLead(first.id, "LOST", { actor: "USER" }, { lostReason: "Sin respuesta" });
+    const second = await createLead({ contactId: first.contactId });
+    await expect(reopenLead(first.id, { actor: "USER" })).rejects.toThrow(/otro lead abierto/);
+    await expect(createLead({ contactId: second.contactId })).rejects.toMatchObject({ code: "P2002" });
+  });
 });

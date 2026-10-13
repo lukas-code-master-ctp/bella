@@ -194,6 +194,11 @@ export async function closeLead(
 
 export async function reopenLead(leadId: string, by: ActorRef) {
   return db.$transaction(async (tx) => {
+    const { contactId } = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
+    // Un contacto tiene un solo lead abierto (índice único en la base).
+    if (await tx.lead.findFirst({ where: { contactId, status: "OPEN", id: { not: leadId } } })) {
+      throw new DomainError("El contacto ya tiene otro lead abierto.");
+    }
     await tx.lead.update({
       where: { id: leadId },
       data: { status: "OPEN", closedAt: null, lostReason: null, amount: null },

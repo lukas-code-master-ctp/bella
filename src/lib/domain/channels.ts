@@ -1,5 +1,5 @@
 import type { Channel } from "@prisma/client";
-import { db } from "../db";
+import { db, isDuplicate } from "../db";
 import { currentCompanyId } from "../tenant";
 import { getSetting, setSetting } from "../settings";
 import {
@@ -177,16 +177,25 @@ async function openLeadFor(
   phone?: string,
   funnelId?: () => Promise<string | null>,
 ) {
-  const contact = await db.contact.findUnique({
-    where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel, externalId } },
-    include: { leads: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1 } },
-  });
+  const findOpen = async () =>
+    db.contact.findUnique({
+      where: { companyId_channel_externalId: { companyId: await currentCompanyId(), channel, externalId } },
+      include: { leads: { where: { status: "OPEN" }, take: 1 } },
+    });
+  const contact = await findOpen();
   if (contact?.leads[0]) return contact.leads[0].id;
   const options = { aiEnabled, funnelId: (await funnelId?.()) ?? null };
-  const lead = contact
-    ? await createLead({ contactId: contact.id }, options)
-    : await createLead({ name: await name(), channel, phone, externalId }, options);
-  return lead.id;
+  try {
+    const lead = contact
+      ? await createLead({ contactId: contact.id }, options)
+      : await createLead({ name: await name(), channel, phone, externalId }, options);
+    return lead.id;
+  } catch (err) {
+    // Dos mensajes casi simultáneos: el otro servidor ya creó el contacto o su lead abierto.
+    const open = isDuplicate(err) ? (await findOpen())?.leads[0] : null;
+    if (!open) throw err;
+    return open.id;
+  }
 }
 
 /** Nota de voz del cliente: se descarga, se guarda y se transcribe; si falla, queda el aviso. */
@@ -205,7 +214,9 @@ async function receiveAudio(
     // Sin el audio, la IA y el equipo saben que llegó y le piden que lo escriba.
     await db.message
       .create({ data: { leadId, author: "CONTACT", body: "[Nota de voz que no se pudo descargar]", externalId } })
-      .catch(() => null);
+      .catch((e) => {
+        if (!isDuplicate(e)) throw e;
+      });
   }
   await notifyContactMessage(leadId, "🎤 Nota de voz");
 }
@@ -214,9 +225,11 @@ async function receiveAudio(
 async function receiveText(leadId: string, externalId: string, body: string) {
   try {
     await db.message.create({ data: { leadId, author: "CONTACT", body, externalId } });
-  } catch {
-    // Otro servidor ya guardó el mismo mensaje.
-    return false;
+  } catch (err) {
+    // Otro servidor ya guardó el mismo mensaje. Otro error se relanza: el webhook responde 500
+    // y Meta lo reintenta, en vez de perder el mensaje.
+    if (isDuplicate(err)) return false;
+    throw err;
   }
   await notifyContactMessage(leadId, body);
   return true;

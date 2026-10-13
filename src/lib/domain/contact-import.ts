@@ -349,6 +349,21 @@ export async function mergeContacts(keepId: string, otherIds: string[], by: Acto
     const fieldIds = new Set(keep.fields.map((f) => f.fieldId));
     let phone = keep.phone;
     let email = keep.email;
+    // Un contacto tiene un solo lead abierto: queda el más nuevo y los demás se cierran.
+    const extra = await tx.lead.findMany({
+      where: { contactId: { in: [keep.id, ...ids] }, status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+      skip: 1,
+    });
+    for (const l of extra) {
+      await tx.lead.update({
+        where: { id: l.id },
+        data: { status: "LOST", closedAt: new Date(), aiEnabled: false, lostReason: "Fusionado" },
+      });
+      await tx.leadEvent.create({
+        data: { leadId: l.id, type: "LOST", actor: by.actor, userId: by.userId ?? null, reason: "Fusionado" },
+      });
+    }
     for (const o of others) {
       await tx.lead.updateMany({ where: { contactId: o.id }, data: { contactId: keep.id } });
       for (const t of o.tags) {

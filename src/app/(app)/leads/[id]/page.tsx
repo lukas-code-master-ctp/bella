@@ -86,7 +86,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const lead = await db.lead.findUnique({
     where: { id },
     include: {
-      contact: { include: { tags: { include: { tag: true } } } },
+      contact: { include: { tags: { include: { tag: true } }, leads: { where: { status: "OPEN" }, select: { id: true } } } },
       stage: true,
       assignee: true,
       source: true,
@@ -376,12 +376,22 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                     ? `Ganado${lead.amount ? ` · $${lead.amount.toLocaleString("es-CL")}` : ""}`
                     : `Perdido · ${lead.lostReason}`}
                 </p>
-                <form action={reopenLeadAction.bind(null, lead.id)}>
-                  <Button variant="secondary" className="w-full">
-                    <RotateCcw aria-hidden />
-                    Reabrir
-                  </Button>
-                </form>
+                {lead.contact.leads[0] ? (
+                  <p className="text-sm text-slate-700">
+                    El contacto ya tiene otro lead abierto:{" "}
+                    <Link href={`/leads/${lead.contact.leads[0].id}`} className="font-medium text-brand-700 underline">
+                      ver lead
+                    </Link>
+                    .
+                  </p>
+                ) : (
+                  <form action={reopenLeadAction.bind(null, lead.id)}>
+                    <Button variant="secondary" className="w-full">
+                      <RotateCcw aria-hidden />
+                      Reabrir
+                    </Button>
+                  </form>
+                )}
               </div>
             )}
           </Section>

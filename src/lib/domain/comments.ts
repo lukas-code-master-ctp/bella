@@ -1,5 +1,5 @@
 import type { SocialComment } from "@prisma/client";
-import { db } from "../db";
+import { db, isDuplicate } from "../db";
 import { credentials } from "../credentials";
 import { ChannelSendError } from "../channels/whatsapp";
 import { platformOf, type MessengerWebhook } from "../channels/messenger";
@@ -43,7 +43,10 @@ export async function receiveComments(payload: MessengerWebhook): Promise<string
             text,
           },
         })
-        .catch(() => null); // Meta reintentó un comentario ya guardado.
+        .catch((e) => {
+          if (isDuplicate(e)) return null; // Meta reintentó un comentario ya guardado.
+          throw e;
+        });
       if (created) saved.push(created.id);
     }
   }
