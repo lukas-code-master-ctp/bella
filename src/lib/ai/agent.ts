@@ -17,6 +17,11 @@ import { filesForPrompt, type FileForPrompt } from "../domain/files";
 import { knowledgeForPrompt } from "../knowledge";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { assistantFor, funnelStages } from "../domain/funnels";
+import { moveStageTx } from "../domain/leads";
+import { notifyHumanStageTx } from "../domain/notifications";
+import { deliverPendingConversions } from "../domain/conversions";
+import { deliverPendingWebhooks } from "../domain/webhooks";
+import { deliverPendingPush } from "../push";
 import { applyVariant } from "../domain/ab-tests";
 import { getAiConfig } from "./config";
 import { providerFor, TransientAiError, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
@@ -35,6 +40,8 @@ export const FALLBACK_REPLY =
  * responde el mensaje de respaldo como siempre.
  */
 export const TRANSIENT_GRACE_MS = 30 * 60 * 1000;
+
+const HANDOFF_REASON = "La IA no pudo responder; requiere un ejecutivo";
 
 type KnowledgeDoc = { title: string; content: string };
 
@@ -435,12 +442,19 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
       });
     }
     if (handedOff) {
-      const current = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
-      if (current.aiEnabled) {
+      // Se le dijo al cliente que lo atenderá un ejecutivo: el lead pasa a la primera etapa de
+      // atención humana de su embudo (pausa la IA y avisa). Si ya está en una o el embudo no
+      // tiene, solo se pausa la IA y se avisa igual.
+      const current = await tx.lead.findUniqueOrThrow({ where: { id: leadId }, include: { stage: true } });
+      const humanStage = current.stage.requiresHuman
+        ? null
+        : (await funnelStages(tx, current.stage.funnelId)).find((s) => s.requiresHuman);
+      if (humanStage) {
+        await moveStageTx(tx, leadId, humanStage.id, { actor: "SYSTEM" }, HANDOFF_REASON);
+      } else if (current.aiEnabled) {
         await tx.lead.update({ where: { id: leadId }, data: { aiEnabled: false } });
-        await tx.leadEvent.create({
-          data: { leadId, type: "AI_PAUSED", actor: "SYSTEM", reason: "La IA no pudo responder; requiere un ejecutivo" },
-        });
+        await tx.leadEvent.create({ data: { leadId, type: "AI_PAUSED", actor: "SYSTEM", reason: HANDOFF_REASON } });
+        await notifyHumanStageTx(tx, leadId, HANDOFF_REASON);
       }
     }
     await scheduleAfterAiTurnTx(
@@ -460,6 +474,11 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   // Los archivos que envió la IA salen aunque el turno termine sin texto (ej. un seguimiento omitido).
   if (!sent && trace.some((t) => t.type === "tool" && t.name === "send_file" && !t.isError)) {
     await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío de archivos, lead ${leadId}:`, err));
+  }
+  if (handedOff) {
+    await deliverPendingPush();
+    await deliverPendingConversions();
+    await deliverPendingWebhooks();
   }
   // Fuera de la transacción: si falla el registro del monitor, la respuesta igual queda guardada.
   if (sent) {

@@ -296,9 +296,25 @@ describe("asistente IA (OpenRouter)", () => {
     await inbound(lead.id, "Hola");
     const { client } = fakeOpenRouter([]);
     await runAgent(lead.id, client);
-    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true } });
+    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true, stage: true } });
     expect(updated.aiEnabled).toBe(false);
     expect(updated.messages.at(-1)?.body).toBe(FALLBACK_REPLY);
+    // Se le dijo que lo atenderá un ejecutivo: pasa a la etapa de atención humana.
+    expect(updated.stage.name).toBe("Atención humana");
+  });
+
+  it("si ya está en atención humana, el respaldo solo pausa la IA y avisa al equipo", async () => {
+    const stages = await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    const human = stages.find((s) => s.requiresHuman)!;
+    const ana = await executive("Ana");
+    await db.lead.update({ where: { id: lead.id }, data: { stageId: human.id, assigneeId: ana.id } });
+    await inbound(lead.id, "Hola");
+    await runAgent(lead.id, fakeOpenRouter([]).client);
+    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(updated.aiEnabled).toBe(false);
+    expect(updated.stageId).toBe(human.id);
+    expect(await db.notification.count({ where: { leadId: lead.id, userId: ana.id, type: "HUMAN_STAGE" } })).toBe(1);
   });
 
   it("un error pasajero deja el mensaje pendiente para reintentar, sin respaldo ni pausa", async () => {
