@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createLead } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
-import { FALLBACK_REPLY, runAgent } from "@/lib/ai/agent";
+import { FALLBACK_REPLY, runAgent, TRANSIENT_GRACE_MS } from "@/lib/ai/agent";
 import type { AiConfig } from "@/lib/ai/config";
-import type { AnthropicClient, ChatClient, ChatResponse } from "@/lib/ai/providers";
+import { TransientAiError, type AnthropicClient, type ChatClient, type ChatResponse } from "@/lib/ai/providers";
 import { KNOWLEDGE_INLINE_MAX_CHARS } from "@/lib/knowledge";
 import { executive, seedFunnel } from "./factories";
 
@@ -296,6 +296,42 @@ describe("asistente IA (OpenRouter)", () => {
     await inbound(lead.id, "Hola");
     const { client } = fakeOpenRouter([]);
     await runAgent(lead.id, client);
+    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true } });
+    expect(updated.aiEnabled).toBe(false);
+    expect(updated.messages.at(-1)?.body).toBe(FALLBACK_REPLY);
+  });
+
+  it("un error pasajero deja el mensaje pendiente para reintentar, sin respaldo ni pausa", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "WHATSAPP", phone: "+56911112222" });
+    await inbound(lead.id, "¿Tienes brochure?");
+    const busy: ChatClient = {
+      complete: async () => {
+        throw new TransientAiError("OpenRouter 429: Provider returned error");
+      },
+    };
+    expect(await runAgent(lead.id, { openrouter: busy })).toBe("skipped");
+    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true } });
+    expect(updated.aiEnabled).toBe(true);
+    expect(updated.messages.map((m) => m.author)).toEqual(["CONTACT"]);
+
+    // Al reintentar (cron de respuestas en espera) contesta normalmente.
+    const { client } = fakeOpenRouter([[{ finish_reason: "stop", message: { role: "assistant", content: "¡Sí! Te lo envío." } }]]);
+    expect(await runAgent(lead.id, client)).toBe("sent");
+  });
+
+  it("si el error pasajero sigue después del plazo de espera, responde el respaldo", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "WHATSAPP", phone: "+56911112222" });
+    await db.message.create({
+      data: { leadId: lead.id, author: "CONTACT", body: "Hola", createdAt: new Date(Date.now() - TRANSIENT_GRACE_MS - 1000) },
+    });
+    const busy: ChatClient = {
+      complete: async () => {
+        throw new TransientAiError("OpenRouter 503: Service unavailable");
+      },
+    };
+    await runAgent(lead.id, { openrouter: busy });
     const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true } });
     expect(updated.aiEnabled).toBe(false);
     expect(updated.messages.at(-1)?.body).toBe(FALLBACK_REPLY);
