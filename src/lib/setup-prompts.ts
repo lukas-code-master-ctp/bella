@@ -38,6 +38,11 @@ const RULES = `Reglas mientras trabajas:
 - Si algo no coincide con lo que describo (las pantallas cambian), dime qué ves y propón cómo seguir.
 - Al terminar, dame un resumen de lo que quedó listo y de lo que falta.`;
 
+/** Servidor MCP oficial de Meta para WhatsApp Business (beta); el cliente lo conecta en Claude. */
+export const WHATSAPP_MCP_URL = "https://mcp.facebook.com/whatsapp_business_tools";
+
+const WHATSAPP_MCP = `Herramientas de WhatsApp: si tienes conectado el MCP de WhatsApp Business de Meta (herramientas whatsapp_biz_*), úsalo en vez del navegador para lo que cubre: revisar la verificación del negocio (paso 1), agregar, verificar y registrar el número y el método de pago (paso 4), leer los identificadores del número y de la cuenta de WhatsApp (paso 7) y configurar y suscribir el webhook de WhatsApp (paso 8). Con él no envíes mensajes a clientes. Si no lo tienes, dime que puedo agregarlo en claude.ai → Configuración → Conectores como conector personalizado con la dirección ${WHATSAPP_MCP_URL}, y mientras tanto sigue con el navegador. Crear la app, sacar la clave secreta y generar los tokens se hace igual en el navegador.`;
+
 const has = (s: SetupStatus, key: string) => !s.missingEnv.includes(key);
 
 const label = (key: string) => CREDENTIALS.find((c) => c.key === key)?.label ?? key;
@@ -58,6 +63,8 @@ export function metaSetupPrompt(s: SetupStatus): string {
   return `Quiero que conectes Meta (WhatsApp, Instagram, Messenger y el píxel) con Bella, el CRM de leads${company(s)} que está en ${s.origin}. Puede que mi empresa parta desde cero en Meta. Toma el control del navegador y hazlo paso a paso.
 
 ${RULES}
+
+${WHATSAPP_MCP}
 
 Estado actual: ${missing.length ? `faltan estas credenciales en Bella: ${missing.map(label).join(", ")}.` : "todas las credenciales de Meta ya están en Bella."}
 

@@ -12,7 +12,7 @@ import { getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { getLegalSettings } from "@/lib/domain/privacy";
 import type { InventorySettings } from "@/lib/inventory";
 import { getAssistantSettings, getSetting } from "@/lib/settings";
-import { assistantSetupPrompt, metaSetupPrompt, type SetupStatus } from "@/lib/setup-prompts";
+import { WHATSAPP_MCP_URL, assistantSetupPrompt, metaSetupPrompt, type SetupStatus } from "@/lib/setup-prompts";
 import { Card, CardHeader, PageHeader } from "@/components/ui";
 import { CopyPrompt } from "./copy-prompt";
 
@@ -71,7 +71,7 @@ export default async function ClaudeSetupPage() {
       <Card className="p-5">
         <CardHeader
           title="Prompt para Claude"
-          description="Tú inicias sesión y apruebas los permisos; Claude te avisa cuando te necesita. Los tokens se pegan directo en Credenciales y nunca se escriben en el chat."
+          description={`Tú inicias sesión y apruebas los permisos; Claude te avisa cuando te necesita. Los tokens se pegan directo en Credenciales y nunca se escriben en el chat. Para WhatsApp es más rápido si antes agregas en Claude el conector de Meta: ${WHATSAPP_MCP_URL}`}
         />
         <CopyPrompt prompts={{ meta: metaSetupPrompt(status), assistant: assistantSetupPrompt(status) }} />
       </Card>
