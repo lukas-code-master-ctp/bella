@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
+import { createFunnel } from "@/lib/domain/funnels";
 import { closeLead, createLead } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
 import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient } from "@/lib/ai/providers";
-import { hasUnseenInsight, lastWeekPeriod, markInsightSeen, parseReport, runWeeklyInsight } from "@/lib/ai/weekly-insights";
+import { generateWeeklyInsight, hasUnseenInsight, lastWeekPeriod, markInsightSeen, parseReport, runWeeklyInsight } from "@/lib/ai/weekly-insights";
 import { executive, seedFunnel } from "./factories";
 
 function fakeOpenRouter(content: string) {
@@ -78,6 +79,21 @@ describe("insights semanales", () => {
     // El cron no lo repite para la misma semana.
     expect(await runWeeklyInsight(now, clients)).toEqual({ created: false, insightId: null });
     expect(requests).toHaveLength(1);
+  });
+
+  it("muestra las etapas de cada embudo por separado", async () => {
+    await setSetting<AiConfig>("ai", { provider: "openrouter", model: "grande", effort: "high" });
+    await seedFunnel();
+    const online = await createFunnel("Online");
+    await db.stage.create({ data: { funnelId: online.id, name: "Asesor", position: 0 } });
+    await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56911112222" });
+    const { clients, requests } = fakeOpenRouter(REPLY);
+    const to = new Date(Date.now() + 60_000);
+    await generateWeeklyInsight({ from: new Date(to.getTime() - 7 * 86_400_000), to, clients });
+
+    const input = requests[0].messages[1].content;
+    expect(input).toMatch(/Embudo "Principal"[^\n]*Nuevo 1\/1, Calificado 0\/0/);
+    expect(input).toMatch(/Embudo "Online"[^\n]*: Asesor 0\/0\./);
   });
 
   it("rechaza respuestas sin JSON válido", () => {

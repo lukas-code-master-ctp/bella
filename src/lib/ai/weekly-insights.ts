@@ -100,6 +100,11 @@ export function parseReport(text: string): WeeklyReport | null {
 /** Arma lo que lee la IA: números de la semana y una muestra de cada lead con actividad. */
 async function buildInput(from: Date, to: Date) {
   const metrics = await getMetrics({ from, to });
+  // Cada embudo tiene sus propias etapas: mezclarlos cruza leads de uno con etapas de otro.
+  const funnels = await db.funnel.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } });
+  const byFunnel = await Promise.all(
+    funnels.map(async (f) => ({ name: f.name, stages: (await getMetrics({ from, to, funnelId: f.id })).funnel })),
+  );
   const leads = await db.lead.findMany({
     where: {
       contact: { channel: { not: "SIMULATOR" } },
@@ -124,7 +129,11 @@ async function buildInput(from: Date, to: Date) {
     "<numeros_de_la_semana>",
     `Leads nuevos: ${t.leads} (abiertos ${t.open}, ganados ${t.won}, perdidos ${t.lost}). Ventas: $${t.amount.toLocaleString("es-CL")}.`,
     `Leads con conversación esta semana: ${leads.length}.`,
-    `Embudo de los leads nuevos (llegaron a la etapa / están ahí): ${metrics.funnel.map((f) => `${f.name} ${f.reached}/${f.current}`).join(", ")}.`,
+    ...byFunnel.map(
+      (f) =>
+        `Embudo${funnels.length > 1 ? ` "${f.name}"` : ""} de los leads nuevos (llegaron a la etapa / están ahí): ` +
+        `${f.stages.map((s) => `${s.name} ${s.reached}/${s.current}`).join(", ")}.`,
+    ),
     `Por campaña u origen: ${metrics.byCampaign.map((r) => `${r.label} ${r.leads} leads, ${r.won} ganados`).join("; ") || "sin datos"}.`,
     `Motivos de pérdida: ${metrics.lostReasons.map((r) => `${r.reason} (${r.count})`).join("; ") || "ninguno"}.`,
     "</numeros_de_la_semana>",

@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { currentCompanyId } from "../tenant";
 import { aiBlocked, getAiOperation } from "../domain/ai-operation";
 import { aiChannels, getChannelSettings, MAX_REPLY_DELAY_SECONDS } from "../domain/channels";
 import { runAgent } from "./agent";
@@ -17,6 +18,27 @@ export async function hasUnanswered(leadId: string) {
 }
 
 /**
+ * Toma el lead para un turno de la IA y corre `fn`; devuelve null sin correrla si otro servidor
+ * ya lo tiene. Todo turno (respuesta, seguimiento, botones del lead) pasa por aquí: dos turnos a
+ * la vez mandarían dos mensajes y el último en guardar pisaría el historial del otro.
+ */
+export async function withLeadClaim<T>(leadId: string, fn: () => Promise<T>): Promise<T | null> {
+  const now = new Date();
+  const until = new Date(now.getTime() + BUSY_MS);
+  const claimed = await db.lead.updateMany({
+    where: { id: leadId, OR: [{ agentBusyUntil: null }, { agentBusyUntil: { lt: now } }] },
+    data: { agentBusyUntil: until },
+  });
+  if (!claimed.count) return null;
+  try {
+    return await fn();
+  } finally {
+    // Solo se suelta si sigue siendo la toma propia (pudo vencer y tomarla otro).
+    await db.lead.updateMany({ where: { id: leadId, agentBusyUntil: until }, data: { agentBusyUntil: null } });
+  }
+}
+
+/**
  * La IA responde a un lead de un canal real. Cada webhook corre en su propio servidor, así que
  * el lead se "toma" en la base para que dos mensajes seguidos del cliente no reciban dos
  * respuestas a la vez: quien lo tiene responde todo lo pendiente antes de soltarlo, y quien no
@@ -26,22 +48,18 @@ export async function answerLead(leadId: string, clients: ProviderClients = {}) 
   // Con la IA apagada en toda la plataforma no hay respuesta (ni resumen) en los canales reales.
   if ((await getAiOperation()).paused) return;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const now = new Date();
-    const claimed = await db.lead.updateMany({
-      where: { id: leadId, OR: [{ agentBusyUntil: null }, { agentBusyUntil: { lt: now } }] },
-      data: { agentBusyUntil: new Date(now.getTime() + BUSY_MS) },
-    });
-    if (!claimed.count) return;
-    try {
-      // runAgent responde todo lo pendiente; si llegó algo más mientras pensaba, otra vuelta.
-      for (let turn = 0; turn < 3; turn++) {
-        if ((await runAgent(leadId, clients)) === "skipped") break;
+    const ran = await withLeadClaim(leadId, async () => {
+      try {
+        // runAgent responde todo lo pendiente; si llegó algo más mientras pensaba, otra vuelta.
+        for (let turn = 0; turn < 3; turn++) {
+          if ((await runAgent(leadId, clients)) === "skipped") break;
+        }
+      } catch (err) {
+        console.error(`[respond] lead ${leadId}:`, err);
       }
-    } catch (err) {
-      console.error(`[respond] lead ${leadId}:`, err);
-    } finally {
-      await db.lead.update({ where: { id: leadId }, data: { agentBusyUntil: null } });
-    }
+      return true;
+    });
+    if (!ran) return;
     // Un mensaje que llegó justo al soltar el lead quedaría sin respuesta: se revisa una vez más.
     if (!(await hasUnanswered(leadId))) break;
   }
@@ -85,24 +103,25 @@ export async function answerWaitingLeads(
   if (aiBlocked(operation, "WHATSAPP", now)) return 0;
   const channels = (await aiChannels()).filter((c) => c !== "SIMULATOR");
   if (!channels.length) return 0;
-  const candidates = await db.lead.findMany({
-    where: {
-      status: "OPEN",
-      aiEnabled: true,
-      agentBusyUntil: null,
-      contact: { channel: { in: channels } },
-      messages: { some: { author: "CONTACT", createdAt: { gt: new Date(now.getTime() - WAITING_WINDOW_MS) } } },
-    },
-    select: { id: true },
-    orderBy: { updatedAt: "asc" },
-    take: 200,
-  });
-  let answered = 0;
-  for (const { id } of candidates) {
-    if (answered >= limit) break;
-    if (!(await hasUnanswered(id))) continue;
-    await answerLead(id, clients);
-    answered++;
-  }
-  return answered;
+  // Solo los que esperan respuesta, el que espera hace más tiempo primero. Una toma vencida (un
+  // turno que Vercel cortó) no deja al lead fuera. En SQL el filtro de empresa va explícito.
+  const companyId = await currentCompanyId();
+  const since = new Date(now.getTime() - WAITING_WINDOW_MS);
+  const candidates = await db.$queryRaw<{ id: string }[]>`
+    SELECT l.id FROM "Lead" l
+    JOIN "Contact" c ON c.id = l."contactId"
+    LEFT JOIN "AgentTranscript" t ON t."leadId" = l.id
+    CROSS JOIN LATERAL (
+      SELECT min(m."createdAt") AS waiting FROM "Message" m
+      WHERE m."leadId" = l.id AND m.author = 'CONTACT' AND m."createdAt" > ${since}
+        AND (t."syncedUntil" IS NULL OR m."createdAt" > t."syncedUntil")
+    ) w
+    WHERE l."companyId" = ${companyId} AND l.status = 'OPEN' AND l."aiEnabled"
+      AND (l."agentBusyUntil" IS NULL OR l."agentBusyUntil" < ${now})
+      AND c."blockedAt" IS NULL AND c.channel::text = ANY(${channels})
+      AND w.waiting IS NOT NULL
+    ORDER BY w.waiting
+    LIMIT ${limit}`;
+  for (const { id } of candidates) await answerLead(id, clients);
+  return candidates.length;
 }

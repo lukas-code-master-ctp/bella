@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
 import { sendFollowUpNow } from "@/lib/ai/follow-ups";
+import { withLeadClaim } from "@/lib/ai/respond";
 import { deliverOutbound } from "@/lib/domain/channels";
 import { blockContact, unblockContact } from "@/lib/domain/contacts";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
@@ -73,7 +74,7 @@ export async function sendAsContactAction(leadId: string, _prev: string | null, 
       done(leadId);
       return missing;
     }
-    await runAgent(leadId);
+    await withLeadClaim(leadId, () => runAgent(leadId));
   }
   await refreshInsightsLater(leadId);
   done(leadId);
@@ -136,7 +137,7 @@ export async function toggleAiAction(leadId: string, enabled: boolean) {
   const { by } = await authorize(leadId);
   await setAiEnabled(leadId, enabled, by);
   if (enabled) {
-    await runAgent(leadId).catch((e) => console.error(e));
+    await withLeadClaim(leadId, () => runAgent(leadId)).catch((e) => console.error(e));
     await refreshInsightsLater(leadId);
   }
   done(leadId);
