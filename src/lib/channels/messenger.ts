@@ -1,4 +1,4 @@
-import type { FileKind } from "../media";
+import { AUDIO_MAX_BYTES, type FileKind } from "../media";
 import { credential, missingCredentials } from "../credentials";
 import { GRAPH_VERSION, ChannelSendError } from "./whatsapp";
 
@@ -92,12 +92,32 @@ export const messengerApi: MessengerApi = {
       return null;
     }
   },
-  async download(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`No se pudo descargar el archivo de Meta (HTTP ${res.status}).`);
-    return { bytes: new Uint8Array(await res.arrayBuffer()), mimeType: res.headers.get("content-type") ?? "audio/mp4" };
-  },
+  download: (url) => downloadFromMeta(url),
 };
+
+/** Dominios desde los que Meta entrega los adjuntos de Instagram y Messenger. */
+const META_CDN = /(^|\.)(fbcdn\.net|cdninstagram\.com|fbsbx\.com)$/;
+
+/**
+ * Descarga un adjunto cuya URL viene en el webhook. Cada empresa firma con su propio secreto,
+ * así que la URL no es confiable: solo https a Meta y con tope de tamaño, sin leer de más.
+ */
+export async function downloadFromMeta(url: string, maxBytes = AUDIO_MAX_BYTES, fetcher: typeof fetch = fetch) {
+  const u = new URL(url);
+  if (u.protocol !== "https:" || !META_CDN.test(u.hostname)) throw new Error(`URL de adjunto fuera de Meta: ${u.hostname}`);
+  const res = await fetcher(u);
+  if (!res.ok || !res.body) throw new Error(`No se pudo descargar el archivo de Meta (HTTP ${res.status}).`);
+  const tooBig = new Error(`El archivo de Meta pesa más de ${maxBytes / 1024 / 1024} MB.`);
+  if (Number(res.headers.get("content-length")) > maxBytes) throw tooBig;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    size += chunk.byteLength;
+    if (size > maxBytes) throw tooBig; // salir del for-await cancela la descarga
+    chunks.push(chunk);
+  }
+  return { bytes: Buffer.concat(chunks), mimeType: res.headers.get("content-type") ?? "audio/mp4" };
+}
 
 // --- Webhook ----------------------------------------------------------------------------
 

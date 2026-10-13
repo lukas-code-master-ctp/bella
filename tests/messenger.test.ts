@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import { ChannelSendError } from "@/lib/channels/whatsapp";
-import type { MessengerApi, MessengerWebhook, MsgEvent, MetaPlatform } from "@/lib/channels/messenger";
+import { downloadFromMeta, type MessengerApi, type MessengerWebhook, type MsgEvent, type MetaPlatform } from "@/lib/channels/messenger";
 import { aiChannels, deliverOutbound, receiveMessenger, saveChannelSettings } from "@/lib/domain/channels";
 import type { MediaStore } from "@/lib/media";
 import { seedFunnel } from "./factories";
@@ -159,5 +159,25 @@ describe("Instagram y Messenger: envío", () => {
     const { api } = fakeMessenger(new ChannelSendError(reason, 10));
     expect(await deliverOutbound(lead.id, { messenger: api })).toBe(reason);
     expect((await db.message.findFirstOrThrow({ where: { author: "AI" } })).deliveryStatus).toBe("FAILED");
+  });
+});
+
+describe("Instagram y Messenger: descarga de adjuntos", () => {
+  const fetcher = (bytes: number, headers: Record<string, string> = {}) =>
+    (async () => new Response(new Uint8Array(bytes), { headers: { "content-type": "audio/mp4", ...headers } })) as typeof fetch;
+
+  it("solo descarga por https desde Meta", async () => {
+    const ok = await downloadFromMeta("https://scontent.xx.fbcdn.net/a.mp4", 10, fetcher(3));
+    expect([ok.bytes.byteLength, ok.mimeType]).toEqual([3, "audio/mp4"]);
+    await downloadFromMeta("https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1", 10, fetcher(3));
+    for (const url of ["http://scontent.xx.fbcdn.net/a.mp4", "https://169.254.169.254/latest", "https://fbcdn.net.evil.com/a"]) {
+      await expect(downloadFromMeta(url, 10, fetcher(3))).rejects.toThrow(/fuera de Meta/);
+    }
+  });
+
+  it("corta al pasar el tamaño máximo, aunque Meta no informe el largo", async () => {
+    await expect(downloadFromMeta("https://cdninstagram.com/a", 10, fetcher(11, { "content-length": "11" }))).rejects.toThrow(/pesa más/);
+    const noLength = (async () => new Response(new ReadableStream({ pull: (c) => c.enqueue(new Uint8Array(4)) }))) as typeof fetch;
+    await expect(downloadFromMeta("https://cdninstagram.com/a", 10, noLength)).rejects.toThrow(/pesa más/);
   });
 });

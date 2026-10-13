@@ -71,6 +71,13 @@ describe("comentarios de Instagram y Facebook", () => {
     expect(await countPendingComments()).toBe(2);
   });
 
+  it("ignora los comentarios de otra página o cuenta suscrita a la misma app", async () => {
+    const other = (p: MessengerWebhook) => ({ ...p, entry: p.entry!.map((e) => ({ ...e, id: "otra" })) });
+    await receiveComments(other(igComment("c1", "¿Precio?")));
+    await receiveComments(other(fbComment("p1_c2", "¿Dónde quedan?")));
+    expect(await db.socialComment.count()).toBe(0);
+  });
+
   it("responde en público por la plataforma del comentario y lo deja resuelto", async () => {
     const user = await executive("Eje");
     await receiveComments(igComment("c1", "¿Precio?"));
