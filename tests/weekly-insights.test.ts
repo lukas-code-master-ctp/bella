@@ -4,7 +4,7 @@ import { closeLead, createLead } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
 import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient } from "@/lib/ai/providers";
-import { hasUnseenInsight, lastWeekPeriod, parseReport, runWeeklyInsight } from "@/lib/ai/weekly-insights";
+import { hasUnseenInsight, lastWeekPeriod, markInsightSeen, parseReport, runWeeklyInsight } from "@/lib/ai/weekly-insights";
 import { executive, seedFunnel } from "./factories";
 
 function fakeOpenRouter(content: string) {
@@ -69,6 +69,11 @@ describe("insights semanales", () => {
     expect(saved.report).toMatchObject({ asks: ["Financiamiento directo", "Precios por m2"], strengths: [] });
     expect(saved.stats).toMatchObject({ leads: 1, lost: 1, activeLeads: 1 });
     expect(await hasUnseenInsight(admin.id)).toBe(true);
+    // Entrar a Métricas lo marca como visto.
+    await markInsightSeen(admin.id);
+    await markInsightSeen(admin.id);
+    expect(await hasUnseenInsight(admin.id)).toBe(false);
+    expect((await db.weeklyInsight.findFirstOrThrow()).seenBy).toEqual([admin.id]);
 
     // El cron no lo repite para la misma semana.
     expect(await runWeeklyInsight(now, clients)).toEqual({ created: false, insightId: null });
