@@ -46,7 +46,8 @@ describe("archivos para la IA", () => {
     const link = await addMediaFile({ title: "Foto", description: "", url: "https://cdn.test/fotos/vista%20aerea.jpg" });
     expect([link.mimeType, link.fileName]).toEqual(["image/jpeg", "vista aerea.jpg"]);
     await expect(addMediaFile({ title: "X", description: "", url: "http://inseguro.test/a.pdf" })).rejects.toThrow(/https/);
-    await expect(addMediaFile({ title: "", description: "", file: pdf }, store)).rejects.toThrow(/nombre/);
+    const unnamed = await addMediaFile({ title: "", product: " Proyecto Sur ", description: "", file: { ...pdf, fileName: "vista_aerea-2.kmz", mimeType: "" } }, store);
+    expect([unnamed.title, unnamed.product, unnamed.mimeType]).toEqual(["vista aerea 2", "Proyecto Sur", "application/vnd.google-earth.kmz"]);
     await expect(addMediaFile({ title: "Y", description: "" })).rejects.toThrow(/enlace/);
   });
 
@@ -82,6 +83,61 @@ describe("archivos para la IA", () => {
     await runAgent(lead.id, clients);
     expect(JSON.stringify(requests[1].messages)).toContain("Archivos disponibles: Catálogo");
     expect(await db.message.count({ where: { mediaUrl: { not: null } } })).toBe(0);
+  });
+});
+
+describe("archivos agrupados por producto", () => {
+  async function seedProducts() {
+    for (const [title, product] of [
+      ["Brochure", "Proyecto Norte"],
+      ["Foto 1", "Proyecto Norte"],
+      ["Foto 2", "Proyecto Norte"],
+      ["Brochure", "Proyecto Sur"],
+      ["Condiciones", ""],
+    ]) {
+      await addMediaFile({ title, product, description: "", file: { ...pdf, fileName: `${title}.pdf` } }, store);
+    }
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Mándame todo del Proyecto Norte" } });
+    return lead;
+  }
+
+  it("la IA ve el catálogo por producto y envía todo el set de un producto", async () => {
+    const lead = await seedProducts();
+    const { clients, requests } = fakeAnthropic([
+      {
+        stop_reason: "tool_use",
+        content: [{ type: "tool_use", id: "t1", name: "send_file", input: { file: "", product: "proyecto norte", caption: "Todo del proyecto" } }],
+      },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "Listo" }] },
+    ]);
+    await runAgent(lead.id, clients);
+
+    const system = JSON.stringify(requests[0].system);
+    expect(system).toContain("Producto: Proyecto Norte\\n- Brochure (documento)\\n- Foto 1 (documento)");
+    expect(system).toContain("Sin producto:\\n- Condiciones");
+    expect(JSON.stringify(requests[1].messages)).toContain("3 archivos enviados al cliente");
+    const ai = await db.message.findMany({ where: { leadId: lead.id, author: "AI" }, orderBy: { createdAt: "asc" } });
+    expect(ai.map((m) => [m.body, m.mediaName])).toEqual([
+      ["Todo del proyecto", "Brochure.pdf"],
+      ["", "Foto 1.pdf"],
+      ["", "Foto 2.pdf"],
+      ["Listo", null],
+    ]);
+  });
+
+  it("un nombre repetido entre productos pide el producto; con él envía solo ese", async () => {
+    const lead = await seedProducts();
+    const { clients, requests } = fakeAnthropic([
+      { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t1", name: "send_file", input: { file: "brochure", product: "", caption: "" } }] },
+      { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t2", name: "send_file", input: { file: "brochure", product: "Proyecto Sur", caption: "" } }] },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "Listo" }] },
+    ]);
+    await runAgent(lead.id, clients);
+    expect(JSON.stringify(requests[1].messages)).toContain("indica también el producto");
+    const files = await db.message.findMany({ where: { leadId: lead.id, mediaUrl: { not: null } } });
+    expect(files.map((m) => m.mediaName)).toEqual(["Brochure.pdf"]);
+    expect(await db.mediaFile.count({ where: { url: files[0].mediaUrl!, product: "Proyecto Sur" } })).toBe(1);
   });
 });
 
