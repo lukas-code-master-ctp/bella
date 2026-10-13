@@ -14,6 +14,7 @@ import type { InventorySettings } from "@/lib/inventory";
 import { getAssistantSettings, getSetting } from "@/lib/settings";
 import { WHATSAPP_MCP_URL, assistantSetupPrompt, metaSetupPrompt, type SetupStatus } from "@/lib/setup-prompts";
 import { Card, CardHeader, PageHeader } from "@/components/ui";
+import { signupConfig } from "@/lib/domain/whatsapp-signup";
 import { CopyPrompt } from "./copy-prompt";
 
 const ENV_KEYS: CredentialKey[] = [
@@ -60,6 +61,7 @@ export default async function ClaudeSetupPage() {
     fields,
     followUps: followUps.enabled,
     executives,
+    quickWhatsApp: Boolean(signupConfig()),
   };
 
   return (

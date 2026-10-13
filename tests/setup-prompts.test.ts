@@ -37,6 +37,12 @@ describe("Prompts para configurar con Claude", () => {
     expect(assistantSetupPrompt(status())).not.toContain("whatsapp_biz_");
   });
 
+  it("Meta: con el botón Conectar con Meta, manda a usarlo para WhatsApp", () => {
+    const p = metaSetupPrompt(status({ quickWhatsApp: true }));
+    expect(p).toContain('botón "Conectar con Meta" de https://bella.test/settings/channels');
+    expect(p).not.toContain("whatsapp_biz_");
+  });
+
   it("Meta: sirve para una empresa que parte desde cero", () => {
     const p = metaSetupPrompt(status({ assistant: { assistantName: "Bella", companyName: "nuestra empresa" } }));
     expect(p).toContain("el CRM de leads que está en https://bella.test");

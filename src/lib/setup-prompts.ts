@@ -28,6 +28,8 @@ export type SetupStatus = {
   fields: number;
   followUps: boolean;
   executives: number;
+  /** Esta instalación tiene el botón "Conectar con Meta" (registro integrado de WhatsApp). */
+  quickWhatsApp?: boolean;
 };
 
 const RULES = `Reglas mientras trabajas:
@@ -42,6 +44,9 @@ const RULES = `Reglas mientras trabajas:
 export const WHATSAPP_MCP_URL = "https://mcp.facebook.com/whatsapp_business_tools";
 
 const WHATSAPP_MCP = `Herramientas de WhatsApp: si tienes conectado el MCP de WhatsApp Business de Meta (herramientas whatsapp_biz_*), úsalo en vez del navegador para lo que cubre: revisar la verificación del negocio (paso 1), agregar, verificar y registrar el número y el método de pago (paso 4), leer los identificadores del número y de la cuenta de WhatsApp (paso 7) y configurar y suscribir el webhook de WhatsApp (paso 8). Con él no envíes mensajes a clientes. Si no lo tienes, dime que puedo agregarlo en claude.ai → Configuración → Conectores como conector personalizado con la dirección ${WHATSAPP_MCP_URL}, y mientras tanto sigue con el navegador. Crear la app, sacar la clave secreta y generar los tokens se hace igual en el navegador.`;
+
+const quickWhatsApp = (s: SetupStatus) =>
+  `WhatsApp se conecta solo con el botón "Conectar con Meta" de ${s.origin}/settings/channels: pídeme que lo toque, que inicie sesión en la ventana de Meta y que elija o cree el número. Con eso Bella guarda las credenciales de WhatsApp y deja su webhook listo, así que en los pasos 3, 4, 6, 7 y 8 sáltate todo lo de WhatsApp (solo revisa que en WhatsApp Manager quede un método de pago, preguntándome antes). Si la empresa solo usará WhatsApp, sáltate también Instagram, Messenger y la app propia.`;
 
 const has = (s: SetupStatus, key: string) => !s.missingEnv.includes(key);
 
@@ -64,7 +69,7 @@ export function metaSetupPrompt(s: SetupStatus): string {
 
 ${RULES}
 
-${WHATSAPP_MCP}
+${s.quickWhatsApp ? quickWhatsApp(s) : WHATSAPP_MCP}
 
 Estado actual: ${missing.length ? `faltan estas credenciales en Bella: ${missing.map(label).join(", ")}.` : "todas las credenciales de Meta ya están en Bella."}
 
