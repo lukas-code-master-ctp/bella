@@ -7,12 +7,19 @@ import { missingWhatsAppEnv, WHATSAPP_ENV } from "@/lib/channels/whatsapp";
 import { getChannelSettings, MAX_REPLY_DELAY_SECONDS, openLeadsByChannel } from "@/lib/domain/channels";
 import { db } from "@/lib/db";
 import { credentials, CREDENTIALS } from "@/lib/credentials";
-import { getLegalSettings } from "@/lib/domain/privacy";
+import { getLegalSettings, pendingDeletionRequests } from "@/lib/domain/privacy";
 import { listFunnels } from "@/lib/domain/funnels";
 import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
 import { Badge, buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { deleteWhatsAppNumberAction, saveChannelsAction, saveLegalAction, updateWhatsAppNumberAction } from "../actions";
+import { formatChileDateTime } from "@/lib/domain/follow-ups";
+import {
+  deleteWhatsAppNumberAction,
+  resolveDeletionRequestAction,
+  saveChannelsAction,
+  saveLegalAction,
+  updateWhatsAppNumberAction,
+} from "../actions";
 import { ChannelIcon } from "./channel-icon";
 import { companyUrls } from "@/lib/company-urls";
 import { currentCompanyId } from "@/lib/tenant";
@@ -55,7 +62,7 @@ function Webhook({ url, where, fields }: { url: string; where: string; fields: s
 }
 
 export default async function ChannelsSettingsPage() {
-  const [s, legal, leads, stages, numbers, funnels, env, waMissing, metaMissing] = await Promise.all([
+  const [s, legal, leads, stages, numbers, funnels, env, waMissing, metaMissing, deletions] = await Promise.all([
     getChannelSettings(),
     getLegalSettings(),
     openLeadsByChannel(),
@@ -65,6 +72,7 @@ export default async function ChannelsSettingsPage() {
     credentials(),
     missingWhatsAppEnv(),
     missingMessengerEnv(),
+    pendingDeletionRequests(),
   ]);
   const funnelOptions = funnels.map(({ id, name }) => ({ id, name }));
   const h = await headers();
@@ -291,6 +299,27 @@ export default async function ChannelsSettingsPage() {
               <SubmitButton>Guardar</SubmitButton>
             </div>
           </form>
+          {deletions.length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-slate-800">
+              <p className="font-medium">Solicitudes de eliminación por revisar</p>
+              <p className="mt-1 text-xs text-slate-600">
+                Meta no entregó un id que calce con un contacto. Busca a la persona en Chats (por fecha o si escribió
+                al correo de privacidad con el código), elimina su contacto y marca la solicitud como revisada.
+              </p>
+              <ul className="mt-2 space-y-2">
+                {deletions.map((d) => (
+                  <li key={d.id} className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      <b>{d.code}</b> · {formatChileDateTime(d.createdAt)}
+                    </span>
+                    <form action={resolveDeletionRequestAction.bind(null, d.id)}>
+                      <SubmitButton variant="secondary">Marcar revisada</SubmitButton>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
 
         <Card className="p-5">

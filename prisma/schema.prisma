@@ -695,6 +695,8 @@ model DataDeletionRequest {
   /// Contactos y comentarios borrados.
   contacts       Int      @default(0)
   comments       Int      @default(0)
+  /// No se encontró nada que borrar con ese id: queda para que el equipo la revise a mano.
+  pending        Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   @@index([companyId])
