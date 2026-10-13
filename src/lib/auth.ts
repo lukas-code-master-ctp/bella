@@ -42,8 +42,11 @@ export async function login(email: string, password: string, remember = false, i
   return "ok";
 }
 
+/** Cierra la sesión en todos los dispositivos: un token copiado deja de valer aunque no venza. */
 export async function logout() {
   const jar = await cookies();
+  const session = await readSession(jar.get(SESSION_COOKIE)?.value);
+  if (session) await rootDb.user.updateMany({ where: { id: session.userId }, data: { sessionsRevokedAt: new Date() } });
   jar.delete(SESSION_COOKIE);
 }
 
@@ -55,6 +58,7 @@ export const currentUser = cache(async function currentUser(): Promise<User | nu
   // Sin filtro de empresa: el dueño de Bella puede estar trabajando en otra empresa que la suya.
   const user = await rootDb.user.findUnique({ where: { id: session.userId } });
   if (!user?.active || sessionStale(session.issuedAt, user.passwordChangedAt)) return null;
+  if (sessionStale(session.issuedAt, user.sessionsRevokedAt)) return null;
   if (!canWorkIn(user, session.companyId ?? DEFAULT_COMPANY_ID)) return null;
   return user;
 });

@@ -3,7 +3,10 @@ import { db, rootDb } from "@/lib/db";
 import { readSession, signSession } from "@/lib/session-token";
 import { currentCompanyId, DEFAULT_COMPANY_ID, withCompany } from "@/lib/tenant";
 import { getSetting, setSetting } from "@/lib/settings";
+import { ensureDefaultFunnel } from "@/lib/domain/default-funnel";
+import { createLead } from "@/lib/domain/leads";
 import { TEST_COMPANY_ID } from "./company";
+import { seedFunnel } from "./factories";
 
 const inA = <T>(fn: () => Promise<T>) => withCompany("empresa-a", fn);
 const inB = <T>(fn: () => Promise<T>) => withCompany("empresa-b", fn);
@@ -32,6 +35,22 @@ describe("Empresas: cada consulta queda en la empresa en curso", () => {
 
     const left = await rootDb.knowledgeDoc.findMany();
     expect(left).toEqual([expect.objectContaining({ id: b.id, title: "De B", content: "b" })]);
+  });
+
+  it("el mismo mensaje de Meta puede llegar a dos empresas, pero no dos veces a la misma", async () => {
+    const receive = (company: string) =>
+      withCompany(company, async () => {
+        if (!(await db.stage.count())) {
+          await ensureDefaultFunnel(db);
+          await seedFunnel();
+        }
+        const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+        return db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "hola", externalId: "wamid.mismo" } });
+      });
+    await receive("empresa-a");
+    await receive("empresa-b");
+    await expect(receive("empresa-a")).rejects.toThrow();
+    expect(await rootDb.message.count({ where: { externalId: "wamid.mismo" } })).toBe(2);
   });
 
   it("upsert y createMany llevan la empresa", async () => {
