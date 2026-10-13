@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { createLead, setAiEnabled } from "@/lib/domain/leads";
 import { setSetting } from "@/lib/settings";
 import { runAgent } from "@/lib/ai/agent";
-import { runDueFollowUps, sendFollowUpNow } from "@/lib/ai/follow-ups";
+import { OUT_OF_WINDOW, runDueFollowUps, sendFollowUpNow } from "@/lib/ai/follow-ups";
 import type { AiConfig } from "@/lib/ai/config";
 import type { AnthropicClient } from "@/lib/ai/providers";
 import {
@@ -240,6 +240,33 @@ describe("seguimientos", () => {
       fakeAnthropic([toolUse("t1", "schedule_follow_up", { date: "", reason: "ya compró" }), say("Entendido, ¡éxito!")]).clients,
     );
     expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).followUpAt).toBeNull();
+  });
+
+  it("espera si la IA le está respondiendo al cliente en ese momento", async () => {
+    await useFollowUps();
+    const lead = await conversation();
+    await makeDue(lead.id);
+    await db.lead.update({ where: { id: lead.id }, data: { agentBusyUntil: new Date(Date.now() + 60_000) } });
+    expect(await runDueFollowUps(fakeAnthropic([]))).toMatchObject({ sent: 0, skipped: 1 });
+    // Queda pendiente para la próxima revisión, y la toma ajena no se suelta.
+    const after = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(after.followUpAt).not.toBeNull();
+    expect(after.agentBusyUntil).not.toBeNull();
+  });
+
+  it("no escribe por WhatsApp pasadas 24 h del último mensaje del cliente", async () => {
+    await useFollowUps();
+    await seedFunnel();
+    const lead = await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56911112222" });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Hola" } });
+    await runAgent(lead.id, fakeAnthropic([say("¡Hola!")]).clients);
+    await db.message.updateMany({ where: { leadId: lead.id }, data: { createdAt: new Date(Date.now() - 30 * HOUR) } });
+    await makeDue(lead.id);
+
+    expect(await sendFollowUpNow(lead.id, fakeAnthropic([]).clients)).toBe("skipped");
+    expect(await db.message.count({ where: { leadId: lead.id, author: "AI" } })).toBe(1);
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).followUpAt).toBeNull();
+    expect(await db.leadEvent.findFirst({ where: { leadId: lead.id, type: "FOLLOW_UP_SKIPPED" } })).toMatchObject({ reason: OUT_OF_WINDOW });
   });
 
   it("el botón del lead envía el seguimiento sin esperar el plazo", async () => {

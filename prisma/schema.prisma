@@ -293,8 +293,8 @@ model Lead {
   /// Puntaje 0-100 de qué tan probable es que compre, con su motivo; lo calcula la IA.
   score          Int?
   scoreReason    String?
-  /// Mientras la IA responde por un canal real, evita que dos servidores le contesten a la vez
-  /// (ver src/lib/domain/channels.ts).
+  /// Mientras corre un turno de la IA (respuesta o seguimiento), evita que otro servidor corra
+  /// otro a la vez (ver withLeadClaim en src/lib/ai/respond.ts).
   agentBusyUntil DateTime?
 
   /// Último mensaje (Message.createdAt) considerado en el resumen y el puntaje.

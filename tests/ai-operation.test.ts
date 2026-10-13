@@ -142,6 +142,32 @@ describe("apagado general", () => {
   });
 });
 
+describe("respuestas pendientes", () => {
+  it("rescata un lead cuya toma quedó vencida y prioriza al que espera hace más", async () => {
+    await setSetting("channels", { whatsappAi: true });
+    const { clients } = fakeAnthropic();
+    const stuck = await whatsappLead("Ana");
+    await inbound(stuck.id, "Hola", new Date(Date.now() - 2 * 3600_000));
+    // Un turno que Vercel cortó deja la toma con una hora pasada.
+    await db.lead.update({ where: { id: stuck.id }, data: { agentBusyUntil: new Date(Date.now() - 60_000) } });
+    const recent = await whatsappLead("Beto");
+    await inbound(recent.id, "Hola");
+
+    expect(await answerWaitingLeads({ clients, limit: 1 })).toBe(1);
+    expect(await db.message.count({ where: { leadId: stuck.id, author: "AI" } })).toBe(1);
+    expect(await db.message.count({ where: { leadId: recent.id, author: "AI" } })).toBe(0);
+    expect((await db.lead.findUniqueOrThrow({ where: { id: stuck.id } })).agentBusyUntil).toBeNull();
+  });
+
+  it("no toca un lead que otro servidor está respondiendo", async () => {
+    await setSetting("channels", { whatsappAi: true });
+    const lead = await whatsappLead();
+    await inbound(lead.id, "Hola");
+    await db.lead.update({ where: { id: lead.id }, data: { agentBusyUntil: new Date(Date.now() + 60_000) } });
+    expect(await answerWaitingLeads(fakeAnthropic())).toBe(0);
+  });
+});
+
 describe("tickets anteriores", () => {
   it("la IA ve cómo terminaron los tickets cerrados del contacto", async () => {
     const first = await createLead({ name: "Ana", channel: "SIMULATOR" });

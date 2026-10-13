@@ -68,7 +68,9 @@ export async function runAutoClose(now = new Date()): Promise<number> {
       AND COALESCE(
         (SELECT m.author::text FROM "Message" m WHERE m."leadId" = l.id ORDER BY m."createdAt" DESC LIMIT 1),
         ''
-      ) <> 'CONTACT'`;
+      ) <> 'CONTACT'
+      -- Un recontacto que la IA agendó con el cliente todavía no llega: el lead sigue vivo.
+      AND (l."followUpAt" IS NULL OR l."followUpAt" <= ${now})`;
 
   const inLostStage = settings.lostStageIds.length
     ? await db.lead.findMany({
