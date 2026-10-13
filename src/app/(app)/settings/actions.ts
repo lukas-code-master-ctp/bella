@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { AssignStrategy, Channel, Role, RuleTrigger } from "@prisma/client";
 import { hashPassword, requireAdmin } from "@/lib/auth";
@@ -19,6 +20,7 @@ import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conve
 import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
+import { completeWhatsAppSignup } from "@/lib/domain/whatsapp-signup";
 import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
@@ -308,6 +310,25 @@ export async function subscribeWhatsAppAction(form: FormData) {
   const wabaId = str(form, "wabaId");
   if (wabaId) await subscribeWhatsAppApp(wabaId);
   revalidatePath("/settings/channels");
+}
+
+/** Fin de "Conectar con Meta": lo que devolvió la ventana de registro de WhatsApp. */
+export async function completeWhatsAppSignupAction(input: {
+  code: string;
+  wabaId: string;
+  phoneNumberId: string;
+}): Promise<{ error?: string }> {
+  await requireAdmin();
+  const h = await headers();
+  const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
+  try {
+    await completeWhatsAppSignup({ ...input, origin });
+  } catch (err) {
+    if (err instanceof DomainError) return { error: err.message };
+    throw err;
+  }
+  revalidatePath("/settings/channels");
+  return {};
 }
 
 export async function saveLegalAction(form: FormData) {

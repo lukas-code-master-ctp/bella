@@ -26,6 +26,8 @@ import { currentCompanyId } from "@/lib/tenant";
 import { ChannelList, type ChannelRow } from "./channel-list";
 import { WhatsAppStatus } from "./whatsapp-status";
 import { AddWhatsAppNumberForm, FunnelSelect } from "./whatsapp-numbers";
+import { WhatsAppSignup } from "./whatsapp-signup";
+import { signupConfig } from "@/lib/domain/whatsapp-signup";
 
 const checkClass = "size-4 rounded border-slate-300 accent-brand-600";
 
@@ -79,6 +81,7 @@ export default async function ChannelsSettingsPage() {
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
   const urls = companyUrls(origin, await currentCompanyId());
   const metaOk = metaMissing.length === 0;
+  const signup = signupConfig();
 
   const rows: ChannelRow[] = [
     {
@@ -197,6 +200,18 @@ export default async function ChannelsSettingsPage() {
           <CardHeader title="WhatsApp" description="API oficial de WhatsApp Cloud, directa con Meta.">
             {waMissing.length ? <Badge>Sin conectar</Badge> : <Badge tone="success">Conectado</Badge>}
           </CardHeader>
+          {signup && (
+            <div className="mb-5 rounded-lg border border-brand-100 bg-brand-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">Conexión rápida</p>
+              <p className="mb-3 text-xs text-slate-600">
+                Inicia sesión con Meta, elige o crea tu número y verifícalo con el código que llega por SMS. Bella guarda las
+                credenciales y deja el webhook listo. Después agrega un método de pago en WhatsApp Manager para poder
+                escribir fuera de las 24 horas.
+              </p>
+              <WhatsAppSignup config={signup} connected={waMissing.length === 0} />
+              <p className="mt-3 text-xs text-slate-600">O conéctalo a mano con tu propia app de Meta:</p>
+            </div>
+          )}
           <EnvList keys={WHATSAPP_ENV} missing={waMissing} />
           <Webhook url={urls.whatsappWebhook} where="WhatsApp → Configuración" fields="el campo messages" />
           {waMissing.length === 0 && (

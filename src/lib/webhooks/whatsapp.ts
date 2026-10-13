@@ -3,6 +3,7 @@ import { credential } from "@/lib/credentials";
 import { afterInCompany } from "@/lib/company-request";
 import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import { validSignature, type WaWebhook } from "@/lib/channels/whatsapp";
+import { platformApp } from "@/lib/domain/whatsapp-signup";
 import { logWhatsAppWebhook, logWhatsAppWebhookError, receiveWhatsApp } from "@/lib/domain/channels";
 
 /** Meta verifica el webhook una vez, al registrarlo: hay que devolver el challenge. */
@@ -21,9 +22,12 @@ export async function verifyWebhook(request: NextRequest) {
  */
 export async function receiveWebhook(request: NextRequest) {
   const raw = await request.text();
-  if (!validSignature(raw, request.headers.get("x-hub-signature-256"), await credential("META_APP_SECRET"))) {
+  // La firma es de la app de la empresa o, si conectó con "Conectar con Meta", de la app de la plataforma.
+  const signature = request.headers.get("x-hub-signature-256");
+  const secrets = [await credential("META_APP_SECRET"), platformApp()?.secret];
+  if (!secrets.some((secret) => validSignature(raw, signature, secret))) {
     // Solo si dice venir de Meta: así un error en la clave secreta de la app queda a la vista en Canales.
-    if (request.headers.get("x-hub-signature-256")) await logWhatsAppWebhook(null).catch(() => null);
+    if (signature) await logWhatsAppWebhook(null).catch(() => null);
     return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
   }
   let payload: WaWebhook;
