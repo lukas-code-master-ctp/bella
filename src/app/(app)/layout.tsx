@@ -11,6 +11,7 @@ import { currentCompanyId } from "@/lib/tenant";
 import { Avatar } from "@/components/ui";
 import { logoutAction } from "../login/actions";
 import { NavLink } from "./nav-link";
+import { NewInsightBadge } from "./metrics/new-insight-badge";
 import { Logo } from "@/components/logo";
 import { unreadNotificationCount } from "@/lib/domain/notifications";
 import { UnreadBadge } from "./notifications/unread-badge";
@@ -88,12 +89,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </NavLink>
           <NavLink href="/metrics" icon={<ChartNoAxesColumn />}>
             Métricas
-            {newInsight && (
-              <span className="ml-auto rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">
-                <span className="sr-only">, resumen semanal </span>
-                Nuevo
-              </span>
-            )}
+            {newInsight && <NewInsightBadge />}
           </NavLink>
           {user.role === "ADMIN" && (
             <NavLink href="/settings" icon={<Settings />}>
