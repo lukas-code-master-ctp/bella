@@ -95,6 +95,8 @@ export const conversionsApi: ConversionsApi = {
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 const MAX_ATTEMPTS = 5;
+/** Un envío a Meta tarda segundos: en SENDING por más de esto, el servidor se cortó. */
+const STALE_SENDING_MS = 10 * 60 * 1000;
 
 type EventWithLead = Prisma.ConversionEventGetPayload<{
   include: { lead: { include: { contact: true; source: true } } };
@@ -163,7 +165,19 @@ export async function deliverPendingConversions(api: ConversionsApi = conversion
     // Sin token los eventos esperan pendientes, sin gastar reintentos.
     if (api === conversionsApi && !(await pixelToken())) return result;
     const pending = await db.conversionEvent.findMany({
-      where: { OR: [{ status: "PENDING" }, { status: "FAILED", attempts: { lt: MAX_ATTEMPTS } }] },
+      where: {
+        OR: [
+          { status: "PENDING" },
+          { status: "FAILED", attempts: { lt: MAX_ATTEMPTS } },
+          // Un servidor que se cortó a mitad del envío lo dejó en SENDING: se reintenta (sin
+          // `claimedAt` son los que quedaron así antes de que existiera la columna).
+          {
+            status: "SENDING",
+            attempts: { lt: MAX_ATTEMPTS },
+            OR: [{ claimedAt: null }, { claimedAt: { lt: new Date(Date.now() - STALE_SENDING_MS) } }],
+          },
+        ],
+      },
       include: { lead: { include: { contact: true, source: true } } },
       orderBy: { createdAt: "asc" },
       take: 50,
@@ -174,7 +188,7 @@ export async function deliverPendingConversions(api: ConversionsApi = conversion
       // Se toma antes de enviarlo, así dos llamadas simultáneas no lo mandan dos veces.
       const claimed = await db.conversionEvent.updateMany({
         where: { id: e.id, status: e.status, attempts: e.attempts },
-        data: { status: "SENDING", attempts: { increment: 1 } },
+        data: { status: "SENDING", attempts: { increment: 1 }, claimedAt: new Date() },
       });
       if (!claimed.count) continue;
       const event = buildEvent(e, ids);

@@ -95,4 +95,19 @@ describe("API de Conversiones", () => {
 
     expect(await deliverPendingConversions(fakeApi().api)).toEqual({ sent: 1, failed: 0 });
   });
+
+  it("un envío que quedó a medias (servidor cortado) se reintenta pasado un rato, no antes", async () => {
+    await seedFunnel();
+    await savePixelSettings({ enabled: true, datasetId: "123" });
+    const lead = await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56911112222", externalId: "56911112222" });
+    await closeLead(lead.id, "WON", { actor: "USER" }, { amount: 5 });
+    const event = await db.conversionEvent.findFirstOrThrow();
+
+    await db.conversionEvent.update({ where: { id: event.id }, data: { status: "SENDING", attempts: 1, claimedAt: new Date() } });
+    expect(await deliverPendingConversions(fakeApi().api)).toEqual({ sent: 0, failed: 0 });
+
+    await db.conversionEvent.update({ where: { id: event.id }, data: { claimedAt: new Date(Date.now() - 11 * 60 * 1000) } });
+    expect(await deliverPendingConversions(fakeApi().api)).toEqual({ sent: 1, failed: 0 });
+    expect((await db.conversionEvent.findFirstOrThrow()).status).toBe("SENT");
+  });
 });

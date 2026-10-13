@@ -95,7 +95,7 @@ describe("reglas de comentarios", () => {
     expect(await applyCommentRules(ids, api)).toBe(1);
     expect(calls).toEqual(["reply INSTAGRAM c1: ¡Hola @camila.r! Te escribimos por DM", "private c1: Hola, ¿qué te gustaría saber?"]);
 
-    const c1 = await db.socialComment.findUniqueOrThrow({ where: { externalId: "c1" } });
+    const c1 = await db.socialComment.findFirstOrThrow({ where: { externalId: "c1" } });
     expect([c1.ruleId, c1.doneAt !== null, c1.privateAt !== null, c1.repliedById]).toEqual([rule.id, true, true, null]);
     const pending = await db.socialComment.findMany({ where: { doneAt: null }, orderBy: { externalId: "asc" } });
     expect(pending.map((c) => c.externalId)).toEqual(["c2", "c3"]);
@@ -112,8 +112,8 @@ describe("reglas de comentarios", () => {
     const { api, calls } = fakeApi();
     expect(await applyCommentRules(ids, api)).toBe(2);
     expect(calls).toEqual(["private c1: Te cuento", "hide INSTAGRAM c2 true"]);
-    expect((await db.socialComment.findUniqueOrThrow({ where: { externalId: "c1" } })).ruleId).toBe(specific.id);
-    expect((await db.socialComment.findUniqueOrThrow({ where: { externalId: "c3" } })).doneAt).toBeNull();
+    expect((await db.socialComment.findFirstOrThrow({ where: { externalId: "c1" } })).ruleId).toBe(specific.id);
+    expect((await db.socialComment.findFirstOrThrow({ where: { externalId: "c3" } })).doneAt).toBeNull();
   });
 
   it("borra el comentario y no permite responder en público si borra", async () => {

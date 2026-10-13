@@ -83,6 +83,8 @@ model User {
   createdAt         DateTime  @default(now())
   /// Último cambio de contraseña: invalida las sesiones abiertas antes de esa fecha.
   passwordChangedAt DateTime?
+  /// Al cerrar sesión: los tokens emitidos antes dejan de valer.
+  sessionsRevokedAt DateTime?
 
   leads        Lead[]           @relation("Assignee")
   messages     Message[]
@@ -370,7 +372,7 @@ model Message {
   createdAt      DateTime      @default(now())
   /// Id del mensaje en el canal (ej. wamid de WhatsApp). Evita guardar dos veces el mismo
   /// mensaje entrante y permite seguir el estado de entrega de uno saliente.
-  externalId     String?       @unique
+  externalId     String?
   /// Entrega de un mensaje saliente por el canal: SENDING, SENT, DELIVERED, READ o FAILED.
   /// Null en el simulador y en los mensajes del cliente.
   deliveryStatus String?
@@ -381,6 +383,7 @@ model Message {
   user     User?     @relation(fields: [userId], references: [id])
   agentRun AgentRun?
 
+  @@unique([companyId, externalId])
   @@index([leadId, createdAt])
   @@index([companyId])
 }
@@ -620,7 +623,7 @@ model SocialComment {
   companyId  String   @default("default")
   channel    Channel
   /// Id del comentario en Meta.
-  externalId String   @unique
+  externalId String
   postId     String?
   /// Comentario al que responde, si es una respuesta dentro de un hilo.
   parentId   String?
@@ -648,6 +651,7 @@ model SocialComment {
   repliedBy User?        @relation(fields: [repliedById], references: [id])
   rule      CommentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
 
+  @@unique([companyId, externalId])
   @@index([doneAt, createdAt])
   @@index([ruleId])
   @@index([companyId])
@@ -776,6 +780,8 @@ model ConversionEvent {
   attempts  Int       @default(0)
   createdAt DateTime  @default(now())
   sentAt    DateTime?
+  /// Cuándo se marcó SENDING; un envío que quedó a medias se reintenta pasado un rato.
+  claimedAt DateTime?
 
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 

@@ -96,7 +96,7 @@ export async function applyAssignment(
     const candidates = await activeExecutives(tx, rule);
     const chosen =
       rule.strategy === "ROUND_ROBIN"
-        ? pickRoundRobin(candidates, rule.lastAssignedUserId)
+        ? pickRoundRobin(candidates, await lockLastAssigned(tx, rule.id))
         : pickLeastLoaded(candidates, await openLeadCounts(tx, candidates.map((c) => c.id)));
     if (!chosen || chosen.id === lead.assigneeId) return null;
     await tx.assignmentRule.update({ where: { id: rule.id }, data: { lastAssignedUserId: chosen.id } });
@@ -124,6 +124,16 @@ export async function applyTemplateReply(leadId: string, buttonText: string): Pr
   const chosen = await db.$transaction((tx) => applyAssignment(tx, leadId, { type: "TEMPLATE_REPLY", buttonText }));
   await deliverPendingPush();
   return chosen;
+}
+
+/**
+ * Bloquea la regla hasta el fin de la transacción y lee su último asignado: dos leads que llegan a
+ * la vez se turnan en vez de leer el mismo valor y caerle al mismo ejecutivo.
+ */
+async function lockLastAssigned(tx: Tx, ruleId: string) {
+  const [row] = await tx.$queryRaw<{ lastAssignedUserId: string | null }[]>`
+    SELECT "lastAssignedUserId" FROM "AssignmentRule" WHERE id = ${ruleId} FOR UPDATE`;
+  return row?.lastAssignedUserId ?? null;
 }
 
 async function assign(tx: Tx, leadId: string, user: User, reason: string) {

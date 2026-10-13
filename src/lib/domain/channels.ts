@@ -242,7 +242,7 @@ async function receiveWhatsAppMessage(
   deps: InboundDeps,
   phoneNumberId?: string,
 ): Promise<string | null> {
-  if (await db.message.findUnique({ where: { externalId: m.id } })) return null;
+  if (await db.message.findFirst({ where: { externalId: m.id } })) return null;
   const body = m.type === "audio" ? "" : describeMessage(m);
   if (body === null) return null;
   // Un contacto bloqueado no crea leads ni avisos: su mensaje se descarta.
@@ -330,7 +330,7 @@ async function receiveMessengerEvent(
     return null;
   }
   const externalId = m?.mid ?? event.postback?.mid;
-  if (!externalId || (await db.message.findUnique({ where: { externalId } }))) return null;
+  if (!externalId || (await db.message.findFirst({ where: { externalId } }))) return null;
   const audio = m?.attachments?.find((a) => a.type === "audio" && a.payload?.url);
   const body =
     m?.text ?? event.postback?.title ?? m?.attachments?.filter((a) => a.type !== "audio").map(describeAttachment).join(" ") ?? "";
@@ -384,7 +384,7 @@ const STATUS_RANK: Record<string, number> = { SENDING: 0, SENT: 1, DELIVERED: 2,
 
 /** Meta avisa cuando un mensaje enviado se entregó, se leyó o falló. Nunca retrocede de estado. */
 async function applyWhatsAppStatus(s: WaStatus) {
-  const message = await db.message.findUnique({ where: { externalId: s.id } });
+  const message = await db.message.findFirst({ where: { externalId: s.id } });
   if (!message) return;
   const next = s.status.toUpperCase();
   if (next !== "FAILED" && (STATUS_RANK[message.deliveryStatus ?? ""] ?? -1) >= STATUS_RANK[next]) return;

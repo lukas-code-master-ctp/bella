@@ -59,6 +59,22 @@ describe("asignación automática", () => {
     expect(assigned).toEqual([sorted[0], sorted[1], sorted[0]]);
   });
 
+  it("round robin: dos leads que llegan a la vez van a ejecutivos distintos", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const beto = await executive("Beto");
+    const tag = await db.tag.create({ data: { category: "Producto", name: "Motos" } });
+    await db.assignmentRule.create({
+      data: { name: "Motos", trigger: "TAG_ADDED", tagId: tag.id, executives: { connect: [{ id: ana.id }, { id: beto.id }] } },
+    });
+    const leads = await Promise.all(["L1", "L2"].map((name) => createLead({ name, channel: "SIMULATOR" })));
+
+    await Promise.all(leads.map((lead) => addTag(lead.id, tag.id, { actor: "AI" })));
+
+    const assigned = await db.lead.findMany({ where: { id: { in: leads.map((l) => l.id) } }, select: { assigneeId: true } });
+    expect(assigned.map((l) => l.assigneeId).sort()).toEqual([ana.id, beto.id].sort());
+  });
+
   it("no reasigna un lead que ya tiene ejecutivo salvo que la regla lo pida", async () => {
     const [, calificado] = await seedFunnel();
     const ana = await executive("Ana");
