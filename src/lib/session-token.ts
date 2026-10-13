@@ -24,15 +24,21 @@ export async function signSession(userId: string, maxAgeSeconds = SHORT_MAX_AGE_
     .sign(secret());
 }
 
-/** Usuario, empresa (null en tokens anteriores) y momento de emisión (segundos) de un token válido. */
+/** Usuario, empresa (null en tokens anteriores), emisión y duración (segundos) de un token válido. */
 export async function readSession(
   token: string | undefined,
-): Promise<{ userId: string; companyId: string | null; issuedAt: number } | null> {
+): Promise<{ userId: string; companyId: string | null; issuedAt: number; maxAge: number } | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
     if (!payload.sub) return null;
-    return { userId: payload.sub, companyId: typeof payload.cid === "string" ? payload.cid : null, issuedAt: payload.iat ?? 0 };
+    const issuedAt = payload.iat ?? 0;
+    return {
+      userId: payload.sub,
+      companyId: typeof payload.cid === "string" ? payload.cid : null,
+      issuedAt,
+      maxAge: (payload.exp ?? issuedAt) - issuedAt,
+    };
   } catch {
     return null;
   }
