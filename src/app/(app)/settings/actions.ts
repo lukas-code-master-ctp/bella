@@ -16,7 +16,7 @@ import { ChannelSendError, subscribeWhatsAppApp } from "@/lib/channels/whatsapp"
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
-import { saveLegalSettings } from "@/lib/domain/privacy";
+import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
 import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
@@ -315,6 +315,12 @@ export async function saveLegalAction(form: FormData) {
   await saveLegalSettings({ legalName: str(form, "legalName"), contactEmail: str(form, "contactEmail") });
   revalidatePath("/settings/channels");
   revalidatePath("/privacidad");
+}
+
+export async function resolveDeletionRequestAction(id: string) {
+  await requireAdmin();
+  await resolveDeletionRequest(id);
+  revalidatePath("/settings/channels");
 }
 
 // Cierre automático

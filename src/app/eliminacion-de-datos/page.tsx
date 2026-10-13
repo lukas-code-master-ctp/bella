@@ -22,7 +22,18 @@ export default async function DataDeletionPage({ searchParams }: { searchParams:
     <LegalPage title="Eliminación de datos">
       {codigo && (
         <div role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          {request ? (
+          {request?.pending ? (
+            <p>
+              <b>Solicitud {request.code}: en revisión.</b> No encontramos datos asociados automáticamente a tu cuenta;
+              nuestro equipo la revisará a mano dentro de 30 días.
+              {contactEmail && (
+                <>
+                  {" "}Si quieres, escribe a <a href={`mailto:${contactEmail}`}>{contactEmail}</a> con este código y el
+                  nombre con que nos escribiste.
+                </>
+              )}
+            </p>
+          ) : request ? (
             <p>
               <b>Solicitud {request.code}: completada.</b> El {formatChileDateTime(request.createdAt)} eliminamos tus
               conversaciones, comentarios y datos de contacto asociados a tu cuenta.

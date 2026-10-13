@@ -119,6 +119,21 @@ export async function downloadFromMeta(url: string, maxBytes = AUDIO_MAX_BYTES, 
   return { bytes: Buffer.concat(chunks), mimeType: res.headers.get("content-type") ?? "audio/mp4" };
 }
 
+/**
+ * Ids de la persona en la página, a partir de su id en la app (el que manda Meta al pedir un
+ * borrado). Meta solo los entrega si la app y la página son del mismo negocio; si no, ninguno.
+ */
+export async function pageScopedIds(appUserId: string): Promise<string[]> {
+  try {
+    const pageId = await credential("META_PAGE_ID");
+    const res = await pageGraph<{ data?: { id: string; page?: { id?: string } }[] }>(`${appUserId}/ids_for_pages`);
+    return (res.data ?? []).filter((d) => !pageId || d.page?.id === pageId).map((d) => d.id);
+  } catch (err) {
+    console.error("[privacidad] ids_for_pages:", err);
+    return [];
+  }
+}
+
 // --- Webhook ----------------------------------------------------------------------------
 
 export type MsgAttachment = { type: string; payload?: { url?: string; title?: string } };

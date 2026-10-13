@@ -39,19 +39,38 @@ export function parseSignedRequest(signed: string, secret: string | undefined): 
 
 /**
  * Borra todo lo que Bella guarda de una persona de Instagram o Facebook: sus contactos (con sus
- * leads, conversaciones y tareas) y sus comentarios. Devuelve el código para consultar el pedido.
+ * leads, conversaciones y tareas) y sus comentarios. Meta manda el id de la persona en la app,
+ * distinto del que llega en los mensajes; `pageIds` son los de la página que se le pudieron
+ * asociar. Si no se borra nada, la solicitud queda pendiente de revisión manual en vez de
+ * confirmarse. Devuelve la solicitud, con el código para consultarla.
  */
-export async function deleteMetaUserData(externalUserId: string) {
+export async function deleteMetaUserData(appUserId: string, pageIds: string[] = []) {
   const code = randomBytes(6).toString("hex").toUpperCase();
+  const ids = [appUserId, ...pageIds];
   return db.$transaction(async (tx) => {
     const contacts = await tx.contact.deleteMany({
-      where: { channel: { in: ["INSTAGRAM", "FACEBOOK"] }, externalId: externalUserId },
+      where: { channel: { in: ["INSTAGRAM", "FACEBOOK"] }, externalId: { in: ids } },
     });
-    const comments = await tx.socialComment.deleteMany({ where: { authorId: externalUserId } });
+    const comments = await tx.socialComment.deleteMany({ where: { authorId: { in: ids } } });
     return tx.dataDeletionRequest.create({
-      data: { code, externalUserId, contacts: contacts.count, comments: comments.count },
+      data: {
+        code,
+        externalUserId: appUserId,
+        contacts: contacts.count,
+        comments: comments.count,
+        pending: contacts.count + comments.count === 0,
+      },
     });
   });
+}
+
+export function pendingDeletionRequests() {
+  return db.dataDeletionRequest.findMany({ where: { pending: true }, orderBy: { createdAt: "asc" } });
+}
+
+/** El equipo revisó a mano una solicitud pendiente (borró lo que encontró o no había nada). */
+export async function resolveDeletionRequest(id: string) {
+  await db.dataDeletionRequest.update({ where: { id }, data: { pending: false } });
 }
 
 export function findDeletionRequest(code: string) {
