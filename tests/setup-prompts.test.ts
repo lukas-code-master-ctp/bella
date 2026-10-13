@@ -29,6 +29,14 @@ describe("Prompts para configurar con Claude", () => {
     expect(p).toContain("Nunca los escribas en el chat");
   });
 
+  it("Meta: usa el MCP de WhatsApp de Meta si está conectado, sin mandar mensajes a clientes", () => {
+    const p = metaSetupPrompt(status());
+    expect(p).toContain("https://mcp.facebook.com/whatsapp_business_tools");
+    expect(p).toContain("whatsapp_biz_");
+    expect(p).toContain("no envíes mensajes a clientes");
+    expect(assistantSetupPrompt(status())).not.toContain("whatsapp_biz_");
+  });
+
   it("Meta: sirve para una empresa que parte desde cero", () => {
     const p = metaSetupPrompt(status({ assistant: { assistantName: "Bella", companyName: "nuestra empresa" } }));
     expect(p).toContain("el CRM de leads que está en https://bella.test");
