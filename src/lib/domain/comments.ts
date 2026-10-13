@@ -19,8 +19,11 @@ export async function receiveComments(payload: MessengerWebhook): Promise<string
   if (!platform) return [];
   const creds = await credentials();
   const own = new Set([creds.META_PAGE_ID, creds.META_IG_ACCOUNT_ID].filter(Boolean));
+  // Como en los mensajes directos: solo la página o cuenta configurada (la app puede tener varias).
+  const account = platform === "INSTAGRAM" ? creds.META_IG_ACCOUNT_ID : creds.META_PAGE_ID;
   const saved: string[] = [];
   for (const entry of payload.entry ?? []) {
+    if (account && entry.id !== account) continue;
     own.add(entry.id);
     for (const change of entry.changes ?? []) {
       const v = change.value;
