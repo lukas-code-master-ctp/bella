@@ -32,7 +32,8 @@ export type BoardLead = {
   updatedAt: string;
 };
 
-export type BoardStage = { id: string; name: string; color: string; requiresHuman: boolean };
+/** `hidden`: leads abiertos de la etapa que no se cargaron en el tablero. */
+export type BoardStage = { id: string; name: string; color: string; requiresHuman: boolean; hidden: number };
 
 export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLead[] }) {
   const [optimistic, move] = useOptimistic(leads, (state, { id, stageId }: { id: string; stageId: string }) =>
@@ -58,11 +59,12 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
     <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0">
       {stages.map((stage) => {
         const items = optimistic.filter((l) => l.stageId === stage.id);
+        const total = items.length + stage.hidden;
         const isOver = over === stage.id && dragging !== null;
         return (
           <section
             key={stage.id}
-            aria-label={`${stage.name}: ${items.length} leads`}
+            aria-label={`${stage.name}: ${total} leads`}
             onDragOver={(e) => {
               e.preventDefault();
               if (over !== stage.id) setOver(stage.id);
@@ -84,8 +86,8 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                   Humano
                 </Badge>
               )}
-              <span key={items.length} className="ml-auto animate-pop rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-inset ring-slate-200">
-                {items.length}
+              <span key={total} className="ml-auto animate-pop rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-inset ring-slate-200">
+                {total}
               </span>
             </header>
             <div className="stagger flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1">
@@ -142,6 +144,14 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                   <LinkPending />
                 </Link>
               ))}
+              {stage.hidden > 0 && (
+                <p className="px-1 py-2 text-center text-xs text-slate-500">
+                  y {stage.hidden} más; búscalos en{" "}
+                  <Link href="/chats" className="font-medium text-brand-700 underline-offset-2 hover:underline">
+                    Chats
+                  </Link>
+                </p>
+              )}
             </div>
           </section>
         );

@@ -66,7 +66,11 @@ export async function exportContactsCsv(): Promise<string> {
 export function normalizePhone(raw: string, defaultCountryCode = ""): string | null {
   let digits = raw.replace(/\D/g, "");
   if (digits.startsWith("00")) digits = digits.slice(2);
-  else if (!raw.trim().startsWith("+") && defaultCountryCode && digits.length <= 9) digits = defaultCountryCode.replace(/\D/g, "") + digits;
+  else if (!raw.trim().startsWith("+") && digits.length <= 9) {
+    // Un número local sin código de país quedaría con otra identidad (9 1234 5678 → +912345678).
+    if (!defaultCountryCode.replace(/\D/g, "")) return null;
+    digits = defaultCountryCode.replace(/\D/g, "") + digits;
+  }
   return digits.length >= 8 && digits.length <= 15 ? digits : null;
 }
 
@@ -123,7 +127,6 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
     db.customField.findMany(),
     db.user.findMany({ where: { active: true } }),
   ]);
-  if (!stages.length) throw new DomainError("No hay etapas configuradas en el funnel.");
   // Sin etapa en el archivo, el contacto entra como si escribiera por WhatsApp.
   const entry = await entryStage(db, "WHATSAPP");
   const known = new Set(Object.values(cols).filter(Boolean));
@@ -149,7 +152,7 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
       continue;
     }
     if (!phone && !email) {
-      fail(line, rawPhone ? `teléfono inválido (${rawPhone}).` : "sin teléfono ni correo.");
+      fail(line, rawPhone ? `teléfono inválido o sin código de país (${rawPhone}).` : "sin teléfono ni correo.");
       result.skipped++;
       continue;
     }

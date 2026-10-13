@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { currentCompanyId } from "./tenant";
 
@@ -19,14 +18,7 @@ export const DEFAULT_ASSISTANT: AssistantSettings = {
 /** Configuración de la empresa en curso (ver tenant.ts). */
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {
   const companyId = await currentCompanyId();
-  const row = await db.companySetting
-    .findUnique({ where: { companyId_key: { companyId, key } } })
-    .catch(async (err) => {
-      // Un preview usa la base de producción, que no tiene esta tabla hasta que se mergea: lee
-      // la tabla de antes. Se puede quitar cuando "Setting" se borre.
-      if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2021")) throw err;
-      return db.setting.findUnique({ where: { key } });
-    });
+  const row = await db.companySetting.findUnique({ where: { companyId_key: { companyId, key } } });
   return row ? (row.value as T) : fallback;
 }
 

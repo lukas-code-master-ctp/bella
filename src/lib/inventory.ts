@@ -54,6 +54,8 @@ export async function syncInventory(fetchImpl: typeof fetch = fetch) {
   const attemptAt = new Date().toISOString();
   try {
     const rows = await fetchSheetRows(settings.sheetUrl, fetchImpl);
+    // Una pestaña vacía por un momento no debe borrar el inventario.
+    if (!rows.length) throw new Error("La planilla no tiene filas.");
     const syncedAt = new Date();
     await db.$transaction(async (tx) => {
       // Dos sincronizaciones simultáneas (cron y asistente) duplicarían filas sin este lock; es

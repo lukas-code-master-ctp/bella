@@ -12,6 +12,8 @@ import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
 import { Board } from "./board";
 
+const PER_STAGE = 100;
+
 export default async function FunnelPage({
   searchParams,
 }: {
@@ -28,21 +30,32 @@ export default async function FunnelPage({
     ...(funnel ? { stage: { funnelId: funnel.id } } : {}),
   };
 
-  const [stages, leads, closed, executives] = await Promise.all([
+  const [stages, open, closed, executives] = await Promise.all([
     db.stage.findMany({ where: funnel ? { funnelId: funnel.id } : {}, orderBy: { position: "asc" } }),
-    db.lead.findMany({
-      where: { ...scope, status: "OPEN" },
-      include: {
-        contact: { include: { tags: { include: { tag: true } } } },
-        assignee: true,
-        messages: { orderBy: { createdAt: "desc" }, take: 1 },
-        tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } },
-      },
-      orderBy: byScore ? [{ score: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }] : { updatedAt: "desc" },
-    }),
+    db.lead.groupBy({ by: ["stageId"], where: { ...scope, status: "OPEN" }, _count: { _all: true } }),
     db.lead.groupBy({ by: ["status"], where: { ...scope, status: { not: "OPEN" } }, _count: { _all: true } }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
   ]);
+  // shortcut: cada etapa muestra sus primeros PER_STAGE leads y "Sin atender" cuenta solo esos;
+  // si una etapa suele pasar ese número, agregar "cargar más" por etapa.
+  const leads = (
+    await Promise.all(
+      stages.map((stage) =>
+        db.lead.findMany({
+          where: { ...scope, status: "OPEN", stageId: stage.id },
+          include: {
+            contact: { include: { tags: { include: { tag: true } } } },
+            assignee: true,
+            messages: { orderBy: { createdAt: "desc" }, take: 1 },
+            tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } },
+          },
+          orderBy: byScore ? [{ score: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }] : { updatedAt: "desc" },
+          take: PER_STAGE,
+        }),
+      ),
+    )
+  ).flat();
+  const openIn = (stageId: string) => open.find((o) => o.stageId === stageId)?._count._all ?? 0;
   const count = (s: string) => closed.find((c) => c.status === s)?._count._all ?? 0;
   const now = new Date();
   const humanStages = new Set(stages.filter((s) => s.requiresHuman).map((s) => s.id));
@@ -67,7 +80,7 @@ export default async function FunnelPage({
       </PageHeader>
 
       <div className="stagger mb-6 flex flex-wrap items-center gap-3">
-        <Stat icon={<Inbox />} label="Abiertos" value={leads.length} tone="text-brand-700 bg-brand-50" />
+        <Stat icon={<Inbox />} label="Abiertos" value={open.reduce((n, o) => n + o._count._all, 0)} tone="text-brand-700 bg-brand-50" />
         <Stat icon={<Trophy />} label="Ganados" value={count("WON")} tone="text-emerald-700 bg-emerald-50" />
         <Stat icon={<CircleX />} label="Perdidos" value={count("LOST")} tone="text-rose-700 bg-rose-50" />
         {waiting > 0 && <Stat icon={<MessageCircleWarning />} label="Sin atender" value={waiting} tone="text-amber-700 bg-amber-50" />}
@@ -126,7 +139,13 @@ export default async function FunnelPage({
         </Card>
       ) : (
         <Board
-          stages={stages.map(({ id, name, color, requiresHuman }) => ({ id, name, color, requiresHuman }))}
+          stages={stages.map(({ id, name, color, requiresHuman }) => ({
+            id,
+            name,
+            color,
+            requiresHuman,
+            hidden: openIn(id) - leads.filter((l) => l.stageId === id).length,
+          }))}
           leads={cards.map(({ lead: l, last, attention, waitingSince }) => ({
             id: l.id,
             stageId: l.stageId,

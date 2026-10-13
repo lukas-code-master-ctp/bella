@@ -74,6 +74,13 @@ describe("sincronización automática del inventario", () => {
     expect(calls).toBe(0);
   });
 
+  it("una planilla sin filas no borra el inventario", async () => {
+    await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
+    await syncInventory(async () => new Response(csv));
+    await expect(syncInventory(async () => new Response("Modelo,Precio\n"))).rejects.toThrow("no tiene filas");
+    expect(await db.inventoryItem.count()).toBe(1);
+  });
+
   it("dos sincronizaciones simultáneas no duplican filas", async () => {
     await setSetting("inventory", { sheetUrl: "https://example.com/inv.csv" });
     await Promise.all([1, 2, 3].map(() => syncInventory(async () => new Response(csv))));

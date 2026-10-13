@@ -218,6 +218,8 @@ model Contact {
 
   @@unique([companyId, channel, externalId])
   @@index([companyId])
+  @@index([companyId, phone])
+  @@index([companyId, email])
 }
 
 model ContactTag {
@@ -317,6 +319,7 @@ model Lead {
   webhookCalls  WebhookDelivery[]
   variant       AssistantVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
+  @@index([contactId, status])
   @@index([stageId])
   @@index([assigneeId])
   @@index([followUpAt])
