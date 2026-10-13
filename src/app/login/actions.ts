@@ -11,15 +11,18 @@ export type LoginState = { error: string; email: string; remember: boolean } | n
 export async function loginAction(_prev: LoginState, form: FormData): Promise<LoginState> {
   const email = String(form.get("email") ?? "");
   const remember = form.get("remember") === "on";
-  let ok: boolean;
+  let result: Awaited<ReturnType<typeof login>>;
   try {
-    ok = await login(email, String(form.get("password") ?? ""), remember);
+    // En Vercel, el primer valor de x-forwarded-for es la IP real del cliente (lo pone Vercel).
+    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0].trim() || null;
+    result = await login(email, String(form.get("password") ?? ""), remember, ip);
   } catch (err) {
     // Errores de configuración del servidor: se muestran claros en vez de una página 500.
     console.error("[login]", err);
     return { error: loginErrorMessage(err), email, remember };
   }
-  if (!ok) return { error: "Correo o contraseña incorrectos.", email, remember };
+  if (result === "blocked") return { error: "Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.", email, remember };
+  if (result === "wrong") return { error: "Correo o contraseña incorrectos.", email, remember };
   redirect("/funnel");
 }
 

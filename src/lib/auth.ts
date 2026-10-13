@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { rootDb } from "./db";
 import { canWorkIn } from "./domain/companies";
+import { clearLoginFailures, loginBlocked, recordLoginFailure } from "./domain/login-attempts";
 import { DEFAULT_COMPANY_ID } from "./tenant";
 import {
   REMEMBER_MAX_AGE_SECONDS,
@@ -21,16 +22,24 @@ export async function hashPassword(password: string) {
   return bcrypt.hash(password, 10);
 }
 
-/** `remember`: la sesión sobrevive al cierre del navegador por 30 días ("Recordarme"). */
-export async function login(email: string, password: string, remember = false): Promise<boolean> {
+/**
+ * `remember`: la sesión sobrevive al cierre del navegador por 30 días ("Recordarme").
+ * `ip`: de quien intenta entrar, para el límite de intentos (login-attempts.ts).
+ */
+export async function login(email: string, password: string, remember = false, ip: string | null = null): Promise<"ok" | "wrong" | "blocked"> {
+  email = email.trim().toLowerCase();
+  if (await loginBlocked(email, ip)) return "blocked";
   // El correo es único entre todas las empresas: se busca sin filtro y la sesión lleva la empresa.
-  const user = await rootDb.user.findUnique({ where: { email: email.trim().toLowerCase() } });
-  if (!user || !user.active) return false;
-  if (!(await bcrypt.compare(password, user.passwordHash))) return false;
+  const user = await rootDb.user.findUnique({ where: { email } });
+  if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
+    await recordLoginFailure(email, ip);
+    return "wrong";
+  }
+  await clearLoginFailures(email);
   const jar = await cookies();
   const maxAge = remember ? REMEMBER_MAX_AGE_SECONDS : SHORT_MAX_AGE_SECONDS;
   jar.set(SESSION_COOKIE, await signSession(user.id, maxAge, user.companyId), sessionCookieOptions(remember));
-  return true;
+  return "ok";
 }
 
 export async function logout() {
