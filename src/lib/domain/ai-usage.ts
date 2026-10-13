@@ -1,8 +1,6 @@
 import { db } from "../db";
-import { localMonthName, startOfLocalMonth } from "../dates";
+import { DAY_MS, localMonthName, startOfLocalMonth } from "../dates";
 import { unstable_rethrow } from "next/navigation";
-
-const DAY_MS = 86_400_000;
 
 /** Guarda el gasto de una llamada a la IA. Nunca falla: el registro no debe cortar una respuesta. */
 export async function recordAiUsage(entry: { model: string; inputTokens?: number; outputTokens?: number; cost: number }) {

@@ -86,13 +86,19 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
     db.stage.findMany({ where: filter.funnelId ? { funnelId: filter.funnelId } : {}, orderBy: { position: "asc" } }),
   ]);
   const ids = leads.map((l) => l.id);
-  // Solo lo necesario para los tiempos de respuesta, en orden.
-  const messages = ids.length
-    ? await db.message.findMany({
-        where: { leadId: { in: ids } },
-        select: { leadId: true, author: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
-      })
+  // Por lead, solo las tres fechas que importan: el primer mensaje del cliente y la primera
+  // respuesta (de cualquiera y del equipo) desde ahí.
+  const replyRows = ids.length
+    ? await db.$queryRaw<{ leadId: string; contactAt: Date; replyAt: Date | null; humanAt: Date | null }[]>`
+        WITH first AS (
+          SELECT "leadId", MIN("createdAt") AS at FROM "Message"
+          WHERE "leadId" = ANY(${ids}) AND "author" = 'CONTACT' GROUP BY "leadId"
+        )
+        SELECT f."leadId", f.at AS "contactAt",
+          MIN(m."createdAt") FILTER (WHERE m."author" <> 'CONTACT') AS "replyAt",
+          MIN(m."createdAt") FILTER (WHERE m."author" = 'USER') AS "humanAt"
+        FROM first f JOIN "Message" m ON m."leadId" = f."leadId" AND m."createdAt" >= f.at
+        GROUP BY f."leadId", f.at`
     : [];
 
   // Totales, canales, campañas, ejecutivos y motivos de pérdida.
@@ -146,19 +152,11 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
   const funnel = stages.map((s, i) => ({ stageId: s.id, name: s.name, reached: reachedCount[i], current: currentCount[i] }));
 
   // Tiempo hasta la primera respuesta (de la IA o del equipo) y hasta la primera del equipo.
-  const firstContact = new Map<string, number>();
   const firstReply = new Map<string, number>();
   const firstHuman = new Map<string, number>();
-  for (const m of messages) {
-    const t = m.createdAt.getTime();
-    if (m.author === "CONTACT") {
-      if (!firstContact.has(m.leadId)) firstContact.set(m.leadId, t);
-      continue;
-    }
-    const start = firstContact.get(m.leadId);
-    if (start === undefined) continue;
-    if (!firstReply.has(m.leadId)) firstReply.set(m.leadId, t - start);
-    if (m.author === "USER" && !firstHuman.has(m.leadId)) firstHuman.set(m.leadId, t - start);
+  for (const r of replyRows) {
+    if (r.replyAt) firstReply.set(r.leadId, r.replyAt.getTime() - r.contactAt.getTime());
+    if (r.humanAt) firstHuman.set(r.leadId, r.humanAt.getTime() - r.contactAt.getTime());
   }
   const humanByExec = new Map<string, number[]>();
   for (const l of leads) {

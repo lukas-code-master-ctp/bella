@@ -30,7 +30,7 @@ export function ImportForm() {
               className="absolute inset-0 cursor-pointer opacity-0"
             />
           </label>
-          <Field label="Código de país" hint="Para números sin código, ej. 56">
+          <Field label="Código de país" hint="Obligatorio si hay números sin código de país, ej. 56">
             <input name="countryCode" inputMode="numeric" placeholder="56" className={inputClass} />
           </Field>
         </div>

@@ -86,8 +86,6 @@ export async function attachAdSource(leadId: string, ad: AdReferral, ads: AdsApi
 
 // --- Enlaces desde landings ------------------------------------------------------------------
 
-export const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
-
 export type Utm = {
   utmSource?: string | null;
   utmMedium?: string | null;

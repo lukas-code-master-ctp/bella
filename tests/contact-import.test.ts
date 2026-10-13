@@ -20,6 +20,9 @@ describe("importar contactos", () => {
     expect(normalizePhone("9 1111 2222", "56")).toBe("56911112222");
     expect(normalizePhone("0056911112222")).toBe("56911112222");
     expect(normalizePhone("123")).toBeNull();
+    // Un número local sin código de país no se adivina.
+    expect(normalizePhone("9 1111 2222")).toBeNull();
+    expect(normalizePhone("56911112222")).toBe("56911112222");
     expect(parseTags("Interés: alto; vip")).toEqual([
       { category: "Interés", name: "alto" },
       { category: "General", name: "vip" },

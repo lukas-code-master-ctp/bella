@@ -1,7 +1,7 @@
 /** Zona horaria del negocio: los plazos se leen y muestran en hora de Chile. */
 export const TIME_ZONE = "America/Santiago";
 
-const DAY_MS = 86_400_000;
+export const DAY_MS = 86_400_000;
 
 const partsFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: TIME_ZONE,

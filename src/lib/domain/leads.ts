@@ -250,10 +250,12 @@ export async function handoffToHumanTx(tx: Tx, leadId: string, reason: string) {
     orderBy: { position: "asc" },
   });
   await tx.leadEvent.create({ data: { leadId, type: "HANDOFF", actor: "AI", reason } });
-  if (humanStage) {
+  // Entrar a la etapa humana ya pausa la IA y notifica (moveStageTx); si no hay cambio de etapa, se hace aquí.
+  if (humanStage && humanStage.id !== lead.stageId) {
     await moveStageTx(tx, leadId, humanStage.id, { actor: "AI" }, reason);
+  } else {
+    await tx.lead.update({ where: { id: leadId }, data: { aiEnabled: false } });
+    await notifyHumanStageTx(tx, leadId, reason);
   }
-  await tx.lead.update({ where: { id: leadId }, data: { aiEnabled: false } });
-  await notifyHumanStageTx(tx, leadId, reason);
   return humanStage;
 }
