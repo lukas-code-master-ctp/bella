@@ -5,7 +5,7 @@ import { findField, setFieldValueTx } from "../domain/fields";
 import { funnelStages } from "../domain/funnels";
 import { scheduleFollowUpTx } from "../domain/follow-ups";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
-import { sendMediaFile } from "../domain/files";
+import { sendMediaFiles } from "../domain/files";
 import { createTask } from "../domain/tasks";
 import { deliverPendingConversions } from "../domain/conversions";
 import { deliverPendingWebhooks } from "../domain/webhooks";
@@ -111,12 +111,15 @@ export const AGENT_TOOLS: Tool[] = [
   ),
   tool(
     "send_file",
-    "Envía al cliente uno de los archivos de <archivos> (planos, fichas, fotos, documentos) por el " +
-      "chat. Úsala cuando el cliente lo pida o cuando la descripción del archivo diga que corresponde. " +
-      "El archivo sale antes de tu respuesta final, así que no repitas su contenido.",
+    "Envía al cliente archivos de <archivos> (planos, fichas, fotos, documentos) por el chat: uno " +
+      "solo (file) o todos los de un producto (product con file vacío). Elige según lo que pide el " +
+      "cliente: si pide fotos, manda las fotos; si pide todo o no especifica, el set completo del " +
+      "producto. Úsala cuando el cliente lo pida o cuando la descripción del archivo diga que " +
+      "corresponde. Los archivos salen antes de tu respuesta final, así que no repitas su contenido.",
     {
-      file: text("Nombre exacto del archivo, tal como aparece en <archivos>"),
-      caption: text("Texto corto que acompaña al archivo, o vacío"),
+      file: text("Nombre exacto del archivo, tal como aparece en <archivos>, o vacío para enviar todos los del producto"),
+      product: text("Producto del archivo, tal como aparece en <archivos>, o vacío si el archivo no tiene producto"),
+      caption: text("Texto corto que acompaña al primer archivo, o vacío"),
     },
   ),
   tool(
@@ -257,8 +260,13 @@ export async function executeTool(
     }
     case "send_file": {
       try {
-        const file = await sendMediaFile(leadId, str("file"), str("caption"));
-        return { content: `Archivo "${file.title}" enviado al cliente.` };
+        const { sent, skipped } = await sendMediaFiles(leadId, { file: str("file"), product: str("product") }, str("caption"));
+        const names = sent.map((f) => `"${f.title}"`).join(", ");
+        return {
+          content:
+            (sent.length === 1 ? `Archivo ${names} enviado al cliente.` : `${sent.length} archivos enviados al cliente: ${names}.`) +
+            (skipped ? ` Quedaron ${skipped} sin enviar por el tope por envío; ofrécelos si el cliente quiere más.` : ""),
+        };
       } catch (e) {
         if (e instanceof DomainError) return { isError: true, content: e.message };
         throw e;

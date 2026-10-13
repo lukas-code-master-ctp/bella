@@ -70,7 +70,8 @@ export function buildSystemPrompt(
     ...(files.length
       ? [
           "- Puedes enviarle al cliente los archivos de <archivos> con send_file (por ejemplo cuando " +
-            "pide un plano, una ficha o fotos). Envía solo esos archivos; nunca inventes enlaces.",
+            "pide un plano, una ficha o fotos): uno solo o todos los de un producto, según lo que pida. " +
+            "Envía solo esos archivos; nunca inventes enlaces.",
         ]
       : []),
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
@@ -82,10 +83,14 @@ export function buildSystemPrompt(
     s.instructions,
   ];
   if (files.length) {
+    const grouped = files.some((f) => f.product);
     lines.push(
       "",
       "<archivos>",
-      ...files.map((f) => `- ${f.title} (${f.kind})${f.description ? `: ${f.description}` : ""}`),
+      ...files.flatMap((f, i) => [
+        ...(grouped && (i === 0 || f.product !== files[i - 1].product) ? [f.product ? `Producto: ${f.product}` : "Sin producto:"] : []),
+        `- ${f.title} (${f.kind})${f.description ? `: ${f.description}` : ""}`,
+      ]),
       "</archivos>",
     );
   }

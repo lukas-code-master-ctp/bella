@@ -519,6 +519,8 @@ model MediaFile {
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
   companyId   String   @default("default")
   title       String
+  /// Producto o grupo al que pertenece (ej. un proyecto): la IA puede enviar uno o todos los del grupo.
+  product     String   @default("")
   description String   @default("")
   url         String
   mimeType    String
