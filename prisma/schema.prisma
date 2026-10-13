@@ -863,3 +863,14 @@ model WeeklyInsight {
   @@index([createdAt])
   @@index([companyId])
 }
+
+/// Intento fallido de iniciar sesión, para limitar la fuerza bruta. Sin empresa: el login es
+/// anterior a saber la empresa. `key` es "email:<correo>" o "ip:<dirección>".
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+  @@index([createdAt])
+}
