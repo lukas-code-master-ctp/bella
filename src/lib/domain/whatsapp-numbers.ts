@@ -29,8 +29,11 @@ export async function funnelForNumber(phoneNumberId: string | undefined): Promis
   return n?.funnelId ?? null;
 }
 
-function cleanFunnel(funnelId: string | null | undefined) {
-  return funnelId?.trim() || null;
+/** El id viene del formulario: tiene que ser un embudo de esta empresa. */
+async function cleanFunnel(funnelId: string | null | undefined) {
+  const id = funnelId?.trim() || null;
+  if (id && !(await db.funnel.count({ where: { id } }))) throw new DomainError("Ese embudo no existe.");
+  return id;
 }
 
 /** Agrega un número tras confirmar con Meta que el token tiene acceso a él. */
@@ -42,22 +45,23 @@ export async function addWhatsAppNumber(
   if (!/^\d+$/.test(phoneNumberId)) throw new DomainError("El id del número son solo dígitos (no es el número de teléfono).");
   if (phoneNumberId === (await credential("WHATSAPP_PHONE_NUMBER_ID"))) throw new DomainError("Ese es el número principal: ya está conectado.");
   if (await db.whatsAppNumber.findUnique({ where: { phoneNumberId } })) throw new DomainError("Ese número ya está agregado.");
+  const funnelId = await cleanFunnel(input.funnelId);
   const info = await lookup(phoneNumberId);
   return db.whatsAppNumber.create({
     data: {
       phoneNumberId,
       label: input.label.trim() || info.name || info.displayPhone,
       displayPhone: info.displayPhone,
-      funnelId: cleanFunnel(input.funnelId),
+      funnelId,
     },
   });
 }
 
-export function updateWhatsAppNumber(id: string, input: { label: string; funnelId?: string | null }) {
+export async function updateWhatsAppNumber(id: string, input: { label: string; funnelId?: string | null }) {
   const label = input.label.trim();
   return db.whatsAppNumber.update({
     where: { id },
-    data: { ...(label ? { label } : {}), funnelId: cleanFunnel(input.funnelId) },
+    data: { ...(label ? { label } : {}), funnelId: await cleanFunnel(input.funnelId) },
   });
 }
 

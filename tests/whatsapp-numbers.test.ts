@@ -5,6 +5,7 @@ import { ChannelSendError, type WaWebhook, type WhatsAppApi } from "@/lib/channe
 import { deliverOutbound, getWhatsAppWebhookLog, logWhatsAppWebhook, receiveWhatsApp } from "@/lib/domain/channels";
 import { createFunnel } from "@/lib/domain/funnels";
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
+import { withCompany } from "@/lib/tenant";
 import { seedFunnel } from "./factories";
 
 const MAIN = "1111111111";
@@ -105,5 +106,13 @@ describe("varios números de WhatsApp", () => {
     };
     await expect(addWhatsAppNumber({ phoneNumberId: OTHER, label: "x" }, denied)).rejects.toThrow(/sin permiso/);
     expect(await db.whatsAppNumber.count()).toBe(0);
+  });
+
+  it("no acepta el embudo de otra empresa", async () => {
+    const ajeno = await withCompany("empresa-a", () => createFunnel("Ajeno"));
+    await expect(addWhatsAppNumber({ phoneNumberId: OTHER, label: "x", funnelId: ajeno.id }, lookup)).rejects.toThrow(/embudo/);
+    const n = await addWhatsAppNumber({ phoneNumberId: OTHER, label: "x" }, lookup);
+    await expect(updateWhatsAppNumber(n.id, { label: "x", funnelId: ajeno.id })).rejects.toThrow(/embudo/);
+    expect((await db.whatsAppNumber.findUniqueOrThrow({ where: { id: n.id } })).funnelId).toBeNull();
   });
 });

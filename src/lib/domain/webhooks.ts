@@ -1,4 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { BlockList, isIP } from "node:net";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { DomainError } from "./leads";
@@ -22,7 +24,25 @@ export function newWebhookSecret() {
   return `whsec_${randomBytes(24).toString("hex")}`;
 }
 
-/** Normaliza la URL o lanza DomainError: solo https (o http a localhost, para probar). */
+/** Direcciones de la red interna (loopback, privadas, link-local): un webhook no puede apuntar ahí. */
+const INTERNAL = new BlockList();
+for (const [net, bits] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16]] as const) {
+  INTERNAL.addSubnet(net, bits, "ipv4");
+}
+for (const [net, bits] of [["::", 127], ["fc00::", 7], ["fe80::", 10]] as const) INTERNAL.addSubnet(net, bits, "ipv6");
+
+export function isInternalIp(ip: string): boolean {
+  return INTERNAL.check(ip, isIP(ip) === 6 ? "ipv6" : "ipv4");
+}
+
+/** localhost solo sirve para probar fuera de producción. */
+const allowLocal = () => process.env.NODE_ENV !== "production";
+
+function isLocalHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+/** Normaliza la URL o lanza DomainError: solo https a internet (o http a localhost, para probar). */
 export function normalizeWebhookUrl(raw: string): string {
   let url: URL;
   try {
@@ -30,11 +50,23 @@ export function normalizeWebhookUrl(raw: string): string {
   } catch {
     throw new DomainError("La URL del webhook no es válida.");
   }
-  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const local = allowLocal() && isLocalHost(url.hostname);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) {
     throw new DomainError("La URL del webhook debe empezar con https://");
   }
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (!local && (host === "localhost" || (isIP(host) && isInternalIp(host)))) {
+    throw new DomainError("La URL del webhook no puede apuntar a una red interna.");
+  }
   return url.toString();
+}
+
+/** Revisa a qué IP apunta el host justo antes de enviar, por si el nombre resuelve a la red interna. */
+async function assertPublicHost(url: string) {
+  const { hostname } = new URL(url);
+  if (allowLocal() && isLocalHost(hostname)) return;
+  const addresses = await lookup(hostname.replace(/^\[|\]$/g, ""), { all: true });
+  if (addresses.some((a) => isInternalIp(a.address))) throw new Error("La URL apunta a una red interna.");
 }
 
 export async function createWebhook(input: { name: string; url: string; stageId: string }) {
@@ -139,6 +171,9 @@ export type WebhookSender = (
 ) => Promise<{ status: number; text: string }>;
 
 export const httpSender: WebhookSender = async (url, { body, headers }) => {
+  normalizeWebhookUrl(url); // por si la URL se guardó antes de estas reglas
+  // shortcut: el DNS puede cambiar entre esta revisión y el fetch (DNS rebinding); fijar la IP en el socket si llega a importar.
+  await assertPublicHost(url);
   const res = await fetch(url, {
     method: "POST",
     headers,
