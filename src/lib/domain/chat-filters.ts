@@ -3,8 +3,8 @@ import { parseLocalDateTime, startOfLocalDay } from "../dates";
 import type { Attention } from "./attention";
 
 /**
- * Bandeja de chats: todas las conversaciones de leads, con filtros como los de Vambe (fecha,
- * estado, atención, orden, embudo y etapa, canales, ejecutivos y etiquetas). Los filtros viajan
+ * Bandeja de chats: todas las conversaciones de leads, con filtros por fecha,
+ * estado, atención, orden, embudo y etapa, canales, ejecutivos y etiquetas. Los filtros viajan
  * en la URL, así que un filtro se puede guardar o compartir como un enlace.
  */
 

@@ -111,7 +111,6 @@ describe("presets de configuración", () => {
   it("la configuración de Compra Tu Parcela trae a Valentina y su inventario", () => {
     expect(COMPRA_TU_PARCELA.assistant.assistantName).toBe("Valentina");
     expect(COMPRA_TU_PARCELA.assistant.instructions).toContain("REGLA PRIORITARIA");
-    expect(COMPRA_TU_PARCELA.assistant.instructions).not.toContain("Proyectos Vambe.xlsx");
     expect(COMPRA_TU_PARCELA.inventorySheetUrl).toContain("1tFAS2bIQXqG2dbzY6It390rG2NzVaGAze7w2a2a7eME");
   });
 });

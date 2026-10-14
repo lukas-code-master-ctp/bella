@@ -16,7 +16,7 @@ export type ChannelRow = {
   setup: string;
 };
 
-/** Lista de canales agrupada por red, con buscador (como la de Vambe). */
+/** Lista de canales agrupada por red, con buscador. */
 export function ChannelList({ rows }: { rows: ChannelRow[] }) {
   const [q, setQ] = useState("");
   const term = q.trim().toLowerCase();

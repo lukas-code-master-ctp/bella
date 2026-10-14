@@ -80,7 +80,7 @@ function writeSaved(list: Saved[]) {
 const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
 
 /**
- * Bandeja de chats: panel de filtros a la izquierda (como en Vambe) y la lista a la derecha.
+ * Bandeja de chats: panel de filtros a la izquierda y la lista a la derecha.
  * Cada cambio actualiza la URL al tiro; la lista la arma el servidor.
  */
 export function ChatsShell({
@@ -513,7 +513,7 @@ function StagePicker({
   );
 }
 
-/** Filtros guardados en este navegador, como en Vambe: un nombre y la combinación de filtros. */
+/** Filtros guardados en este navegador: un nombre y la combinación de filtros. */
 function SavedFilters({ current, onPick }: { current: ChatFilters; onPick: (query: string) => void }) {
   const [saved, setSaved] = useState<Saved[]>([]);
   const [naming, setNaming] = useState(false);
