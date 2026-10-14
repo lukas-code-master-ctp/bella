@@ -40,7 +40,7 @@ export default async function PixelSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Píxel de Meta"
-        description="Con la API de Conversiones, Bella le avisa a Meta qué leads se calificaron y cuáles compraron, para que los anuncios busquen personas parecidas."
+        description="Con la API de Conversiones, Beliapp le avisa a Meta qué leads se calificaron y cuáles compraron, para que los anuncios busquen personas parecidas."
       />
       <Panel
         icon={<Crosshair />}
@@ -94,7 +94,7 @@ export default async function PixelSettingsPage() {
       <Panel
         icon={<Activity />}
         title="Últimos eventos"
-        description="Lo que Bella le envió a Meta. Los que fallan se reintentan cada 15 minutos."
+        description="Lo que Beliapp le envió a Meta. Los que fallan se reintentan cada 15 minutos."
         aside={
           failed && (
             <form action={retryConversionsAction}>

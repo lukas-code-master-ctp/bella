@@ -5,8 +5,8 @@ import { withCompany } from "../tenant";
 import { ensureDefaultFunnel } from "./default-funnel";
 
 /**
- * Empresas que usan Bella. Cada una tiene sus datos, configuración y credenciales (ver
- * tenant.ts); el dueño de Bella (`User.superadmin`) las crea y puede entrar a cualquiera.
+ * Empresas que usan Beliapp. Cada una tiene sus datos, configuración y credenciales (ver
+ * tenant.ts); el dueño de Beliapp (`User.superadmin`) las crea y puede entrar a cualquiera.
  */
 
 const STARTER_STAGES = [
@@ -71,7 +71,7 @@ export async function companyName(id: string): Promise<string | null> {
   return (await rootDb.company.findUnique({ where: { id }, select: { name: true } }))?.name ?? null;
 }
 
-/** Un usuario trabaja en su empresa; el dueño de Bella, además, en cualquiera. */
+/** Un usuario trabaja en su empresa; el dueño de Beliapp, además, en cualquiera. */
 export function canWorkIn(user: Pick<User, "companyId" | "superadmin">, companyId: string) {
   return user.companyId === companyId || user.superadmin;
 }

@@ -4,7 +4,7 @@ import type { Preset } from "../domain/presets";
  * Configuración de Valentina, la asistente de Compra Tu Parcela: instrucciones, rutas, embudo,
  * etiquetas y base de conocimiento, con los textos del cliente. La planilla de proyectos es el
  * inventario (search_inventory), las "tareas" para el ejecutivo se crean con create_task, y
- * Bella no envía imágenes.
+ * Beliapp no envía imágenes.
  */
 
 const PERSONALIDAD = `Eres Valentina, asesora comercial de Compra Tu Parcela, una inmobiliaria especializada en venta de parcelas con más de 10 años de trayectoria.

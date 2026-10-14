@@ -78,7 +78,7 @@ describe("API de Conversiones", () => {
       event_name: "Purchase",
       action_source: "system_generated",
       user_data: { em: [sha("beto@mail.cl")], external_id: [sha(withEmail.contactId)] },
-      custom_data: { currency: "CLP", value: 0, lead_event_source: "Bella" },
+      custom_data: { currency: "CLP", value: 0, lead_event_source: "Beliapp" },
     });
     expect((await db.conversionEvent.findFirstOrThrow({ where: { leadId: anonymous.id } })).status).toBe("SKIPPED");
   });

@@ -59,7 +59,7 @@ export function ErrorScreen({ error, reset }: { error: Error & { digest?: string
       <span className="mb-4 flex size-12 items-center justify-center rounded-full bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200">
         <TriangleAlert aria-hidden className="size-6" />
       </span>
-      <h1 className="text-lg font-semibold text-slate-900">{stale ? "Hay una versión nueva de Bella" : "Algo salió mal"}</h1>
+      <h1 className="text-lg font-semibold text-slate-900">{stale ? "Hay una versión nueva de Beliapp" : "Algo salió mal"}</h1>
       <p className="mt-1 max-w-md text-sm text-slate-600">
         {stale
           ? "Recarga la página para seguir trabajando con la última versión."

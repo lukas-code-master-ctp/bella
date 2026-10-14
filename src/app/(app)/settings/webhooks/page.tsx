@@ -35,7 +35,7 @@ export default async function WebhooksPage() {
     <div className="space-y-6">
       <PageHeader
         title="Webhooks"
-        description="Cuando un lead entra a una etapa, Bella envía sus datos a otro sistema (Zapier, Make, n8n, tu calendario o tu ERP) con un POST en JSON."
+        description="Cuando un lead entra a una etapa, Beliapp envía sus datos a otro sistema (Zapier, Make, n8n, tu calendario o tu ERP) con un POST en JSON."
       />
 
       {webhooks.length === 0 ? (
@@ -93,7 +93,7 @@ export default async function WebhooksPage() {
         )}
       </Panel>
 
-      <Disclosure icon={<BookOpen />} summary={<p className="text-sm font-semibold text-slate-900">Qué envía Bella y cómo verificarlo</p>}>
+      <Disclosure icon={<BookOpen />} summary={<p className="text-sm font-semibold text-slate-900">Qué envía Beliapp y cómo verificarlo</p>}>
         <div className="space-y-2 text-sm text-slate-600">
           <p>
             Un JSON con <code className={code}>event</code> (&quot;lead.stage_entered&quot;), <code className={code}>stage</code>,{" "}
@@ -101,8 +101,8 @@ export default async function WebhooksPage() {
             etiquetas, campos del cliente, ejecutivo, resumen y puntaje de la IA, y origen (campaña y UTM).
           </p>
           <p>
-            Cada envío lleva la cabecera <code className={code}>X-Bella-Signature</code> con <code className={code}>sha256=</code> y el
-            HMAC-SHA256 del cuerpo con la clave de firma, para que el otro sistema verifique que viene de Bella. Si la URL no
+            Cada envío lleva la cabecera <code className={code}>X-Beliapp-Signature</code> con <code className={code}>sha256=</code> y el
+            HMAC-SHA256 del cuerpo con la clave de firma, para que el otro sistema verifique que viene de Beliapp. Si la URL no
             responde con un código 2xx, se reintenta cada 15 minutos hasta 5 veces. Los leads del simulador no disparan
             webhooks.
           </p>

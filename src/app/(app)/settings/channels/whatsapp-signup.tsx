@@ -96,7 +96,7 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
   async function open() {
     setError(null);
     got.current = {};
-    if (connected && !confirm("WhatsApp ya está conectado. ¿Conectar otro número en su lugar? El actual deja de recibir mensajes en Bella.")) {
+    if (connected && !confirm("WhatsApp ya está conectado. ¿Conectar otro número en su lugar? El actual deja de recibir mensajes en Beliapp.")) {
       return;
     }
     try {

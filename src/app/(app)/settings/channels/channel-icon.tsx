@@ -34,7 +34,7 @@ function Glyph({ kind }: { kind: ChannelKind }) {
   );
 }
 
-/** Ícono del canal con su color de marca (WhatsApp, Instagram, Messenger) o el morado de Bella. */
+/** Ícono del canal con su color de marca (WhatsApp, Instagram, Messenger) o el morado de Beliapp. */
 export function ChannelIcon({ kind, size = "md" }: { kind: ChannelKind; size?: "md" | "lg" }) {
   return (
     <span

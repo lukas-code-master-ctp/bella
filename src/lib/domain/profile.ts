@@ -5,7 +5,7 @@ import { MIN_PASSWORD_LENGTH } from "./password-reset";
 
 /*
  * Mi perfil: cada usuario edita su nombre y cambia su contraseña. Va por `rootDb` porque es la
- * fila del propio usuario, que vive en su empresa aunque el dueño de Bella esté trabajando en otra.
+ * fila del propio usuario, que vive en su empresa aunque el dueño de Beliapp esté trabajando en otra.
  */
 
 export async function updateOwnName(userId: string, name: string) {

@@ -19,7 +19,7 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
   return (
     <LegalPage title="Política de privacidad" updated="9 de octubre de 2026">
       <p>
-        {legalName} usa Bella, su sistema de atención de clientes, para responder los mensajes que recibe por WhatsApp,
+        {legalName} usa Beliapp, su sistema de atención de clientes, para responder los mensajes que recibe por WhatsApp,
         Instagram y Facebook. Esta política explica qué datos guardamos, para qué y cómo puedes pedir que los borremos.
       </p>
 

@@ -113,7 +113,7 @@ export async function getWhatsAppWebhookLog(): Promise<WhatsAppWebhookLog | null
 /** Anota que guardar el aviso falló (Meta lo reintenta, pero el error queda a la vista). */
 export async function logWhatsAppWebhookError(err: unknown, now = new Date()) {
   const prev = await getWhatsAppWebhookLog();
-  const detail = `Bella no pudo guardar el aviso: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300);
+  const detail = `Beliapp no pudo guardar el aviso: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300);
   await setSetting("whatsappWebhook", { at: now.toISOString(), result: "error", detail, lastMessageAt: prev?.lastMessageAt });
 }
 
@@ -134,7 +134,7 @@ export async function logWhatsAppWebhook(payload: WaWebhook | null, now = new Da
       entry = {
         at,
         result: "otro-numero",
-        detail: `El aviso es del número con id ${others.join(", ")}, que no está conectado en Bella: se ignoró.`,
+        detail: `El aviso es del número con id ${others.join(", ")}, que no está conectado en Beliapp: se ignoró.`,
       };
     } else {
       const parts = [

@@ -8,7 +8,7 @@ import { marketingApi, type AdsApi } from "../channels/ads";
  * Origen de cada lead, para saber de qué anuncio o campaña viene:
  * - Anuncios de Meta (clic a WhatsApp, Instagram o Messenger): Meta manda el id del anuncio en el
  *   primer mensaje; con la API de Marketing se completan los nombres de la campaña y el conjunto.
- * - Landings: el botón de WhatsApp apunta a /wa?utm_source=…; Bella guarda los UTM, redirige a
+ * - Landings: el botón de WhatsApp apunta a /wa?utm_source=…; Beliapp guarda los UTM, redirige a
  *   WhatsApp con un código en el mensaje prellenado y, cuando el mensaje llega, los une al lead.
  */
 

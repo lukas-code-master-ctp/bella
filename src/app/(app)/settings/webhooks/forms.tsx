@@ -26,7 +26,7 @@ export function NewWebhookForm({ stages }: { stages: { id: string; name: string 
             </select>
           </Field>
         </div>
-        <Field label="URL" hint="Bella le enviará un POST con los datos del lead en JSON. Debe empezar con https://">
+        <Field label="URL" hint="Beliapp le enviará un POST con los datos del lead en JSON. Debe empezar con https://">
           <input name="url" type="url" required placeholder="https://hooks.zapier.com/hooks/catch/…" className={`${inputClass} font-mono`} />
         </Field>
       </PanelBody>

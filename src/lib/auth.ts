@@ -55,7 +55,7 @@ export const currentUser = cache(async function currentUser(): Promise<User | nu
   const jar = await cookies();
   const session = await readSession(jar.get(SESSION_COOKIE)?.value);
   if (!session) return null;
-  // Sin filtro de empresa: el dueño de Bella puede estar trabajando en otra empresa que la suya.
+  // Sin filtro de empresa: el dueño de Beliapp puede estar trabajando en otra empresa que la suya.
   const user = await rootDb.user.findUnique({ where: { id: session.userId } });
   if (!user?.active || sessionStale(session.issuedAt, user.passwordChangedAt)) return null;
   if (sessionStale(session.issuedAt, user.sessionsRevokedAt)) return null;
@@ -75,14 +75,14 @@ export async function requireAdmin(): Promise<User> {
   return user;
 }
 
-/** Dueño de Bella: Configuración → Empresas. */
+/** Dueño de Beliapp: Configuración → Empresas. */
 export async function requireSuperadmin(): Promise<User> {
   const user = await requireAdmin();
   if (!user.superadmin) redirect("/settings");
   return user;
 }
 
-/** El dueño de Bella pasa a trabajar en otra empresa: la sesión se vuelve a firmar con ella. */
+/** El dueño de Beliapp pasa a trabajar en otra empresa: la sesión se vuelve a firmar con ella. */
 export async function enterCompany(user: User, companyId: string) {
   const jar = await cookies();
   jar.set(SESSION_COOKIE, await signSession(user.id, SHORT_MAX_AGE_SECONDS, companyId), sessionCookieOptions(false));

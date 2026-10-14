@@ -1,7 +1,7 @@
-// Logo de Bella (símbolo + palabra), vectorizado desde el design system de Claude Design.
+// Logo de Beliapp (símbolo + palabra "beliapp"), vectorizado desde el design system de Claude Design.
 export function Logo({ inverted = false }: { inverted?: boolean }) {
   return (
-    <svg viewBox="0 0 102 36" className="h-9 w-auto" role="img" aria-label="Bella">
+    <svg viewBox="0 0 129 36" className="h-9 w-auto" role="img" aria-label="Beliapp">
       <defs>
         <linearGradient id="bella-logo-gradient" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#8B5CF6" />
@@ -19,10 +19,15 @@ export function Logo({ inverted = false }: { inverted?: boolean }) {
         <circle cx="52.5" cy="20" r="5" />
         <path d="M62 20H72A5 5 0 1 0 70.83 23.21" />
         <path d="M77 10V25" />
-        <path d="M81.5 10V25" />
+        <path d="M81.5 15V25" />
         <circle cx="91" cy="20" r="5" />
         <path d="M96 15V25" />
+        <path d="M101.5 15V30" />
+        <circle cx="106.5" cy="20" r="5" />
+        <path d="M116.5 15V30" />
+        <circle cx="121.5" cy="20" r="5" />
       </g>
+      <circle cx="81.5" cy="10" r="1.7" fill={inverted ? "#fff" : "#0F172A"} />
     </svg>
   );
 }

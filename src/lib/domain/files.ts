@@ -5,7 +5,7 @@ import { DomainError } from "./leads";
 
 const MB = 1024 * 1024;
 
-/** Tope de un archivo subido desde Bella (Vercel no acepta cuerpos de más de 4,5 MB). Más grande: por enlace. */
+/** Tope de un archivo subido desde Beliapp (Vercel no acepta cuerpos de más de 4,5 MB). Más grande: por enlace. */
 export const FILE_MAX_BYTES = 4 * MB;
 
 /** Máximo que acepta WhatsApp (API de Meta) por tipo de archivo; más pesado, Meta no lo entrega. */

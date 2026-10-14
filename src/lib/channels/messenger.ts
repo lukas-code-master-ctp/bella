@@ -21,7 +21,7 @@ export function missingMessengerEnv(): Promise<string[]> {
 
 export type MetaPlatform = "INSTAGRAM" | "FACEBOOK";
 
-/** Lo que Bella necesita de Instagram y Messenger. Se reemplaza en pruebas. */
+/** Lo que Beliapp necesita de Instagram y Messenger. Se reemplaza en pruebas. */
 export type MessengerApi = {
   sendText(platform: MetaPlatform, to: string, body: string): Promise<string>;
   sendAudio(platform: MetaPlatform, to: string, url: string): Promise<string>;

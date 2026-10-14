@@ -7,10 +7,10 @@ import { DomainError } from "./leads";
 
 /**
  * Registro integrado de WhatsApp (Embedded Signup): el cliente toca "Conectar con Meta", inicia
- * sesión en la ventana de Meta, elige o crea su número y Bella queda conectada sin crear una app
- * ni copiar tokens. Usa la app de Meta de la plataforma (la de Bella como proveedor tecnológico),
+ * sesión en la ventana de Meta, elige o crea su número y Beliapp queda conectada sin crear una app
+ * ni copiar tokens. Usa la app de Meta de la plataforma (la de Beliapp como proveedor tecnológico),
  * configurada en Vercel; sin ella el botón no aparece y se conecta como antes, con Credenciales:
- * - META_PLATFORM_APP_ID y META_PLATFORM_APP_SECRET: la app de Bella.
+ * - META_PLATFORM_APP_ID y META_PLATFORM_APP_SECRET: la app de Beliapp.
  * - META_PLATFORM_CONFIG_ID: la configuración de "Inicio de sesión con Facebook para empresas"
  *   de esa app, con el tipo de registro integrado de WhatsApp.
  */

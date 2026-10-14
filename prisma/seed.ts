@@ -22,7 +22,7 @@ async function main() {
       console.warn("SEED_ADMIN_PASSWORD no está definida: no se creó el usuario admin.");
     } else {
       await db.user.create({
-        // El primer admin de una instalación nueva es el dueño de Bella (Configuración → Empresas).
+        // El primer admin de una instalación nueva es el dueño de Beliapp (Configuración → Empresas).
         data: { name: "Administrador", email, role: "ADMIN", superadmin: true, passwordHash: await bcrypt.hash(password, 10) },
       });
       console.log(`Admin creado: ${email}`);

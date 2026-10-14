@@ -28,7 +28,7 @@ export class ChannelSendError extends Error {
   }
 }
 
-/** Lo que Bella necesita de WhatsApp. Se reemplaza en pruebas. */
+/** Lo que Beliapp necesita de WhatsApp. Se reemplaza en pruebas. */
 export type WhatsAppApi = {
   /** `from` es el phone_number_id que envía; sin él, WHATSAPP_PHONE_NUMBER_ID. */
   sendText(to: string, body: string, from?: string): Promise<string>;
@@ -200,7 +200,7 @@ export async function lookupWhatsAppNumber(phoneNumberId: string): Promise<{ dis
 }
 
 /**
- * Texto con que se guarda un mensaje que no es texto ni audio. Bella todavía no muestra
+ * Texto con que se guarda un mensaje que no es texto ni audio. Beliapp todavía no muestra
  * imágenes ni documentos, así que el equipo y la IA ven una descripción.
  */
 export function describeMessage(m: WaMessage): string | null {
@@ -231,7 +231,7 @@ export function describeMessage(m: WaMessage): string | null {
       // Una reacción no es un mensaje nuevo que responder.
       return null;
     default:
-      return "[Mensaje que Bella aún no puede mostrar]";
+      return "[Mensaje que Beliapp aún no puede mostrar]";
   }
 }
 
@@ -253,7 +253,7 @@ export type WhatsAppCheck = {
   phone: { display?: string; name?: string; platform?: string; status?: string } | { error: string };
   /** Cuenta de WhatsApp Business del número (de WHATSAPP_BUSINESS_ACCOUNT_ID o del token). */
   wabaId: string | null;
-  /** Si la app de Bella está suscrita a esa cuenta; sin suscripción Meta no manda los mensajes. */
+  /** Si la app de Beliapp está suscrita a esa cuenta; sin suscripción Meta no manda los mensajes. */
   subscribed: boolean | null;
   error?: string;
 };

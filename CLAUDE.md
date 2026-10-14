@@ -1,4 +1,4 @@
-# Bella
+# Beliapp (antes Bella)
 
 CRM de leads con asistente IA. UI y textos en español de Chile.
 

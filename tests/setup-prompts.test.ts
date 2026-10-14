@@ -18,9 +18,9 @@ const status = (over: Partial<SetupStatus> = {}): SetupStatus => ({
 });
 
 describe("Prompts para configurar con Claude", () => {
-  it("Meta: lista lo que falta, marca lo que ya está y trae las URLs de Bella", () => {
+  it("Meta: lista lo que falta, marca lo que ya está y trae las URLs de Beliapp", () => {
     const p = metaSetupPrompt(status());
-    expect(p).toContain("faltan estas credenciales en Bella: Token de WhatsApp, Token de la API de Conversiones.");
+    expect(p).toContain("faltan estas credenciales en Beliapp: Token de WhatsApp, Token de la API de Conversiones.");
     expect(p).toContain("- Clave secreta de la app de Meta (ya está, no la toques)");
     expect(p).not.toContain("- Token de WhatsApp (ya está");
     expect(p).toContain("https://bella.test/api/webhooks/whatsapp");
@@ -58,7 +58,7 @@ describe("Prompts para configurar con Claude", () => {
     const p = metaSetupPrompt(
       status({ missingEnv: [], whatsappNumber: "56912345678", pixel: { enabled: true, datasetId: "999", qualifiedStage: "Calificado" } }),
     );
-    expect(p).toContain("todas las credenciales de Meta ya están en Bella.");
+    expect(p).toContain("todas las credenciales de Meta ya están en Beliapp.");
     expect(p).toContain("ya está (56912345678)");
     expect(p).toContain("ya está (999)");
     expect(p).not.toContain("qué etapa del funnel");

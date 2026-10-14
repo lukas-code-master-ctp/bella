@@ -48,8 +48,8 @@ const GROUPS = [
   ],
 ] as const;
 
-/** Solo el dueño de Bella. */
-const OWNER_GROUP = ["Bella", [["/settings/companies", "Empresas", <Building2 key="i" />]]] as const;
+/** Solo el dueño de Beliapp. */
+const OWNER_GROUP = ["Beliapp", [["/settings/companies", "Empresas", <Building2 key="i" />]]] as const;
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdmin();

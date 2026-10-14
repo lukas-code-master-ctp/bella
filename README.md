@@ -1,4 +1,4 @@
-# Bella
+# Beliapp
 
 CRM de leads con asistente IA: funnel de ventas, etiquetas, asignación automática de ejecutivos,
 tickets ganados/perdidos y una asistente (Claude) que conversa con los leads usando la base de
@@ -75,7 +75,7 @@ los PR no tocan la base (`scripts/db-setup.mjs`): usan la de producción tal com
 
 Las credenciales de cada empresa (Meta, WhatsApp, OpenRouter o Anthropic, Resend) se cargan en
 **Configuración → Credenciales** y se guardan cifradas con una clave derivada de `SESSION_SECRET`
-(si la cambias, hay que volver a cargarlas). Si una no está ahí, Bella usa la variable de entorno
+(si la cambias, hay que volver a cargarlas). Si una no está ahí, Beliapp usa la variable de entorno
 del mismo nombre, así las instalaciones que ya las tienen en Vercel siguen funcionando.
 4. Para el resto (Meta, la asistente, el funnel y los ejecutivos), entra a **Configuración →
    Configurar con Claude**, copia los prompts y pégalos en Claude con acceso a tu navegador. Sirven
@@ -113,7 +113,7 @@ está encendida (Configuración → Canales).
 
 ## WhatsApp
 
-Bella usa la API oficial de WhatsApp Cloud, directa con Meta. Pasos:
+Beliapp usa la API oficial de WhatsApp Cloud, directa con Meta. Pasos:
 
 1. En [developers.facebook.com](https://developers.facebook.com) crea una app tipo "Empresa" con el
    producto WhatsApp y agrega el número.
@@ -156,11 +156,11 @@ en la app.
 
 ## Revisión de la app de Meta
 
-Bella publica lo que Meta pide para revisar la app: la política de privacidad en `/privacidad` y
+Beliapp publica lo que Meta pide para revisar la app: la política de privacidad en `/privacidad` y
 las instrucciones de borrado en `/eliminacion-de-datos` (ambas públicas). En la app de Meta,
 Configuración → Básica, pega la URL de la política y, como "URL de devolución de llamada de
 eliminación de datos", `https://<tu-dominio>/api/webhooks/meta/data-deletion`: cuando alguien pide
-borrar sus datos, Bella elimina sus contactos de Instagram o Facebook (con leads y conversaciones)
+borrar sus datos, Beliapp elimina sus contactos de Instagram o Facebook (con leads y conversaciones)
 y sus comentarios, y le entrega un código para consultar el estado. La empresa responsable y el
 correo de contacto se editan en Configuración → Canales.
 

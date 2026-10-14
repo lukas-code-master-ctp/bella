@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { readSession, SESSION_COOKIE } from "./session-token";
 
 /**
- * Bella atiende a varias empresas con una sola base: cada dato lleva su companyId y `db`
+ * Beliapp atiende a varias empresas con una sola base: cada dato lleva su companyId y `db`
  * (db.ts) filtra y completa ese campo solo. La empresa de cada consulta sale, en orden, de:
  * 1. `withCompany(id, fn)`: webhooks, cron y pruebas, que no tienen sesión.
  * 2. La sesión del usuario (el token lleva su empresa).

@@ -15,7 +15,7 @@ export function listWhatsAppNumbers() {
   return db.whatsAppNumber.findMany({ orderBy: { createdAt: "asc" }, include: { funnel: true } });
 }
 
-/** phone_number_id que Bella atiende: el principal (Credenciales) y los agregados. */
+/** phone_number_id que Beliapp atiende: el principal (Credenciales) y los agregados. */
 export async function whatsappPhoneIds(): Promise<string[]> {
   const extra = await db.whatsAppNumber.findMany({ select: { phoneNumberId: true } });
   const env = await credential("WHATSAPP_PHONE_NUMBER_ID");

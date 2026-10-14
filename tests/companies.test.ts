@@ -60,7 +60,7 @@ describe("Empresas", () => {
     expect(await rootDb.company.count()).toBe(2);
   });
 
-  it("solo el dueño de Bella trabaja en otra empresa que la suya", async () => {
+  it("solo el dueño de Beliapp trabaja en otra empresa que la suya", async () => {
     const user = { companyId: "empresa-a", superadmin: false };
     expect(canWorkIn(user, "empresa-a")).toBe(true);
     expect(canWorkIn(user, "empresa-b")).toBe(false);

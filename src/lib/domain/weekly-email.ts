@@ -10,7 +10,7 @@ import { REPORT_SECTIONS, type WeeklyReport, type WeeklyStats } from "../ai/week
  */
 export type WeeklyEmailSettings = {
   enabled: boolean;
-  /** Ej. "Bella <reportes@miempresa.cl>". */
+  /** Ej. "Beliapp <reportes@miempresa.cl>". */
   from: string;
   /** Mandarlo a todos los admins activos. */
   toAdmins: boolean;
@@ -66,7 +66,7 @@ export function renderWeeklyEmail(insight: Pick<WeeklyInsight, "id" | "periodSta
     "",
     report.summary,
     ...sections.flatMap((s) => ["", s.title, ...report[s.key].map((i) => `- ${i}`)]),
-    ...(link ? ["", `Ver en Bella: ${link}`] : []),
+    ...(link ? ["", `Ver en Beliapp: ${link}`] : []),
   ].join("\n");
 
   const html = [
@@ -82,7 +82,7 @@ export function renderWeeklyEmail(insight: Pick<WeeklyInsight, "id" | "periodSta
         "</ul>",
     ),
     link
-      ? `<p style="margin-top:24px"><a href="${escapeHtml(link)}" style="background:#7c3aed;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Ver en Bella</a></p>`
+      ? `<p style="margin-top:24px"><a href="${escapeHtml(link)}" style="background:#7c3aed;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Ver en Beliapp</a></p>`
       : "",
     `<p style="color:#6b6380;font-size:12px;margin-top:24px">Generado por la IA. Revisa los datos antes de tomar decisiones importantes.</p>`,
     `</div>`,

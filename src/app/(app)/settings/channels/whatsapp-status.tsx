@@ -22,7 +22,7 @@ function Row({ ok, title, children }: { ok: boolean | null; title: string; child
 
 /**
  * Diagnóstico de WhatsApp: qué dice Meta del número y de la suscripción de la app, y cuál fue el
- * último aviso que llegó al webhook. Responde a "escribí al número y no llegó nada a Bella".
+ * último aviso que llegó al webhook. Responde a "escribí al número y no llegó nada a Beliapp".
  */
 export async function WhatsAppStatus() {
   const [check, log] = await Promise.all([checkWhatsApp(), getWhatsAppWebhookLog()]);
@@ -42,7 +42,7 @@ export async function WhatsAppStatus() {
               {notCloud && (
                 <span className="block text-rose-700">
                   El número no está en la API de WhatsApp Cloud ({phone.platform}). Si sigue conectado a otro
-                  proveedor, hay que desconectarlo de ahí y registrarlo en la app de Meta de Bella.
+                  proveedor, hay que desconectarlo de ahí y registrarlo en la app de Meta de Beliapp.
                 </span>
               )}
             </>
@@ -54,7 +54,7 @@ export async function WhatsAppStatus() {
           {check.subscribed === false && (
             <>
               <span className="block">
-                Meta no le manda a Bella los mensajes de esta cuenta hasta que la app esté suscrita.
+                Meta no le manda a Beliapp los mensajes de esta cuenta hasta que la app esté suscrita.
               </span>
               <form action={subscribeWhatsAppAction} className="mt-2">
                 <input type="hidden" name="wabaId" value={check.wabaId ?? ""} />
@@ -76,7 +76,7 @@ export async function WhatsAppStatus() {
               </span>
             </>
           ) : (
-            "Bella no ha recibido ningún aviso de Meta. Revisa que el webhook esté verificado con la URL de arriba, que el campo messages esté suscrito y que la app esté en modo Activo."
+            "Beliapp no ha recibido ningún aviso de Meta. Revisa que el webhook esté verificado con la URL de arriba, que el campo messages esté suscrito y que la app esté en modo Activo."
           )}
         </Row>
       </ul>

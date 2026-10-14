@@ -38,7 +38,7 @@ export default async function FollowUpsPage() {
         />
       </Panel>
       <Callout tone="neutral">
-        Los seguimientos vencidos se revisan cada 15 minutos con el cron de Vercel y, mientras alguien del equipo usa Bella,
+        Los seguimientos vencidos se revisan cada 15 minutos con el cron de Vercel y, mientras alguien del equipo usa Beliapp,
         cada {FOLLOW_UP_CHECK_MS / 60_000} minutos. Si la asistente decide que no corresponde escribir (por ejemplo, el
         cliente se despidió), no insiste.
       </Callout>
