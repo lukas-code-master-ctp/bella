@@ -1,11 +1,10 @@
 import type { Preset } from "../domain/presets";
 
 /**
- * Configuración de Valentina, la asistente de Compra Tu Parcela, traída desde su agente en
- * Vambe ("Asistente2.0", V3): instrucciones, rutas, embudo, etiquetas y base de conocimiento.
- * Los textos son los de Vambe, adaptados a Bella: "Proyectos Vambe.xlsx" pasa a ser el
- * inventario (search_inventory), las funciones de Vambe pasan a las herramientas de Bella,
- * las "tareas" para el ejecutivo se crean con create_task, y Bella no envía imágenes.
+ * Configuración de Valentina, la asistente de Compra Tu Parcela: instrucciones, rutas, embudo,
+ * etiquetas y base de conocimiento, con los textos del cliente. La planilla de proyectos es el
+ * inventario (search_inventory), las "tareas" para el ejecutivo se crean con create_task, y
+ * Bella no envía imágenes.
  */
 
 const PERSONALIDAD = `Eres Valentina, asesora comercial de Compra Tu Parcela, una inmobiliaria especializada en venta de parcelas con más de 10 años de trayectoria.
@@ -55,10 +54,10 @@ const RESTRICCIONES = `- Nunca inventar ni estimar precios. Si el precio de un p
 - Nunca responder preguntas ni mantener conversaciones sobre temas ajenos a Compra Tu Parcela, sus proyectos o el proceso de compra de parcelas.
 - Nunca confirmar que una parcela específica está disponible sin haberlo verificado en el inventario (search_inventory). Si no tienes certeza, indica que verificarás la disponibilidad y ofrece conectar al cliente con un ejecutivo.`;
 
-const FUENTES = `- El inventario (search_inventory) es la planilla "Proyectos Vambe" y es la única fuente de verdad para proyectos, precios, disponibilidad, promociones, financiamiento, ubicación, links, distancias y topografía.
+const FUENTES = `- El inventario (search_inventory) es la planilla de proyectos y es la única fuente de verdad para proyectos, precios, disponibilidad, promociones, financiamiento, ubicación, links, distancias y topografía.
 - La base de conocimiento (search_knowledge) tiene el Customer Journey y la información de la empresa: úsala para el proceso de venta, los argumentos, el manejo de objeciones y las preguntas sobre la empresa.`;
 
-const HERRAMIENTAS = `Las rutas de Vambe se traducen así a tus herramientas:
+const HERRAMIENTAS = `Las acciones de las rutas se hacen así con tus herramientas:
 - "Mover a [etapa]": usa move_stage con el nombre exacto de la etapa. "Mover a Asistencia Humana" es handoff_to_human.
 - "Crear una tarea para el ejecutivo": usa create_task, con un título que diga qué hacer, el vencimiento y en notes el resumen (datos del cliente y lo acordado). Si además mueves o derivas el lead, deja también un resumen breve en reason.
 - Nombre y correo del cliente: guárdalos con update_contact apenas te los dé. El teléfono ya viene en el estado del CRM cuando el cliente escribe por WhatsApp.
@@ -348,7 +347,7 @@ export const COMPRA_TU_PARCELA: Preset = {
   ],
   inventorySheetUrl:
     "https://docs.google.com/spreadsheets/d/1tFAS2bIQXqG2dbzY6It390rG2NzVaGAze7w2a2a7eME/edit?usp=drivesdk",
-  // Embudo "Compra Tu Parcela" de Vambe. La IA atiende las tres primeras etapas; desde
+  // Embudo "Compra Tu Parcela". La IA atiende las tres primeras etapas; desde
   // Asistencia Humana en adelante la IA se pausa y sigue un ejecutivo. Asistencia Humana va
   // antes de las etapas de visita porque la derivación usa la primera etapa de atención humana.
   stages: [
@@ -424,7 +423,7 @@ export const COMPRA_TU_PARCELA: Preset = {
     },
     { category: "Origen", color: "#db2777", names: ["Sitio web", "Live Ofertas Parcelas"] },
   ],
-  // Campos de cliente de Vambe que no cubren las etiquetas (Plazo, Proyecto e Interés ya lo son).
+  // Campos de cliente que no cubren las etiquetas (Plazo, Proyecto e Interés ya lo son).
   fields: [
     {
       name: "RUT",
@@ -454,8 +453,7 @@ export const COMPRA_TU_PARCELA: Preset = {
       description: "Relevante para los requisitos de compra; guárdalo si el cliente lo menciona.",
     },
   ],
-  // En Vambe la asignación balanceada (Tiare Otarola y Carlos Faundez) está en Inicial y en
-  // Asistencia Humana. Sin ejecutivos listados, la regla reparte entre todos los activos.
+  // Asignación balanceada en Inicial y en Asistencia Humana. Sin ejecutivos listados, la regla reparte entre todos los activos.
   stageRules: [
     { name: "Inicial: ejecutivo con menos carga", stage: "Inicial", strategy: "LEAST_LOADED" },
     { name: "Asistencia Humana: ejecutivo con menos carga", stage: "Asistencia Humana", strategy: "LEAST_LOADED" },
