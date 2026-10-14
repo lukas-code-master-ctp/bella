@@ -40,6 +40,7 @@ const BLOCKED = "El contacto está bloqueado. Desbloquéalo para escribirle.";
 function done(leadId: string) {
   revalidatePath(`/leads/${leadId}`);
   revalidatePath("/funnel");
+  revalidatePath("/chats");
 }
 
 /** Recalcula el resumen y el puntaje después de responder, sin demorar la respuesta. */
