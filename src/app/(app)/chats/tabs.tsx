@@ -14,7 +14,7 @@ export function ChatsTabs({ pendingComments }: { pendingComments: number }) {
     { href: "/chats/simulator", label: "Simulador", icon: <FlaskConical />, active: pathname.startsWith("/chats/simulator"), badge: 0 },
   ];
   return (
-    <nav aria-label="Chats" className="mb-6 flex w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-sm font-semibold sm:w-fit">
+    <nav aria-label="Chats" className="flex w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-sm font-semibold sm:w-fit">
       {tabs.map((t) => (
         <Link
           key={t.href}

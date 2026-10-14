@@ -10,6 +10,7 @@ import { createTask, deleteTask, setTaskDone } from "@/lib/domain/tasks";
 function done(leadId: string) {
   revalidatePath("/tasks");
   revalidatePath(`/leads/${leadId}`);
+  revalidatePath("/chats");
 }
 
 /** Un ejecutivo opera las tareas de sus leads y las que tiene asignadas; el admin, todas. */

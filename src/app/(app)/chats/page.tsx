@@ -10,6 +10,7 @@ import { LinkPending } from "@/components/link-pending";
 import { CHANNEL_OPTIONS } from "./channels";
 import { ChatsShell } from "./filters";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { LeadView } from "../leads/[id]/lead-view";
 
 const PAGE = 100;
 const MAX = 1000;
@@ -24,9 +25,26 @@ export default async function ChatsPage({ searchParams }: { searchParams: Promis
   const isAdmin = user.role === "ADMIN";
   const more = chatFiltersToParams(filters);
   more.set("n", String(Math.min(MAX, take + PAGE)));
+  // El chat abierto vive en la URL (?lead=…): se puede compartir y "atrás" vuelve a la lista.
+  const selected = typeof params.lead === "string" ? params.lead : null;
+  const listQuery = chatFiltersToParams(filters);
+  if (take > PAGE) listQuery.set("n", String(take));
+  const hrefFor = (leadId: string) => {
+    const q = new URLSearchParams(listQuery);
+    q.set("lead", leadId);
+    return `/chats?${q}`;
+  };
+  const listHref = listQuery.size ? `/chats?${listQuery}` : "/chats";
 
   return (
-    <ChatsShell filters={filters} options={options} isAdmin={isAdmin} total={total}>
+    <ChatsShell
+      filters={filters}
+      options={options}
+      isAdmin={isAdmin}
+      total={total}
+      selected={selected}
+      detail={selected ? <LeadView id={selected} back={{ href: listHref, label: "Volver a la lista de chats" }} inPane /> : null}
+    >
       <AutoRefresh />
       {items.length === 0 ? (
         <EmptyState icon={<MessageCircle />} title={countActiveFilters(filters, isAdmin) || filters.q ? "Ningún chat calza con estos filtros" : "Aún no hay chats"}>
@@ -39,7 +57,7 @@ export default async function ChatsPage({ searchParams }: { searchParams: Promis
           <ul className="stagger divide-y divide-slate-100">
             {items.map((c) => (
               <li key={c.leadId}>
-                <ChatRow chat={c} now={now} />
+                <ChatRow chat={c} now={now} href={hrefFor(c.leadId)} selected={c.leadId === selected} />
               </li>
             ))}
           </ul>
@@ -85,14 +103,18 @@ function preview(last: ChatItem["last"]) {
   return { prefix, text };
 }
 
-function ChatRow({ chat: c, now }: { chat: ChatItem; now: Date }) {
+function ChatRow({ chat: c, now, href, selected }: { chat: ChatItem; now: Date; href: string; selected: boolean }) {
   const { prefix, text } = preview(c.last);
   const channel = CHANNEL_OPTIONS.find((o) => o.value === c.channel);
   const waiting = c.attention === "waiting";
   return (
     <Link
-      href={`/leads/${c.leadId}`}
-      className="group relative flex gap-3 px-4 py-3.5 transition-colors duration-150 hover:bg-brand-50/50 focus-visible:bg-brand-50 focus-visible:outline-none"
+      href={href}
+      scroll={false}
+      aria-current={selected ? "true" : undefined}
+      className={`group relative flex gap-3 px-4 py-3.5 transition-colors duration-150 hover:bg-brand-50/50 focus-visible:bg-brand-50 focus-visible:outline-none ${
+        selected ? "bg-brand-50 shadow-[inset_3px_0_0_var(--color-brand-600)]" : ""
+      }`}
     >
       <span className="relative h-fit shrink-0">
         <Avatar name={c.name} size="lg" />

@@ -88,12 +88,17 @@ export function ChatsShell({
   options,
   isAdmin,
   total,
+  selected = null,
+  detail = null,
   children,
 }: {
   filters: ChatFilters;
   options: FilterOptions;
   isAdmin: boolean;
   total: number;
+  /** Lead abierto (?lead=…): la lista se angosta, los filtros se pliegan y la conversación ocupa el resto. */
+  selected?: string | null;
+  detail?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -107,7 +112,9 @@ export function ChatsShell({
 
   function apply(next: ChatFilters) {
     setDraft(next);
-    const query = chatFiltersToParams(next).toString();
+    const params = chatFiltersToParams(next);
+    if (selected) params.set("lead", selected);
+    const query = params.toString();
     startTransition(() => router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false }));
   }
   const set = (patch: Partial<ChatFilters>) => apply({ ...draft, ...patch });
@@ -125,8 +132,8 @@ export function ChatsShell({
   const active = countActiveFilters(draft, isAdmin);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-start">
-      <div className="flex items-center gap-2 lg:hidden">
+    <div className={`grid gap-4 lg:items-start ${selected ? "lg:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[300px_minmax(0,1fr)]"}`}>
+      <div className={`flex items-center gap-2 ${selected ? "max-lg:hidden" : "lg:hidden"}`}>
         <button
           type="button"
           onClick={() => setMobileOpen((o) => !o)}
@@ -148,7 +155,9 @@ export function ChatsShell({
       <aside
         id="chat-filters"
         aria-label="Filtros"
-        className={`${mobileOpen ? "block animate-fade-in" : "hidden"} overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto`}
+        className={`${mobileOpen ? "block animate-fade-in" : "hidden"} overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${
+          selected ? "max-lg:hidden lg:col-start-1" : "lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto"
+        }`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
@@ -289,7 +298,12 @@ export function ChatsShell({
         </Section>
       </aside>
 
-      <section aria-label="Conversaciones" className="min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section
+        aria-label="Conversaciones"
+        className={`min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm ${
+          selected ? "max-lg:hidden lg:col-start-1 lg:flex lg:h-[calc(100dvh-13.5rem)] lg:flex-col lg:overflow-hidden" : ""
+        }`}
+      >
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-3">
           <div className="relative min-w-0 flex-1">
             <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -309,10 +323,14 @@ export function ChatsShell({
             {total === 1 ? "1 chat" : `${total.toLocaleString("es-CL")} chats`}
           </p>
         </div>
-        <div aria-busy={pending} className={`transition-opacity duration-200 ${pending ? "opacity-60" : ""}`}>
+        <div
+          aria-busy={pending}
+          className={`transition-opacity duration-200 ${pending ? "opacity-60" : ""} ${selected ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain" : ""}`}
+        >
           {children}
         </div>
       </section>
+      {detail && <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:row-span-3">{detail}</div>}
     </div>
   );
 }
