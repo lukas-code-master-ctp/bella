@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { Bot, CalendarClock, Headset, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
+import type { Channel } from "@prisma/client";
 import type { Attention } from "@/lib/domain/attention";
 import type { TaskBucket } from "@/lib/domain/tasks";
 import { Avatar, Badge, TagPill } from "@/components/ui";
@@ -15,6 +16,7 @@ export type BoardLead = {
   stageId: string;
   name: string;
   channel: string;
+  channelKey: Channel;
   assignee: string | null;
   aiEnabled: boolean;
   /** Quién lo atiende ahora (ver src/lib/domain/attention.ts). */
@@ -109,13 +111,18 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                     setDragging(null);
                     setOver(null);
                   }}
-                  className={`group relative block cursor-grab overflow-hidden rounded-lg border border-slate-200 bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
-                    dragging === lead.id ? "scale-[0.97] opacity-50" : ""
-                  }`}
+                  className={`group relative block cursor-grab overflow-hidden rounded-lg border bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
+                    lead.attention === "waiting" ? "border-amber-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-amber-400" : "border-slate-200"
+                  } ${dragging === lead.id ? "scale-[0.97] opacity-50" : ""}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-semibold leading-snug text-slate-900 group-hover:text-brand-700">{lead.name}</span>
-                    <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
+                  <div className="flex items-start gap-2">
+                    <ChannelAvatar name={lead.name} channel={lead.channelKey} label={lead.channel} />
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                      <span className="w-full truncate font-semibold leading-snug text-slate-900 group-hover:text-brand-700" title={lead.name}>
+                        {lead.name}
+                      </span>
+                      <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
+                    </div>
                   </div>
                   {lead.summary ? (
                     <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-700">
@@ -138,7 +145,6 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
                     <span className="truncate">{lead.assignee ?? "Sin asignar"}</span>
                     <span className="ml-auto flex shrink-0 items-center gap-2">
                       {lead.score !== null && <ScoreBadge score={lead.score} reason={lead.scoreReason} />}
-                      <span className="text-slate-500">{lead.channel}</span>
                     </span>
                   </div>
                   <LinkPending />
@@ -201,5 +207,23 @@ function TaskDue({ task }: { task: NonNullable<BoardLead["nextTask"]> }) {
       <span className="truncate">{task.title}</span>
       <span className="ml-auto shrink-0 font-medium tabular-nums">{task.due}</span>
     </p>
+  );
+}
+
+const CHANNEL_DOT: Record<Channel, string> = {
+  WHATSAPP: "bg-[#25d366]",
+  INSTAGRAM: "bg-[#e1306c]",
+  FACEBOOK: "bg-[#1877f2]",
+  SIMULATOR: "bg-slate-400",
+};
+
+/** Iniciales del cliente con un punto del color de su canal; el nombre del canal va en el texto accesible. */
+function ChannelAvatar({ name, channel, label }: { name: string; channel: Channel; label: string }) {
+  return (
+    <span className="relative shrink-0" title={label}>
+      <Avatar name={name} />
+      <span aria-hidden className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-white ${CHANNEL_DOT[channel]}`} />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CircleX, FlaskConical, Inbox, MessageCircleWarning, Trophy } from "lucide-react";
+import { FlaskConical, Inbox, MessageCircleWarning } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -9,7 +9,8 @@ import { formatDue } from "@/lib/dates";
 import { bucketOf } from "@/lib/domain/tasks";
 import { listFunnels } from "@/lib/domain/funnels";
 import { CHANNEL_LABEL } from "@/lib/labels";
-import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
+import { buttonClass, Card, EmptyState } from "@/components/ui";
+import { ParamSelect } from "./filters";
 import { Board } from "./board";
 import { AutoRefresh } from "@/components/auto-refresh";
 
@@ -18,10 +19,22 @@ const PER_STAGE = 100;
 export default async function FunnelPage({
   searchParams,
 }: {
-  searchParams: Promise<{ executive?: string; sort?: string; funnel?: string }>;
+  searchParams: Promise<{ executive?: string; sort?: string; funnel?: string; ver?: string }>;
 }) {
   const user = await requireUser();
-  const { executive, sort, funnel: funnelParam } = await searchParams;
+  const query = await searchParams;
+  const { executive, sort, funnel: funnelParam } = query;
+  const onlyWaiting = query.ver === "sin-atender";
+  // Mismo filtro con un parámetro cambiado (null lo quita): los filtros viven en la URL.
+  const hrefWith = (change: Record<string, string | null>) => {
+    const next = new URLSearchParams(Object.entries(query).filter((e): e is [string, string] => typeof e[1] === "string"));
+    for (const [k, v] of Object.entries(change)) {
+      if (v === null) next.delete(k);
+      else next.set(k, v);
+    }
+    const qs = next.toString();
+    return qs ? `/funnel?${qs}` : "/funnel";
+  };
   const funnels = await listFunnels();
   const funnel = funnels.find((f) => f.id === funnelParam) ?? funnels[0];
   const byScore = sort === "score";
@@ -70,63 +83,62 @@ export default async function FunnelPage({
     cards.sort((a, b) => (a.waitingSince?.getTime() ?? Infinity) - (b.waitingSince?.getTime() ?? Infinity));
   }
   const waiting = cards.filter((c) => c.attention === "waiting").length;
+  const shown = onlyWaiting ? cards.filter((c) => c.attention === "waiting") : cards;
 
   return (
     <>
       <AutoRefresh />
-      <PageHeader title={funnels.length > 1 && funnel ? `Funnel: ${funnel.name}` : "Funnel de ventas"} description="Arrastra los leads entre etapas o abre uno para ver la conversación.">
-        <Link href="/chats/simulator" className={buttonClass("primary")}>
+      <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-3">
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Funnel</h1>
+        {funnels.length > 1 && funnel && (
+          <ParamSelect name="funnel" label="Embudo" value={funnel.id} options={funnels.map((f) => ({ value: f.id, label: f.name }))} />
+        )}
+        <dl className="flex items-baseline gap-4 text-sm text-slate-600">
+          <Stat label="Abiertos" value={open.reduce((n, o) => n + o._count._all, 0)} />
+          <Stat label="Ganados" value={count("WON")} />
+          <Stat label="Perdidos" value={count("LOST")} />
+        </dl>
+        <span aria-hidden className="hidden h-6 w-px bg-slate-200 sm:block" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={hrefWith({ ver: onlyWaiting ? null : "sin-atender" })}
+            scroll={false}
+            aria-current={onlyWaiting ? "true" : undefined}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors duration-150 [&_svg]:size-4 ${
+              onlyWaiting ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+            }`}
+          >
+            <MessageCircleWarning aria-hidden />
+            Sin atender
+            <span className="tabular-nums">{waiting}</span>
+          </Link>
+          {user.role === "ADMIN" && (
+            <ParamSelect
+              name="executive"
+              label="Ejecutivo"
+              value={executive ?? ""}
+              options={[
+                { value: "", label: "Todos los ejecutivos" },
+                { value: "none", label: "Sin asignar" },
+                ...executives.map((e) => ({ value: e.id, label: e.name })),
+              ]}
+            />
+          )}
+          <ParamSelect
+            name="sort"
+            label="Orden"
+            value={byScore ? "score" : waitingFirst ? "waiting" : ""}
+            options={[
+              { value: "", label: "Más recientes" },
+              { value: "score", label: "Mayor puntaje" },
+              { value: "waiting", label: "Sin atender primero" },
+            ]}
+          />
+        </div>
+        <Link href="/chats/simulator" className={buttonClass("secondary", "sm", "ml-auto")}>
           <FlaskConical aria-hidden />
           Probar en simulador
         </Link>
-      </PageHeader>
-
-      <div className="stagger mb-6 flex flex-wrap items-center gap-3">
-        <Stat icon={<Inbox />} label="Abiertos" value={open.reduce((n, o) => n + o._count._all, 0)} tone="text-brand-700 bg-brand-50" />
-        <Stat icon={<Trophy />} label="Ganados" value={count("WON")} tone="text-emerald-700 bg-emerald-50" />
-        <Stat icon={<CircleX />} label="Perdidos" value={count("LOST")} tone="text-rose-700 bg-rose-50" />
-        {waiting > 0 && <Stat icon={<MessageCircleWarning />} label="Sin atender" value={waiting} tone="text-amber-700 bg-amber-50" />}
-        <form className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-          {funnels.length > 1 && (
-            <>
-              <label htmlFor="funnel" className="sr-only">
-                Embudo
-              </label>
-              <select id="funnel" name="funnel" defaultValue={funnel?.id} className={`${inputClass} sm:w-48`}>
-                {funnels.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          {user.role === "ADMIN" && (
-            <>
-              <label htmlFor="executive" className="sr-only">
-                Ejecutivo
-              </label>
-              <select id="executive" name="executive" defaultValue={executive ?? ""} className={`${inputClass} sm:w-56`}>
-                <option value="">Todos los ejecutivos</option>
-                <option value="none">Sin asignar</option>
-                {executives.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          <label htmlFor="sort" className="sr-only">
-            Orden
-          </label>
-          <select id="sort" name="sort" defaultValue={byScore ? "score" : waitingFirst ? "waiting" : ""} className={`${inputClass} sm:w-48`}>
-            <option value="">Más recientes</option>
-            <option value="score">Mayor puntaje</option>
-            <option value="waiting">Sin atender primero</option>
-          </select>
-          <button className={buttonClass("secondary")}>Aplicar</button>
-        </form>
       </div>
 
       {stages.length === 0 ? (
@@ -146,13 +158,14 @@ export default async function FunnelPage({
             name,
             color,
             requiresHuman,
-            hidden: openIn(id) - leads.filter((l) => l.stageId === id).length,
+            hidden: onlyWaiting ? 0 : openIn(id) - leads.filter((l) => l.stageId === id).length,
           }))}
-          leads={cards.map(({ lead: l, last, attention, waitingSince }) => ({
+          leads={shown.map(({ lead: l, last, attention, waitingSince }) => ({
             id: l.id,
             stageId: l.stageId,
             name: l.contact.name,
             channel: CHANNEL_LABEL[l.contact.channel],
+            channelKey: l.contact.channel,
             assignee: l.assignee?.name ?? null,
             aiEnabled: l.aiEnabled,
             attention,
@@ -173,16 +186,13 @@ export default async function FunnelPage({
   );
 }
 
-function Stat({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: number; tone: string }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white py-2 pl-2 pr-4 shadow-xs">
-      <span className={`flex size-8 items-center justify-center rounded-lg [&_svg]:size-4 ${tone}`} aria-hidden>
-        {icon}
-      </span>
-      <span className="text-sm text-slate-600">{label}</span>
-      <span key={value} className="inline-block animate-pop text-lg font-bold tabular-nums text-slate-900">
+    <div className="flex items-baseline gap-1.5">
+      <dt>{label}</dt>
+      <dd key={value} className="inline-block animate-pop text-base font-bold tabular-nums text-slate-900">
         {value}
-      </span>
+      </dd>
     </div>
   );
 }
