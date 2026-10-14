@@ -43,7 +43,7 @@ export default async function ChatsPage({ searchParams }: { searchParams: Promis
       isAdmin={isAdmin}
       total={total}
       selected={selected}
-      detail={selected ? <LeadView id={selected} back={{ href: listHref, label: "Volver a la lista de chats" }} inPane /> : null}
+      detail={selected ? <LeadView id={selected} back={{ href: listHref, label: "Volver a la lista de chats" }} layout="pane" /> : null}
     >
       <AutoRefresh />
       {items.length === 0 ? (

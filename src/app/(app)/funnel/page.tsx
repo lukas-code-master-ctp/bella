@@ -11,6 +11,8 @@ import { listFunnels } from "@/lib/domain/funnels";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState } from "@/components/ui";
 import { ParamSelect } from "./filters";
+import { LeadDrawer } from "./lead-drawer";
+import { LeadView } from "../leads/[id]/lead-view";
 import { Board } from "./board";
 import { AutoRefresh } from "@/components/auto-refresh";
 
@@ -19,12 +21,13 @@ const PER_STAGE = 100;
 export default async function FunnelPage({
   searchParams,
 }: {
-  searchParams: Promise<{ executive?: string; sort?: string; funnel?: string; ver?: string }>;
+  searchParams: Promise<{ executive?: string; sort?: string; funnel?: string; ver?: string; lead?: string }>;
 }) {
   const user = await requireUser();
   const query = await searchParams;
   const { executive, sort, funnel: funnelParam } = query;
   const onlyWaiting = query.ver === "sin-atender";
+  const selected = query.lead ?? null;
   // Mismo filtro con un parámetro cambiado (null lo quita): los filtros viven en la URL.
   const hrefWith = (change: Record<string, string | null>) => {
     const next = new URLSearchParams(Object.entries(query).filter((e): e is [string, string] => typeof e[1] === "string"));
@@ -153,6 +156,7 @@ export default async function FunnelPage({
         </Card>
       ) : (
         <Board
+          leadHref={hrefWith({ lead: "__id__" })}
           stages={stages.map(({ id, name, color, requiresHuman }) => ({
             id,
             name,
@@ -181,6 +185,12 @@ export default async function FunnelPage({
             updatedAt: l.updatedAt.toISOString(),
           }))}
         />
+      )}
+
+      {selected && (
+        <LeadDrawer closeHref={hrefWith({ lead: null })} fullHref={`/leads/${selected}`}>
+          <LeadView id={selected} back={{ href: hrefWith({ lead: null }), label: "Cerrar y volver al funnel" }} layout="drawer" />
+        </LeadDrawer>
       )}
     </>
   );
