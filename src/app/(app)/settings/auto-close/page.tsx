@@ -19,7 +19,7 @@ export default async function AutoCloseSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Cierre automático"
-        description="Una vez al día, Bella cierra como perdidos los leads que quedaron sin actividad, para que el funnel no se llene de tickets muertos."
+        description="Una vez al día, Beliapp cierra como perdidos los leads que quedaron sin actividad, para que el funnel no se llene de tickets muertos."
       />
 
       <div className="stagger grid gap-3 sm:grid-cols-3">

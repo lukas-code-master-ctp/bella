@@ -38,7 +38,7 @@ export function parseSignedRequest(signed: string, secret: string | undefined): 
 }
 
 /**
- * Borra todo lo que Bella guarda de una persona de Instagram o Facebook: sus contactos (con sus
+ * Borra todo lo que Beliapp guarda de una persona de Instagram o Facebook: sus contactos (con sus
  * leads, conversaciones y tareas) y sus comentarios. Meta manda el id de la persona en la app,
  * distinto del que llega en los mensajes; `pageIds` son los de la página que se le pudieron
  * asociar. Si no se borra nada, la solicitud queda pendiente de revisión manual en vez de

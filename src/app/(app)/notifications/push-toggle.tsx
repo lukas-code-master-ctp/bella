@@ -78,13 +78,13 @@ export function PushToggle({ publicKey, isAdmin }: { publicKey: string | null; i
       ? "Falta configurar VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY en el servidor. Mientras tanto, los avisos quedan solo aquí."
       : "Los avisos al navegador aún no están configurados. Mientras tanto, revisa esta página.";
   } else if (state === "unsupported") {
-    description = "Este navegador no permite avisos. En iPhone, agrega Bella a la pantalla de inicio y ábrela desde ahí.";
+    description = "Este navegador no permite avisos. En iPhone, agrega Beliapp a la pantalla de inicio y ábrela desde ahí.";
   } else if (state === "denied") {
-    description = "Bloqueaste los avisos de Bella. Habilítalos en los permisos del sitio de tu navegador.";
+    description = "Bloqueaste los avisos de Beliapp. Habilítalos en los permisos del sitio de tu navegador.";
   } else if (state === "on") {
-    description = "Te llegará un aviso a este dispositivo aunque no tengas Bella abierta.";
+    description = "Te llegará un aviso a este dispositivo aunque no tengas Beliapp abierta.";
   } else {
-    description = "Recibe un aviso en este dispositivo cuando un lead te necesite, aunque no tengas Bella abierta.";
+    description = "Recibe un aviso en este dispositivo cuando un lead te necesite, aunque no tengas Beliapp abierta.";
   }
 
   return (

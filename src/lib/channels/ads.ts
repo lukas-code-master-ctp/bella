@@ -8,7 +8,7 @@ import { GRAPH_VERSION } from "./whatsapp";
  */
 export type AdInfo = { adName?: string; adsetName?: string; campaignId?: string; campaignName?: string };
 
-/** Lo que Bella necesita de la API de Marketing. Se reemplaza en pruebas. */
+/** Lo que Beliapp necesita de la API de Marketing. Se reemplaza en pruebas. */
 export type AdsApi = { lookup(adId: string): Promise<AdInfo | null> };
 
 export async function adsToken(): Promise<string | undefined> {

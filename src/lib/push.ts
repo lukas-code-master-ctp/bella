@@ -17,7 +17,7 @@ function configure() {
   if (!configured) {
     const subject =
       process.env.VAPID_SUBJECT ||
-      (process.env.SEED_ADMIN_EMAIL ? `mailto:${process.env.SEED_ADMIN_EMAIL}` : "mailto:avisos@bella.app");
+      (process.env.SEED_ADMIN_EMAIL ? `mailto:${process.env.SEED_ADMIN_EMAIL}` : "mailto:avisos@beliapp.cl");
     webpush.setVapidDetails(subject, publicKey, privateKey);
     configured = true;
   }

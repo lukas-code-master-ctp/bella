@@ -152,7 +152,7 @@ export type ChatResponse = {
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
-/** URL con que OpenRouter identifica a Bella en Logs y Apps; sin HTTP-Referer la app no aparece. */
+/** URL con que OpenRouter identifica a Beliapp en Logs y Apps; sin HTTP-Referer la app no aparece. */
 const APP_URL =
   process.env.APP_URL ??
   (process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -185,7 +185,7 @@ export const openRouterClient: ChatClient = {
             Authorization: `Bearer ${await credential("OPENROUTER_API_KEY")}`,
             "Content-Type": "application/json",
             "HTTP-Referer": APP_URL,
-            "X-Title": "Bella CRM",
+            "X-Title": "Beliapp",
           },
           // allow_fallbacks: si el proveedor del modelo falla o está saturado, OpenRouter prueba otro.
           body: JSON.stringify({ provider: { allow_fallbacks: true }, ...body, usage: { include: true } }),

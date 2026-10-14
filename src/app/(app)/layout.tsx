@@ -27,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     countPendingComments(),
     user.role === "ADMIN" && hasUnseenInsight(user.id),
   ]);
-  // El dueño de Bella puede estar en cualquier empresa: se le muestra en cuál.
+  // El dueño de Beliapp puede estar en cualquier empresa: se le muestra en cuál.
   const company = user.superadmin ? await companyName(await currentCompanyId()) : null;
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">

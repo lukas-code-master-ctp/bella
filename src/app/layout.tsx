@@ -5,7 +5,7 @@ import "./globals.css";
 const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Bella CRM",
+  title: "Beliapp CRM",
   description: "CRM de leads con asistente IA",
 };
 

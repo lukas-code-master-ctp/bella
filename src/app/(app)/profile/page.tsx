@@ -8,7 +8,7 @@ export default async function ProfilePage() {
   const user = await requireUser();
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title="Mi perfil" description="Tus datos y tu contraseña para entrar a Bella." />
+      <PageHeader title="Mi perfil" description="Tus datos y tu contraseña para entrar a Beliapp." />
       <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm animate-rise">
         <Avatar name={user.name} size="lg" />
         <div className="min-w-0">

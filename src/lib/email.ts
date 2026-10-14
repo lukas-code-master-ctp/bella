@@ -8,7 +8,7 @@ import { credential } from "./credentials";
 
 export type Email = { from: string; to: string[]; subject: string; html: string; text: string };
 
-/** Lo que Bella necesita para mandar correos. Se reemplaza en pruebas. */
+/** Lo que Beliapp necesita para mandar correos. Se reemplaza en pruebas. */
 export type EmailSender = { send(email: Email): Promise<string> };
 
 export class EmailError extends Error {}

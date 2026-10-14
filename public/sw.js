@@ -1,14 +1,14 @@
-// Service worker de Bella: muestra los avisos Web Push y abre el lead al tocarlos.
+// Service worker de Beliapp: muestra los avisos Web Push y abre el lead al tocarlos.
 self.addEventListener("push", (event) => {
   let data = {};
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "Bella", body: event.data ? event.data.text() : "" };
+    data = { title: "Beliapp", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
     Promise.all([
-      self.registration.showNotification(data.title || "Bella", {
+      self.registration.showNotification(data.title || "Beliapp", {
         body: data.body || "",
         icon: "/icons/icon-192.png",
         tag: data.tag,

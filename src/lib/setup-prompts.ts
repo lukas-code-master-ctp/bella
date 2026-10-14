@@ -34,7 +34,7 @@ export type SetupStatus = {
 
 const RULES = `Reglas mientras trabajas:
 - Yo inicio sesión y respondo los códigos de verificación y los diálogos de permisos. Cuando aparezca uno, detente y avísame.
-- Los tokens y claves se copian y se pegan directo en Bella → Configuración → Credenciales. Nunca los escribas en el chat, en un documento ni en otro campo.
+- Los tokens y claves se copian y se pegan directo en Beliapp → Configuración → Credenciales. Nunca los escribas en el chat, en un documento ni en otro campo.
 - Antes de crear algo, revisa si ya existe y úsalo. Si no existe, créalo a nombre de mi empresa. Los datos de la empresa (razón social, RUT, dirección, sitio web, correos) pregúntamelos, no los inventes.
 - Pregúntame antes de pagar algo, enviar algo a revisión de Meta o encender algo que le escriba solo a los clientes (respuestas automáticas de la IA, seguimientos, píxel).
 - Si algo no coincide con lo que describo (las pantallas cambian), dime qué ves y propón cómo seguir.
@@ -46,7 +46,7 @@ export const WHATSAPP_MCP_URL = "https://mcp.facebook.com/whatsapp_business_tool
 const WHATSAPP_MCP = `Herramientas de WhatsApp: si tienes conectado el MCP de WhatsApp Business de Meta (herramientas whatsapp_biz_*), úsalo en vez del navegador para lo que cubre: revisar la verificación del negocio (paso 1), agregar, verificar y registrar el número y el método de pago (paso 4), leer los identificadores del número y de la cuenta de WhatsApp (paso 7) y configurar y suscribir el webhook de WhatsApp (paso 8). Con él no envíes mensajes a clientes. Si no lo tienes, dime que puedo agregarlo en claude.ai → Configuración → Conectores como conector personalizado con la dirección ${WHATSAPP_MCP_URL}, y mientras tanto sigue con el navegador. Crear la app, sacar la clave secreta y generar los tokens se hace igual en el navegador.`;
 
 const quickWhatsApp = (s: SetupStatus) =>
-  `WhatsApp se conecta solo con el botón "Conectar con Meta" de ${s.origin}/settings/channels: pídeme que lo toque, que inicie sesión en la ventana de Meta y que elija o cree el número. Con eso Bella guarda las credenciales de WhatsApp y deja su webhook listo, así que en los pasos 3, 4, 6, 7 y 8 sáltate todo lo de WhatsApp (solo revisa que en WhatsApp Manager quede un método de pago, preguntándome antes). Si la empresa solo usará WhatsApp, sáltate también Instagram, Messenger y la app propia.`;
+  `WhatsApp se conecta solo con el botón "Conectar con Meta" de ${s.origin}/settings/channels: pídeme que lo toque, que inicie sesión en la ventana de Meta y que elija o cree el número. Con eso Beliapp guarda las credenciales de WhatsApp y deja su webhook listo, así que en los pasos 3, 4, 6, 7 y 8 sáltate todo lo de WhatsApp (solo revisa que en WhatsApp Manager quede un método de pago, preguntándome antes). Si la empresa solo usará WhatsApp, sáltate también Instagram, Messenger y la app propia.`;
 
 const has = (s: SetupStatus, key: string) => !s.missingEnv.includes(key);
 
@@ -55,7 +55,7 @@ const label = (key: string) => CREDENTIALS.find((c) => c.key === key)?.label ?? 
 const envLine = (s: SetupStatus, key: string, how: string) =>
   `   - ${label(key)}${has(s, key) ? " (ya está, no la toques)" : ""}: ${how}`;
 
-const CREDENTIALS_PAGE = (s: SetupStatus) => `Bella → Configuración → Credenciales (${s.origin}/settings/credentials)`;
+const CREDENTIALS_PAGE = (s: SetupStatus) => `Beliapp → Configuración → Credenciales (${s.origin}/settings/credentials)`;
 
 const namedCompany = (s: SetupStatus) =>
   s.assistant.companyName && s.assistant.companyName !== DEFAULT_ASSISTANT.companyName ? s.assistant.companyName : "";
@@ -65,20 +65,20 @@ const company = (s: SetupStatus) => (namedCompany(s) ? ` de ${namedCompany(s)}` 
 export function metaSetupPrompt(s: SetupStatus): string {
   const urls = companyUrls(s.origin, s.companyId ?? DEFAULT_COMPANY_ID);
   const missing = s.missingEnv.filter((k) => k !== "OPENROUTER_API_KEY");
-  return `Quiero que conectes Meta (WhatsApp, Instagram, Messenger y el píxel) con Bella, el CRM de leads${company(s)} que está en ${s.origin}. Puede que mi empresa parta desde cero en Meta. Toma el control del navegador y hazlo paso a paso.
+  return `Quiero que conectes Meta (WhatsApp, Instagram, Messenger y el píxel) con Beliapp, el CRM de leads${company(s)} que está en ${s.origin}. Puede que mi empresa parta desde cero en Meta. Toma el control del navegador y hazlo paso a paso.
 
 ${RULES}
 
 ${s.quickWhatsApp ? quickWhatsApp(s) : WHATSAPP_MCP}
 
-Estado actual: ${missing.length ? `faltan estas credenciales en Bella: ${missing.map(label).join(", ")}.` : "todas las credenciales de Meta ya están en Bella."}
+Estado actual: ${missing.length ? `faltan estas credenciales en Beliapp: ${missing.map(label).join(", ")}.` : "todas las credenciales de Meta ya están en Beliapp."}
 
 1. Portafolio comercial (business.facebook.com). Si no tengo uno, créalo con los datos de la empresa. En Centro de seguridad revisa si el negocio está verificado; si no, inicia la verificación y dime qué documentos piden (sin ella hay límites de mensajes de WhatsApp y no se puede publicar la app).
 2. Página de Facebook y cuenta de Instagram. Revisa que exista una página de la empresa en el portafolio y una cuenta profesional de Instagram vinculada a ella. Si falta alguna, pregúntame si la creamos o si solo usaremos WhatsApp.
 3. App de Meta (developers.facebook.com → Mis apps). Si ya hay una app con webhooks hacia ${s.origin}, usa esa. Si no, crea una de tipo "Empresa" vinculada al portafolio y agrégale los productos WhatsApp, Messenger, Instagram y Webhooks.
 4. Número de WhatsApp (en la app → WhatsApp → Configuración de la API, o en WhatsApp Manager). Si no hay un número propio registrado, agrégalo: pregúntame cuál usar, avísame que no puede estar activo en la app de WhatsApp del teléfono (si lo está, hay que borrar esa cuenta primero), y pídeme el código que llega por SMS o llamada. Completa el nombre visible y, en WhatsApp Manager → Configuración de pago, pregúntame antes de agregar la tarjeta.
 5. Píxel (Administrador de eventos → Orígenes de datos). Si no hay uno, crea un píxel web a nombre de la empresa.
-6. Usuario del sistema (Configuración del negocio → Usuarios → Usuarios del sistema). Si no hay uno para Bella, crea uno de tipo Administrador. En Asignar activos dale control total de la app, la cuenta de WhatsApp, la página y la cuenta de Instagram; acceso al píxel; y "Ver rendimiento" en la cuenta publicitaria. Los tokens se generan desde este usuario, eligiendo la app y caducidad "Nunca", nunca con mi usuario personal.
+6. Usuario del sistema (Configuración del negocio → Usuarios → Usuarios del sistema). Si no hay uno para Beliapp, crea uno de tipo Administrador. En Asignar activos dale control total de la app, la cuenta de WhatsApp, la página y la cuenta de Instagram; acceso al píxel; y "Ver rendimiento" en la cuenta publicitaria. Los tokens se generan desde este usuario, eligiendo la app y caducidad "Nunca", nunca con mi usuario personal.
 7. Credenciales en ${CREDENTIALS_PAGE(s)}:
 ${envLine(s, "WHATSAPP_TOKEN", "token del usuario del sistema con whatsapp_business_messaging y whatsapp_business_management.")}
 ${envLine(s, "WHATSAPP_PHONE_NUMBER_ID", "en la app → WhatsApp → Configuración de la API, el identificador del número (no el número).")}
@@ -90,21 +90,21 @@ ${envLine(s, "META_PAGE_ID", "id de la página de Facebook (Configuración de la
 ${envLine(s, "META_IG_ACCOUNT_ID", "id de la cuenta profesional de Instagram vinculada a la página.")}
 ${envLine(s, "META_ADS_TOKEN", "opcional: token del usuario del sistema con ads_read, para ver los nombres de campaña.")}
 ${envLine(s, "META_CAPI_TOKEN", "Administrador de eventos → el píxel → Configuración → API de Conversiones → Generar token de acceso.")}
-8. Webhooks en la app (usa el mismo token de verificación del webhook que guardaste en Bella):
+8. Webhooks en la app (usa el mismo token de verificación del webhook que guardaste en Beliapp):
    - WhatsApp → Configuración: URL ${urls.whatsappWebhook}, suscribe el campo messages.
    - Webhooks → objeto Page: URL ${urls.metaWebhook}, campos messages, messaging_postbacks, message_reads y feed.
    - Webhooks → objeto Instagram: URL ${urls.metaWebhook}, campos messages, messaging_postbacks y comments.
    - Suscribe la página a la app (Messenger → Configuración → Generar tokens de acceso → la página → agregar suscripciones).
 9. Publicar la app.${s.legal.contactEmail ? "" : ` Primero, en ${s.origin}/settings/channels completa la empresa responsable y el correo de privacidad (pregúntame cuáles).`} En Configuración de la app → Básica pon la política de privacidad ${urls.privacy}, la URL de eliminación de datos ${urls.dataDeletionCallback}, un ícono y la categoría; luego cambia el modo de la app a Publicado. WhatsApp funciona sin revisión. Para que Instagram y Messenger respondan a clientes que no tienen rol en la app, Meta exige acceso avanzado a pages_messaging, instagram_manage_messages e instagram_manage_comments en Revisión de la app: prepara la solicitud y pregúntame antes de enviarla.
-10. En Bella (${s.origin}/settings):
+10. En Beliapp (${s.origin}/settings):
    - Origen de leads: ${s.whatsappNumber ? `el número de WhatsApp ya está (${s.whatsappNumber}).` : "pon el número de WhatsApp con código de país, solo dígitos."}
    - Píxel de Meta: ${s.pixel.datasetId ? `el id del píxel ya está (${s.pixel.datasetId}).` : "pega el id del píxel (Administrador de eventos → Orígenes de datos)."}${s.pixel.qualifiedStage ? "" : " Pregúntame qué etapa del funnel cuenta como lead calificado."} ${s.pixel.enabled ? "Ya está encendido." : "Déjalo apagado y pregúntame antes de encenderlo."}
-11. Comprueba: en Bella → Configuración → Canales y Píxel de Meta cada credencial debe aparecer con su check verde. Pídeme que escriba "hola" al número de WhatsApp desde mi teléfono y revisa que aparezca en el Funnel.`;
+11. Comprueba: en Beliapp → Configuración → Canales y Píxel de Meta cada credencial debe aparecer con su check verde. Pídeme que escriba "hola" al número de WhatsApp desde mi teléfono y revisa que aparezca en el Funnel.`;
 }
 
 export function assistantSetupPrompt(s: SetupStatus): string {
   const aiKey = has(s, "OPENROUTER_API_KEY");
-  return `Quiero que configures la asistente de IA de Bella, el CRM de leads${company(s)} que está en ${s.origin}. Puede que esté recién instalado, sin nada configurado. Toma el control del navegador; las pantallas están en ${s.origin}/settings.
+  return `Quiero que configures la asistente de IA de Beliapp, el CRM de leads${company(s)} que está en ${s.origin}. Puede que esté recién instalado, sin nada configurado. Toma el control del navegador; las pantallas están en ${s.origin}/settings.
 
 ${RULES}
 

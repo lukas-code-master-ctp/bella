@@ -28,7 +28,7 @@ export function AddWhatsAppNumberForm({ funnels }: { funnels: FunnelOption[] }) 
       <Field label="Id del número" hint="WhatsApp → Configuración de la API.">
         <input name="phoneNumberId" required inputMode="numeric" placeholder="Ej. 123456789012345" className={inputClass} />
       </Field>
-      <Field label="Nombre" hint="Para reconocerlo en Bella.">
+      <Field label="Nombre" hint="Para reconocerlo en Beliapp.">
         <input name="label" placeholder="Ej. Ventas online" className={inputClass} />
       </Field>
       <Field label="Embudo de sus leads nuevos" hint="Vacío: el del canal WhatsApp.">

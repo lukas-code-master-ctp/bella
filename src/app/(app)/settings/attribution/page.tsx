@@ -38,7 +38,7 @@ document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
       <Panel
         icon={<Megaphone />}
         title="Anuncios de Meta"
-        description="Cuando alguien escribe desde un anuncio de clic a WhatsApp, Instagram o Messenger, Meta manda el anuncio en el primer mensaje y Bella lo guarda solo."
+        description="Cuando alguien escribe desde un anuncio de clic a WhatsApp, Instagram o Messenger, Meta manda el anuncio en el primer mensaje y Beliapp lo guarda solo."
         aside={<StatusPill on onLabel="Automático" />}
       >
         <PanelBody>
@@ -50,7 +50,7 @@ document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
                 <>
                   Opcional. Token de un usuario del sistema con permiso ads_read sobre la cuenta publicitaria, para ver el
                   nombre de la campaña y del conjunto de anuncios.
-                  {!hasAdsToken && fallbackToken && " Mientras no esté, Bella prueba con el token de WhatsApp o de la página."}
+                  {!hasAdsToken && fallbackToken && " Mientras no esté, Beliapp prueba con el token de WhatsApp o de la página."}
                 </>,
               ],
             ]}
@@ -61,7 +61,7 @@ document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
       <Panel
         icon={<Link2 />}
         title="Landings y formularios"
-        description="El botón de WhatsApp de la landing apunta a este enlace con sus UTM. Bella los guarda y abre WhatsApp con un código corto al final del mensaje; cuando el mensaje llega, el lead queda con esos UTM."
+        description="El botón de WhatsApp de la landing apunta a este enlace con sus UTM. Beliapp los guarda y abre WhatsApp con un código corto al final del mensaje; cuando el mensaje llega, el lead queda con esos UTM."
       >
         <form action={saveAttributionAction}>
           <PanelBody>

@@ -62,7 +62,7 @@ enum AssignStrategy {
   LEAST_LOADED
 }
 
-/// Empresa que usa Bella. Todos los datos llevan su companyId; "default" es la primera.
+/// Empresa que usa Beliapp. Todos los datos llevan su companyId; "default" es la primera.
 model Company {
   id        String   @id @default(cuid())
   name      String
@@ -78,7 +78,7 @@ model User {
   passwordHash      String
   role              Role      @default(EXECUTIVE)
   active            Boolean   @default(true)
-  /// Dueño de Bella: crea empresas y puede entrar a cualquiera (Configuración → Empresas).
+  /// Dueño de Beliapp: crea empresas y puede entrar a cualquiera (Configuración → Empresas).
   superadmin        Boolean   @default(false)
   createdAt         DateTime  @default(now())
   /// Último cambio de contraseña: invalida las sesiones abiertas antes de esa fecha.
@@ -709,7 +709,7 @@ model DataDeletionRequest {
 }
 
 /// Origen de un lead (ver src/lib/domain/attribution.ts): el anuncio de Meta por el que escribió
-/// (clic a WhatsApp, Instagram o Messenger) o los UTM del enlace de Bella que usó una landing.
+/// (clic a WhatsApp, Instagram o Messenger) o los UTM del enlace de Beliapp que usó una landing.
 /// Se guarda con el primer mensaje que lo trae y no se reemplaza.
 model LeadSource {
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
@@ -809,7 +809,7 @@ model AiUsage {
   @@index([companyId])
 }
 
-/// Webhook saliente (ver src/lib/domain/webhooks.ts): cuando un lead entra a la etapa, Bella envía un
+/// Webhook saliente (ver src/lib/domain/webhooks.ts): cuando un lead entra a la etapa, Beliapp envía un
 /// POST con los datos del lead a la URL (ej. Zapier, Make, n8n o el sistema del cliente).
 model Webhook {
   id        String   @id @default(cuid())
@@ -818,7 +818,7 @@ model Webhook {
   name      String
   url       String
   stageId   String
-  /// Clave con que se firma el cuerpo (HMAC SHA-256 en la cabecera X-Bella-Signature).
+  /// Clave con que se firma el cuerpo (HMAC SHA-256 en la cabecera X-Beliapp-Signature).
   secret    String
   active    Boolean  @default(true)
   createdAt DateTime @default(now())

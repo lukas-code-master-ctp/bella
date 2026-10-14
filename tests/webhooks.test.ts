@@ -40,7 +40,8 @@ describe("webhooks al entrar a una etapa", () => {
       lead: { id: lead.id, contact: { name: "Ana", phone: "+56911112222", channel: "WHATSAPP" } },
     });
     const expected = `sha256=${createHmac("sha256", hook.secret).update(calls[0].body).digest("hex")}`;
-    expect(calls[0].headers["X-Bella-Signature"]).toBe(expected);
+    expect(calls[0].headers["X-Beliapp-Signature"]).toBe(expected);
+    expect(calls[0].headers["X-Bella-Signature"]).toBe(expected); // nombre anterior, por compatibilidad
     expect(await db.webhookDelivery.findFirstOrThrow()).toMatchObject({ status: "SENT", httpStatus: 200 });
 
     // Ya enviado: no se repite.

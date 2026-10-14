@@ -189,7 +189,7 @@ export default async function ChannelsSettingsPage() {
         Agregar o configurar un canal
       </h2>
       <p className="mb-4 text-sm text-slate-600">
-        Bella se conecta directo con Meta. Carga los datos en{" "}
+        Beliapp se conecta directo con Meta. Carga los datos en{" "}
         <Link href="/settings/credentials" className="font-medium text-brand-700 hover:underline">
           Credenciales
         </Link>{" "}
@@ -204,7 +204,7 @@ export default async function ChannelsSettingsPage() {
             <div className="mb-5 rounded-lg border border-brand-100 bg-brand-50 p-4">
               <p className="text-sm font-semibold text-slate-900">Conexión rápida</p>
               <p className="mb-3 text-xs text-slate-600">
-                Inicia sesión con Meta, elige o crea tu número y verifícalo con el código que llega por SMS. Bella guarda las
+                Inicia sesión con Meta, elige o crea tu número y verifícalo con el código que llega por SMS. Beliapp guarda las
                 credenciales y deja el webhook listo. Después agrega un método de pago en WhatsApp Manager para poder
                 escribir fuera de las 24 horas.
               </p>
@@ -250,7 +250,7 @@ export default async function ChannelsSettingsPage() {
                           variant="ghost-danger"
                           size="icon"
                           aria-label={`Quitar ${n.label}`}
-                          confirm={`¿Quitar el número "${n.label}"? Bella deja de recibir sus mensajes y sus clientes se responden por el número principal.`}
+                          confirm={`¿Quitar el número "${n.label}"? Beliapp deja de recibir sus mensajes y sus clientes se responden por el número principal.`}
                           pendingText=""
                         >
                           <Trash2 aria-hidden />
@@ -288,7 +288,7 @@ export default async function ChannelsSettingsPage() {
         <Card className="p-5">
           <CardHeader
             title="Revisión de la app de Meta"
-            description="Meta pide una política de privacidad pública y una forma de eliminar los datos antes de aprobar Instagram y Messenger. Bella las publica con estos datos."
+            description="Meta pide una política de privacidad pública y una forma de eliminar los datos antes de aprobar Instagram y Messenger. Beliapp las publica con estos datos."
           />
           <dl className="space-y-3 text-sm">
             {[

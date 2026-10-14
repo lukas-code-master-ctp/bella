@@ -6,13 +6,14 @@ import { db } from "../db";
 import { DomainError } from "./leads";
 
 /**
- * Webhooks salientes: cuando un lead entra a una etapa, Bella envía un POST con los datos del lead
+ * Webhooks salientes: cuando un lead entra a una etapa, Beliapp envía un POST con los datos del lead
  * a las URLs configuradas para esa etapa (Configuración → Webhooks). Sirve para avisar a otro
  * sistema, por ejemplo agendar la visita en el calendario del cliente o crear la ficha en su ERP.
  *
  * El cuerpo se arma en la misma transacción que el cambio de etapa (así refleja el lead en ese
  * momento) y se envía después; si la URL falla, el cron lo reintenta hasta MAX_ATTEMPTS veces.
- * Cada envío va firmado: X-Bella-Signature = "sha256=" + HMAC-SHA256(clave del webhook, cuerpo).
+ * Cada envío va firmado: X-Beliapp-Signature = "sha256=" + HMAC-SHA256(clave del webhook, cuerpo).
+ * Las cabeceras X-Bella-* (nombre anterior de la app) se siguen enviando para no romper receptores ya configurados.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -193,15 +194,19 @@ async function post(
   payload: unknown,
 ): Promise<PostResult> {
   const body = JSON.stringify(payload);
+  const signature = signWebhook(webhook.secret, body);
   try {
     const res = await send(webhook.url, {
       body,
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": "Bella-Webhooks/1",
+        "User-Agent": "Beliapp-Webhooks/1",
+        "X-Beliapp-Event": WEBHOOK_EVENT,
+        "X-Beliapp-Delivery": deliveryId,
+        "X-Beliapp-Signature": signature,
         "X-Bella-Event": WEBHOOK_EVENT,
         "X-Bella-Delivery": deliveryId,
-        "X-Bella-Signature": signWebhook(webhook.secret, body),
+        "X-Bella-Signature": signature,
       },
     });
     if (res.status >= 200 && res.status < 300) return { ok: true, httpStatus: res.status };

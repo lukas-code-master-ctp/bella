@@ -72,7 +72,7 @@ export async function queuePurchaseTx(tx: Tx, leadId: string, amount: number | n
 
 export type CapiEvent = Record<string, unknown>;
 
-/** Lo que Bella necesita de la API de Conversiones. Se reemplaza en pruebas. */
+/** Lo que Beliapp necesita de la API de Conversiones. Se reemplaza en pruebas. */
 export type ConversionsApi = { send(datasetId: string, events: CapiEvent[], testEventCode?: string): Promise<void> };
 
 export const conversionsApi: ConversionsApi = {
@@ -149,7 +149,7 @@ export function buildEvent(e: EventWithLead, ids: MetaIds): CapiEvent | null {
     event_name: e.kind === "PURCHASE" ? "Purchase" : "Lead",
     action_source: "system_generated",
     user_data: { ...hashed, external_id: [sha256(contact.id)] },
-    custom_data: { ...(base.custom_data ?? {}), lead_event_source: "Bella" },
+    custom_data: { ...(base.custom_data ?? {}), lead_event_source: "Beliapp" },
   };
 }
 
