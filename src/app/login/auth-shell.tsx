@@ -14,7 +14,7 @@ export function AuthShell({ title, description, children }: { title: string; des
     <main className="grid min-h-dvh lg:grid-cols-[1fr_minmax(480px,560px)]">
       <section className="relative hidden overflow-hidden bg-gradient-to-br from-brand-700 via-brand-800 to-brand-900 p-12 text-white lg:flex lg:flex-col">
         <div aria-hidden className="absolute -right-32 -top-32 size-96 animate-float rounded-full bg-brand-500/30 blur-3xl" />
-        <div aria-hidden className="absolute -bottom-40 -left-20 size-96 animate-float rounded-full bg-accent-600/20 blur-3xl [animation-delay:-7s] [animation-direction:alternate-reverse]" />
+        <div aria-hidden className="absolute -bottom-40 -left-20 size-96 animate-float rounded-full bg-sky-brand/25 blur-3xl [animation-delay:-7s] [animation-direction:alternate-reverse]" />
         <Logo inverted />
         <div className="stagger relative mt-auto max-w-lg">
           <h2 className="text-4xl font-bold leading-tight tracking-tight">Tus leads, atendidos al instante.</h2>

@@ -45,7 +45,7 @@ export function renderPasswordResetEmail({ name, link }: { name: string; link: s
   const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#0f172a;line-height:1.5">
 <p>Hola ${escapeHtml(name)}:</p>
 <p>Pediste restablecer tu contraseña. Toca el botón para elegir una nueva. El enlace vence en 1 hora y sirve una sola vez.</p>
-<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Elegir nueva contraseña</a></p>
+<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#2c8040;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Elegir nueva contraseña</a></p>
 <p style="color:#475569;font-size:13px">Si el botón no funciona, copia este enlace: ${escapeHtml(link)}</p>
 <p style="color:#475569;font-size:13px">Si no fuiste tú, ignora este correo: tu contraseña no cambia.</p>
 </div>`;

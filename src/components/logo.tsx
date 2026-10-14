@@ -4,8 +4,8 @@ export function Logo({ inverted = false }: { inverted?: boolean }) {
     <svg viewBox="0 0 129 36" className="h-9 w-auto" role="img" aria-label="Beliapp">
       <defs>
         <linearGradient id="bella-logo-gradient" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8B5CF6" />
-          <stop offset="1" stopColor="#6D28D9" />
+          <stop offset="0" stopColor="#4CA85B" />
+          <stop offset="1" stopColor="#8FC3F0" />
         </linearGradient>
       </defs>
       <rect width="36" height="36" rx="11" fill={inverted ? "rgba(255,255,255,.15)" : "url(#bella-logo-gradient)"} />
@@ -13,7 +13,7 @@ export function Logo({ inverted = false }: { inverted?: boolean }) {
         <path d="M12.5 7.5V28" />
         <circle cx="18.5" cy="22" r="6" />
       </g>
-      <circle cx="24.5" cy="8.5" r="2.5" fill="#DDD6FE" />
+      <circle cx="24.5" cy="8.5" r="2.5" fill="#DCF0DE" />
       <g fill="none" stroke={inverted ? "#fff" : "#0F172A"} strokeWidth="2.8" strokeLinecap="round">
         <path d="M47.5 10V25" />
         <circle cx="52.5" cy="20" r="5" />
