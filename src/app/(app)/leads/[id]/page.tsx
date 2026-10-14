@@ -32,6 +32,7 @@ import { BlockContactForm, CloseLeadForm, FollowUpNowButton, LeadChat, RefreshIn
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
 import { TaskItem } from "../../tasks/task-item";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -126,6 +127,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <AutoRefresh />
       <Card className="flex h-[calc(100dvh-9rem)] min-h-[32rem] flex-col overflow-hidden lg:h-[calc(100dvh-4rem)]">
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
           <Link

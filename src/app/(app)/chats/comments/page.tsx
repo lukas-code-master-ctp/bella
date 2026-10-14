@@ -8,6 +8,7 @@ import { Badge, Card, EmptyState } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { doneCommentAction } from "./actions";
 import { CommentReply } from "./comment-reply";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<{ ver?: string }> }) {
   await requireUser();
@@ -17,6 +18,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
+      <AutoRefresh />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-2xl text-sm text-slate-600">
           Respóndelos en público o pásalos a un mensaje privado: si la persona contesta, entra al funnel como lead.

@@ -11,6 +11,7 @@ import { listFunnels } from "@/lib/domain/funnels";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState, inputClass, PageHeader } from "@/components/ui";
 import { Board } from "./board";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 const PER_STAGE = 100;
 
@@ -72,6 +73,7 @@ export default async function FunnelPage({
 
   return (
     <>
+      <AutoRefresh />
       <PageHeader title={funnels.length > 1 && funnel ? `Funnel: ${funnel.name}` : "Funnel de ventas"} description="Arrastra los leads entre etapas o abre uno para ver la conversación.">
         <Link href="/chats/simulator" className={buttonClass("primary")}>
           <FlaskConical aria-hidden />
