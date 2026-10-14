@@ -71,7 +71,7 @@ export function renderWeeklyEmail(insight: Pick<WeeklyInsight, "id" | "periodSta
 
   const html = [
     `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1c1530;line-height:1.5">`,
-    `<p style="color:#7c3aed;font-weight:bold;margin:0">Resumen semanal</p>`,
+    `<p style="color:#2c8040;font-weight:bold;margin:0">Resumen semanal</p>`,
     `<h1 style="font-size:20px;margin:4px 0">Semana del ${escapeHtml(period)}</h1>`,
     `<p style="color:#6b6380;font-size:14px;margin:0 0 16px">${escapeHtml(numbers)}</p>`,
     `<p style="font-size:15px">${escapeHtml(report.summary)}</p>`,
@@ -82,7 +82,7 @@ export function renderWeeklyEmail(insight: Pick<WeeklyInsight, "id" | "periodSta
         "</ul>",
     ),
     link
-      ? `<p style="margin-top:24px"><a href="${escapeHtml(link)}" style="background:#7c3aed;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Ver en Beliapp</a></p>`
+      ? `<p style="margin-top:24px"><a href="${escapeHtml(link)}" style="background:#2c8040;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Ver en Beliapp</a></p>`
       : "",
     `<p style="color:#6b6380;font-size:12px;margin-top:24px">Generado por la IA. Revisa los datos antes de tomar decisiones importantes.</p>`,
     `</div>`,

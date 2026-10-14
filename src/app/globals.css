@@ -2,19 +2,22 @@
 
 /*
  * Sistema de diseño de Beliapp (generado con ui-ux-pro-max: "CRM SaaS B2B profesional").
- * Morado como color principal (pedido por Lukas), naranjo solo para acentos puntuales,
+ * Verde hoja como color principal con degradado a celeste en el logo (elegido por Lukas, oct. 2026),
+ * naranjo solo para acentos puntuales,
  * fondos slate claros y Plus Jakarta Sans. Contraste de texto AA (4.5:1) en todo.
  */
 @theme {
-  --color-brand-50: #f5f3ff;
-  --color-brand-100: #ede9fe;
-  --color-brand-200: #ddd6fe;
-  --color-brand-300: #c4b5fd;
-  --color-brand-500: #8b5cf6;
-  --color-brand-600: #7c3aed;
-  --color-brand-700: #6d28d9;
-  --color-brand-800: #5b21b6;
-  --color-brand-900: #4c1d95;
+  --color-brand-50: #eff8f0;
+  --color-brand-100: #dcf0de;
+  --color-brand-200: #b9e1be;
+  --color-brand-300: #8fcf98;
+  --color-brand-500: #5fb86a;
+  --color-brand-600: #2c8040;
+  --color-brand-700: #256d35;
+  --color-brand-800: #1f5a2c;
+  --color-brand-900: #1b4a25;
+  /* Celeste del degradado de marca (logo e íconos). */
+  --color-sky-brand: #8fc3f0;
   --color-accent-50: #fff7ed;
   --color-accent-600: #ea580c;
   --color-accent-700: #c2410c;
