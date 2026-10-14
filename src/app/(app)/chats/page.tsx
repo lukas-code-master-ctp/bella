@@ -9,6 +9,7 @@ import { ScoreBadge } from "@/components/score-badge";
 import { LinkPending } from "@/components/link-pending";
 import { CHANNEL_OPTIONS } from "./channels";
 import { ChatsShell } from "./filters";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 const PAGE = 100;
 const MAX = 1000;
@@ -26,6 +27,7 @@ export default async function ChatsPage({ searchParams }: { searchParams: Promis
 
   return (
     <ChatsShell filters={filters} options={options} isAdmin={isAdmin} total={total}>
+      <AutoRefresh />
       {items.length === 0 ? (
         <EmptyState icon={<MessageCircle />} title={countActiveFilters(filters, isAdmin) || filters.q ? "Ningún chat calza con estos filtros" : "Aún no hay chats"}>
           {countActiveFilters(filters, isAdmin) || filters.q
