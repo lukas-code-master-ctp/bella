@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Ban, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, ListTodo, RotateCcw, Sparkles, Target, Trophy } from "lucide-react";
+import { ArrowLeft, Ban, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
@@ -14,7 +14,7 @@ import { sourceLabel } from "@/lib/domain/attribution";
 import { formatAgo, startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
-import { Avatar, Badge, Button, Card, inputClass, TagPill } from "@/components/ui";
+import { Avatar, Badge, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
 import { ScoreBadge } from "@/components/score-badge";
@@ -23,12 +23,12 @@ import {
   moveStageAction,
   cancelFollowUpAction,
   removeTagAction,
-  reopenLeadAction,
   setAssigneeAction,
   toggleAiAction,
-  unblockContactAction,
 } from "./actions";
-import { BlockContactForm, CloseLeadForm, FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
+import { FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
+import { LeadMenu } from "./lead-menu";
+import { LeadTabs } from "./lead-tabs";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
 import { TaskItem } from "../../tasks/task-item";
@@ -137,6 +137,7 @@ export async function LeadView({
   // Mañana a las 10:00 (Chile) como vencimiento sugerido.
   const defaultDue = toLocalInput(new Date(startOfLocalDay(now, 1).getTime() + 10 * 3_600_000));
   const pendingTasks = lead.tasks.filter((t) => !t.completedAt);
+  const otherOpenLead = lead.contact.leads.find((l) => l.id !== lead.id)?.id ?? null;
 
   return (
     <div className="@container">
@@ -203,6 +204,13 @@ export async function LeadView({
                 IA pausada
               </Badge>
             )}
+            <LeadMenu
+              leadId={lead.id}
+              isOpen={isOpen}
+              canReopen={!isOpen && !otherOpenLead}
+              blocked={Boolean(lead.contact.blockedAt)}
+              canMerge={user.role === "ADMIN" && lead.contact.channel !== "SIMULATOR"}
+            />
           </div>
         </div>
 
@@ -230,264 +238,272 @@ export async function LeadView({
 
       {/* En pantallas anchas la página no hace scroll: el chat y el sidebar quedan fijos y solo este panel se desplaza. */}
       <aside
-        className={`relative space-y-4 @3xl:overflow-y-auto @3xl:overscroll-contain @3xl:pr-1.5 ${inPane ? "@3xl:h-[calc(100dvh-10rem)]" : "@3xl:h-[calc(100dvh-4rem)]"}`}
+        className={`relative @3xl:overflow-y-auto @3xl:overscroll-contain @3xl:pr-1.5 ${inPane ? "@3xl:h-[calc(100dvh-10rem)]" : "@3xl:h-[calc(100dvh-4rem)]"}`}
       >
-        <Card className="divide-y divide-slate-100">
-          <section className="p-4">
-            <div className="mb-2.5 flex items-center gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Resumen IA</h2>
-              {lead.score !== null && <ScoreBadge score={lead.score} className="ml-auto" />}
-            </div>
-            {lead.aiSummary ? (
-              <>
-                <p className="flex gap-1.5 text-sm leading-relaxed text-slate-800">
-                  <Sparkles aria-hidden className="mt-1 size-3.5 shrink-0 text-brand-500" />
-                  {lead.aiSummary}
-                </p>
-                {lead.scoreReason && <p className="mt-1.5 text-xs text-slate-600">Puntaje: {lead.scoreReason}</p>}
-              </>
-            ) : (
-              <p className="text-sm text-slate-500">
-                {lead.messages.length ? "Aún sin resumen." : "Se genera cuando haya conversación."}
-              </p>
-            )}
-            {lead.messages.length > 0 && (
-              <RefreshInsightsForm leadId={lead.id} hasSummary={Boolean(lead.aiSummary)} />
-            )}
-          </section>
+        <LeadTabs
+          tabs={[
+            {
+              id: "resumen",
+              label: "Resumen",
+              panel: (
+                <Card className="divide-y divide-slate-100">
+                  {(!isOpen || lead.contact.blockedAt) && (
+                    <section className="space-y-2 p-4">
+                      {!isOpen && (
+                        <p className={`flex items-center gap-2 text-sm font-semibold ${lead.status === "WON" ? "text-emerald-700" : "text-rose-700"}`}>
+                          {lead.status === "WON" ? <Trophy aria-hidden className="size-4" /> : <CircleX aria-hidden className="size-4" />}
+                          {lead.status === "WON"
+                            ? `Ganado${lead.amount ? ` · $${lead.amount.toLocaleString("es-CL")}` : ""}`
+                            : `Perdido · ${lead.lostReason}`}
+                        </p>
+                      )}
+                      {lead.contact.blockedAt && (
+                        <p className="flex items-center gap-2 text-sm text-slate-800">
+                          <Ban aria-hidden className="size-4 shrink-0 text-rose-600" />
+                          Bloqueado el {formatChileDateTime(lead.contact.blockedAt)}
+                          {lead.contact.blockedReason && ` · ${lead.contact.blockedReason}`}
+                        </p>
+                      )}
+                      {!isOpen && otherOpenLead && (
+                        <p className="text-sm text-slate-700">
+                          El contacto ya tiene otro lead abierto:{" "}
+                          <Link href={`/leads/${otherOpenLead}`} className="font-medium text-brand-700 underline">
+                            ver lead
+                          </Link>
+                          .
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-600">Para reabrir o desbloquear, usa el menú ⋯ de arriba.</p>
+                    </section>
+                  )}
+                  <section className="p-4">
+                    <div className="mb-2.5 flex items-center gap-2">
+                      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Resumen IA</h2>
+                      {lead.score !== null && <ScoreBadge score={lead.score} className="ml-auto" />}
+                    </div>
+                    {lead.aiSummary ? (
+                      <>
+                        <p className="flex gap-1.5 text-sm leading-relaxed text-slate-800">
+                          <Sparkles aria-hidden className="mt-1 size-3.5 shrink-0 text-brand-500" />
+                          {lead.aiSummary}
+                        </p>
+                        {lead.scoreReason && <p className="mt-1.5 text-xs text-slate-600">Puntaje: {lead.scoreReason}</p>}
+                      </>
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        {lead.messages.length ? "Aún sin resumen." : "Se genera cuando haya conversación."}
+                      </p>
+                    )}
+                    {lead.messages.length > 0 && (
+                      <RefreshInsightsForm leadId={lead.id} hasSummary={Boolean(lead.aiSummary)} />
+                    )}
+                  </section>
 
-          <Section title="Origen">
-            <LeadOrigin source={lead.source} />
-          </Section>
+                  <Section title="Etapa">
+                    <form action={moveStageAction.bind(null, lead.id)} className="flex gap-2">
+                      <select key={lead.stageId} name="stageId" aria-label="Etapa" defaultValue={lead.stageId} className={inputClass}>
+                        {stages.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                      <SubmitButton variant="secondary">Mover</SubmitButton>
+                    </form>
+                  </Section>
 
-          <Section title="Etapa">
-            <form action={moveStageAction.bind(null, lead.id)} className="flex gap-2">
-              <select key={lead.stageId} name="stageId" aria-label="Etapa" defaultValue={lead.stageId} className={inputClass}>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <SubmitButton variant="secondary">Mover</SubmitButton>
-            </form>
-          </Section>
+                  <Section title="Ejecutivo">
+                    {user.role === "ADMIN" ? (
+                      <form action={setAssigneeAction.bind(null, lead.id)} className="flex gap-2">
+                        <select
+                          key={lead.assigneeId ?? "none"}
+                          name="assigneeId"
+                          aria-label="Ejecutivo"
+                          defaultValue={lead.assigneeId ?? ""}
+                          className={inputClass}
+                        >
+                          <option value="">Sin asignar</option>
+                          {executives.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.name}
+                            </option>
+                          ))}
+                        </select>
+                        <SubmitButton variant="secondary">Asignar</SubmitButton>
+                      </form>
+                    ) : (
+                      <p className="flex items-center gap-2 text-sm text-slate-800">
+                        {lead.assignee && <Avatar name={lead.assignee.name} size="sm" />}
+                        {lead.assignee?.name ?? "Sin asignar"}
+                      </p>
+                    )}
+                  </Section>
 
-          <Section title="Ejecutivo">
-            {user.role === "ADMIN" ? (
-              <form action={setAssigneeAction.bind(null, lead.id)} className="flex gap-2">
-                <select
-                  key={lead.assigneeId ?? "none"}
-                  name="assigneeId"
-                  aria-label="Ejecutivo"
-                  defaultValue={lead.assigneeId ?? ""}
-                  className={inputClass}
-                >
-                  <option value="">Sin asignar</option>
-                  {executives.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
-                <SubmitButton variant="secondary">Asignar</SubmitButton>
-              </form>
-            ) : (
-              <p className="flex items-center gap-2 text-sm text-slate-800">
-                {lead.assignee && <Avatar name={lead.assignee.name} size="sm" />}
-                {lead.assignee?.name ?? "Sin asignar"}
-              </p>
-            )}
-          </Section>
+                  <Section title="Asistente IA">
+                    <form action={toggleAiAction.bind(null, lead.id, !lead.aiEnabled)}>
+                      <SubmitButton variant="secondary" className="w-full" disabled={!isOpen}>
+                        {lead.aiEnabled ? <BotOff aria-hidden /> : <Bot aria-hidden />}
+                        {lead.aiEnabled ? "Pausar IA y tomar la conversación" : "Reactivar IA"}
+                      </SubmitButton>
+                    </form>
+                  </Section>
 
-          <Section title="Asistente IA">
-            <form action={toggleAiAction.bind(null, lead.id, !lead.aiEnabled)}>
-              <SubmitButton variant="secondary" className="w-full" disabled={!isOpen}>
-                {lead.aiEnabled ? <BotOff aria-hidden /> : <Bot aria-hidden />}
-                {lead.aiEnabled ? "Pausar IA y tomar la conversación" : "Reactivar IA"}
-              </SubmitButton>
-            </form>
-          </Section>
+                  {followUps.enabled && isOpen && lead.aiEnabled && (
+                    <Section title="Seguimiento">
+                      <p className="text-sm text-slate-800">
+                        {lead.followUpAt
+                          ? formatChileDateTime(lead.followUpAt)
+                          : "Sin seguimiento programado"}
+                      </p>
+                      {lead.followUpAt && (
+                        <p className="mt-0.5 text-xs text-slate-600">
+                          {lead.followUpReason
+                            ? `Agendado por la IA: ${lead.followUpReason}`
+                            : `Seguimiento ${lead.followUpCount + 1} de ${followUps.delays.length} si no responde`}
+                        </p>
+                      )}
+                      <div className="mt-3 flex gap-2">
+                        <FollowUpNowButton leadId={lead.id} />
+                        {lead.followUpAt && (
+                          <form action={cancelFollowUpAction.bind(null, lead.id)}>
+                            <SubmitButton variant="ghost">Cancelar</SubmitButton>
+                          </form>
+                        )}
+                      </div>
+                    </Section>
+                  )}
 
-          {followUps.enabled && isOpen && lead.aiEnabled && (
-            <Section title="Seguimiento">
-              <p className="text-sm text-slate-800">
-                {lead.followUpAt
-                  ? formatChileDateTime(lead.followUpAt)
-                  : "Sin seguimiento programado"}
-              </p>
-              {lead.followUpAt && (
-                <p className="mt-0.5 text-xs text-slate-600">
-                  {lead.followUpReason
-                    ? `Agendado por la IA: ${lead.followUpReason}`
-                    : `Seguimiento ${lead.followUpCount + 1} de ${followUps.delays.length} si no responde`}
-                </p>
-              )}
-              <div className="mt-3 flex gap-2">
-                <FollowUpNowButton leadId={lead.id} />
-                {lead.followUpAt && (
-                  <form action={cancelFollowUpAction.bind(null, lead.id)}>
-                    <SubmitButton variant="ghost">Cancelar</SubmitButton>
-                  </form>
-                )}
-              </div>
-            </Section>
-          )}
+                  <Section title="Etiquetas">
+                    <div className="mb-3 flex flex-wrap gap-1.5">
+                      {lead.contact.tags.length === 0 && <span className="text-sm text-slate-500">Sin etiquetas</span>}
+                      {lead.contact.tags.map((ct) => (
+                        <form key={ct.tagId} action={removeTagAction.bind(null, lead.id, ct.tagId)} className="inline">
+                          <button aria-label={`Quitar etiqueta ${ct.tag.category}: ${ct.tag.name}`} className="group rounded-full">
+                            <TagPill label={`${ct.tag.category}: ${ct.tag.name}`} color={ct.tag.color} removable />
+                          </button>
+                        </form>
+                      ))}
+                    </div>
+                    <form action={addTagAction.bind(null, lead.id)} className="flex gap-2">
+                      <select name="tagId" aria-label="Agregar etiqueta" className={inputClass} defaultValue="">
+                        <option value="" disabled>
+                          Agregar etiqueta…
+                        </option>
+                        {tags
+                          .filter((t) => !ownTagIds.has(t.id))
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.category}: {t.name}
+                            </option>
+                          ))}
+                      </select>
+                      <SubmitButton variant="secondary">Agregar</SubmitButton>
+                    </form>
+                  </Section>
 
-          <Section title="Etiquetas">
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {lead.contact.tags.length === 0 && <span className="text-sm text-slate-500">Sin etiquetas</span>}
-              {lead.contact.tags.map((ct) => (
-                <form key={ct.tagId} action={removeTagAction.bind(null, lead.id, ct.tagId)} className="inline">
-                  <button aria-label={`Quitar etiqueta ${ct.tag.category}: ${ct.tag.name}`} className="group rounded-full">
-                    <TagPill label={`${ct.tag.category}: ${ct.tag.name}`} color={ct.tag.color} removable />
-                  </button>
-                </form>
-              ))}
-            </div>
-            <form action={addTagAction.bind(null, lead.id)} className="flex gap-2">
-              <select name="tagId" aria-label="Agregar etiqueta" className={inputClass} defaultValue="">
-                <option value="" disabled>
-                  Agregar etiqueta…
-                </option>
-                {tags
-                  .filter((t) => !ownTagIds.has(t.id))
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.category}: {t.name}
-                    </option>
-                  ))}
-              </select>
-              <SubmitButton variant="secondary">Agregar</SubmitButton>
-            </form>
-          </Section>
+                </Card>
+              ),
+            },
+            {
+              id: "datos",
+              label: "Datos",
+              panel: (
+                <Card className="divide-y divide-slate-100">
+                  <Section title="Datos del cliente">
+                    {fields.length ? (
+                      <LeadFieldsForm
+                        leadId={lead.id}
+                        fields={fields.map((f) => ({
+                          id: f.id,
+                          name: f.name,
+                          options: f.type === "OPTIONS" ? f.options : null,
+                          value: f.values[0] ? displayFieldValue(f, f.values[0].value) : "",
+                          byAi: f.values[0]?.updatedBy === "AI",
+                        }))}
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-500">
+                        Sin campos configurados.
+                        {user.role === "ADMIN" && (
+                          <>
+                            {" "}
+                            <Link href="/settings/fields" className="font-medium text-brand-700 hover:underline">
+                              Crear campos
+                            </Link>
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </Section>
 
-          <Section title="Datos del cliente">
-            {fields.length ? (
-              <LeadFieldsForm
-                leadId={lead.id}
-                fields={fields.map((f) => ({
-                  id: f.id,
-                  name: f.name,
-                  options: f.type === "OPTIONS" ? f.options : null,
-                  value: f.values[0] ? displayFieldValue(f, f.values[0].value) : "",
-                  byAi: f.values[0]?.updatedBy === "AI",
-                }))}
-              />
-            ) : (
-              <p className="text-sm text-slate-500">
-                Sin campos configurados.
-                {user.role === "ADMIN" && (
-                  <>
-                    {" "}
-                    <Link href="/settings/fields" className="font-medium text-brand-700 hover:underline">
-                      Crear campos
-                    </Link>
-                  </>
-                )}
-              </p>
-            )}
-          </Section>
+                  <Section title="Origen">
+                    <LeadOrigin source={lead.source} />
+                  </Section>
 
-          <Section title="Resultado">
-            {isOpen ? (
-              <CloseLeadForm leadId={lead.id} />
-            ) : (
-              <div className="space-y-3">
-                <p className={`flex items-center gap-2 text-sm font-semibold ${lead.status === "WON" ? "text-emerald-700" : "text-rose-700"}`}>
-                  {lead.status === "WON" ? <Trophy aria-hidden className="size-4" /> : <CircleX aria-hidden className="size-4" />}
-                  {lead.status === "WON"
-                    ? `Ganado${lead.amount ? ` · $${lead.amount.toLocaleString("es-CL")}` : ""}`
-                    : `Perdido · ${lead.lostReason}`}
-                </p>
-                {lead.contact.leads[0] ? (
-                  <p className="text-sm text-slate-700">
-                    El contacto ya tiene otro lead abierto:{" "}
-                    <Link href={`/leads/${lead.contact.leads[0].id}`} className="font-medium text-brand-700 underline">
-                      ver lead
-                    </Link>
-                    .
-                  </p>
-                ) : (
-                  <form action={reopenLeadAction.bind(null, lead.id)}>
-                    <Button variant="secondary" className="w-full">
-                      <RotateCcw aria-hidden />
-                      Reabrir
-                    </Button>
-                  </form>
-                )}
-              </div>
-            )}
-          </Section>
+                </Card>
+              ),
+            },
+            {
+              id: "tareas",
+              label: "Tareas",
+              count: pendingTasks.length,
+              panel: (
+                <Card className="p-4">
+                  <h2 className="sr-only">Tareas</h2>
+                  {lead.tasks.length === 0 ? (
+                    <p className="mb-3 text-sm text-slate-500">Sin tareas.</p>
+                  ) : (
+                    <ul className="mb-3 divide-y divide-slate-100">
+                      {lead.tasks.map((t) => (
+                        <TaskItem
+                          key={t.id}
+                          task={t}
+                          now={now}
+                          assigneeName={t.assigneeId !== lead.assigneeId ? (t.assignee?.name ?? null) : undefined}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  <TaskForm
+                    leadId={lead.id}
+                    defaultDue={defaultDue}
+                    executives={user.role === "ADMIN" ? executives.map((e) => ({ id: e.id, name: e.name })) : undefined}
+                    defaultAssigneeId={lead.assigneeId}
+                  />
+                </Card>
 
-          <Section title="Bloqueo">
-            {lead.contact.blockedAt ? (
-              <div className="space-y-3">
-                <p className="text-sm text-slate-800">
-                  Bloqueado el {formatChileDateTime(lead.contact.blockedAt)}
-                  {lead.contact.blockedReason && ` · ${lead.contact.blockedReason}`}
-                </p>
-                <form action={unblockContactAction.bind(null, lead.id)}>
-                  <SubmitButton variant="secondary" className="w-full" pendingText="Desbloqueando…">
-                    Desbloquear contacto
-                  </SubmitButton>
-                </form>
-              </div>
-            ) : (
-              <BlockContactForm leadId={lead.id} />
-            )}
-          </Section>
-        </Card>
-
-        <Card className="p-4">
-          <h2 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-            <ListTodo aria-hidden className="size-4" />
-            Tareas
-            {pendingTasks.length > 0 && <span className="normal-case tracking-normal text-slate-500">· {pendingTasks.length} pendientes</span>}
-          </h2>
-          {lead.tasks.length === 0 ? (
-            <p className="mb-3 text-sm text-slate-500">Sin tareas.</p>
-          ) : (
-            <ul className="mb-3 max-h-80 divide-y divide-slate-100 overflow-y-auto">
-              {lead.tasks.map((t) => (
-                <TaskItem
-                  key={t.id}
-                  task={t}
-                  now={now}
-                  assigneeName={t.assigneeId !== lead.assigneeId ? (t.assignee?.name ?? null) : undefined}
-                />
-              ))}
-            </ul>
-          )}
-          <TaskForm
-            leadId={lead.id}
-            defaultDue={defaultDue}
-            executives={user.role === "ADMIN" ? executives.map((e) => ({ id: e.id, name: e.name })) : undefined}
-            defaultAssigneeId={lead.assigneeId}
-          />
-        </Card>
-
-        <Card className="p-4">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-600">Historial</h2>
-          <ol className="max-h-96 overflow-y-auto text-xs">
-            {lead.events.map((e, i) => (
-              <li key={e.id} className="relative pb-4 pl-5 last:pb-0">
-                {i < lead.events.length - 1 && <span aria-hidden className="absolute bottom-0 left-[5px] top-3 w-px bg-slate-200" />}
-                <span aria-hidden className="absolute left-0 top-1 size-[11px] rounded-full border-2 border-brand-500 bg-white" />
-                <div className="flex justify-between gap-2">
-                  <span className="font-medium text-slate-900">
-                    {EVENT_LABEL[e.type] ?? e.type} {describe(e.data as Record<string, unknown>)}
-                  </span>
-                  <time className="shrink-0 tabular-nums text-slate-500">{time(e.createdAt)}</time>
-                </div>
-                <div className="mt-0.5 text-slate-600">
-                  {e.actor === "USER" ? e.user?.name : ACTOR_LABEL[e.actor]}
-                  {e.reason && ` · ${e.reason}`}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </Card>
+              ),
+            },
+            {
+              id: "historial",
+              label: "Historial",
+              panel: (
+                <Card className="p-4">
+                  <h2 className="sr-only">Historial</h2>
+                  {lead.events.length === 0 && <p className="text-sm text-slate-500">Sin movimientos todavía.</p>}
+                  <ol className="text-xs">
+                    {lead.events.map((e, i) => (
+                      <li key={e.id} className="relative pb-4 pl-5 last:pb-0">
+                        {i < lead.events.length - 1 && <span aria-hidden className="absolute bottom-0 left-[5px] top-3 w-px bg-slate-200" />}
+                        <span aria-hidden className="absolute left-0 top-1 size-[11px] rounded-full border-2 border-brand-500 bg-white" />
+                        <div className="flex justify-between gap-2">
+                          <span className="font-medium text-slate-900">
+                            {EVENT_LABEL[e.type] ?? e.type} {describe(e.data as Record<string, unknown>)}
+                          </span>
+                          <time className="shrink-0 tabular-nums text-slate-500">{time(e.createdAt)}</time>
+                        </div>
+                        <div className="mt-0.5 text-slate-600">
+                          {e.actor === "USER" ? e.user?.name : ACTOR_LABEL[e.actor]}
+                          {e.reason && ` · ${e.reason}`}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </Card>
+              ),
+            },
+          ]}
+        />
       </aside>
     </div>
     </div>

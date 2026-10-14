@@ -3,10 +3,10 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, CircleX, Clock, FileText, FlaskConical, MessageCircle, Mic, RefreshCw, Send, Trophy } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, FileText, FlaskConical, MessageCircle, Mic, RefreshCw, Send } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { blockContactAction, closeLeadAction, refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
+import { refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 
@@ -433,44 +433,6 @@ export function RefreshInsightsForm({ leadId, hasSummary }: { leadId: string; ha
   );
 }
 
-export function CloseLeadForm({ leadId }: { leadId: string }) {
-  const [mode, setMode] = useState<"WON" | "LOST" | null>(null);
-  const [error, action] = useActionState(closeLeadAction.bind(null, leadId), null);
-  if (!mode) {
-    return (
-      <div className="flex gap-2">
-        <Button variant="success" className="flex-1" onClick={() => setMode("WON")}>
-          <Trophy aria-hidden />
-          Ganado
-        </Button>
-        <Button variant="danger" className="flex-1" onClick={() => setMode("LOST")}>
-          <CircleX aria-hidden />
-          Perdido
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <form action={action} className="space-y-2">
-      <input type="hidden" name="outcome" value={mode} />
-      {mode === "WON" ? (
-        <input name="amount" inputMode="numeric" aria-label="Monto de la venta (opcional)" placeholder="Monto de la venta (opcional)" autoFocus className={inputClass} />
-      ) : (
-        <input name="lostReason" required aria-label="Motivo de pérdida" placeholder="Motivo de pérdida" autoFocus className={inputClass} />
-      )}
-      {error && <FormMessage>{error}</FormMessage>}
-      <div className="flex gap-2">
-        <SubmitButton variant={mode === "WON" ? "success" : "danger"} className="flex-1">
-          Marcar {mode === "WON" ? "ganado" : "perdido"}
-        </SubmitButton>
-        <Button variant="ghost" type="button" onClick={() => setMode(null)}>
-          Cancelar
-        </Button>
-      </div>
-    </form>
-  );
-}
-
 /** Mantiene el chat desplazado al último mensaje. */
 function ScrollToBottom({ dep }: { dep: number }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -492,39 +454,6 @@ export function FollowUpNowButton({ leadId }: { leadId: string }) {
         Enviar ahora
       </SubmitButton>
       {message && <FormMessage>{message}</FormMessage>}
-    </form>
-  );
-}
-
-/** Bloquear al contacto pide confirmación y un motivo opcional (ej. spam, postulante). */
-export function BlockContactForm({ leadId }: { leadId: string }) {
-  const [open, setOpen] = useState(false);
-  if (!open) {
-    return (
-      <Button variant="ghost-danger" type="button" className="w-full" onClick={() => setOpen(true)}>
-        <Ban aria-hidden />
-        Bloquear contacto
-      </Button>
-    );
-  }
-  return (
-    <form action={blockContactAction.bind(null, leadId)} className="space-y-2">
-      <p className="text-xs text-slate-600">
-        Sus leads abiertos se cierran como perdidos y sus mensajes nuevos se descartan: ni la IA ni el equipo le responden.
-      </p>
-      <label htmlFor="block-reason" className="sr-only">
-        Motivo del bloqueo
-      </label>
-      <input id="block-reason" name="reason" placeholder="Motivo (opcional), ej. spam" className={inputClass} />
-      <div className="flex gap-2">
-        <SubmitButton variant="danger" pendingText="Bloqueando…">
-          <Ban aria-hidden />
-          Bloquear
-        </SubmitButton>
-        <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
-          Cancelar
-        </Button>
-      </div>
     </form>
   );
 }
