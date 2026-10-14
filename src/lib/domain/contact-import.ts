@@ -322,6 +322,12 @@ export async function findDuplicateGroups(): Promise<DuplicateContact[][]> {
     .map((g) => [...g].sort((a, b) => Number(b.linked) - Number(a.linked) || a.createdAt.getTime() - b.createdAt.getTime()));
 }
 
+/** Contactos con el mismo teléfono o correo que `contactId` (sin incluirlo); vacío si no tiene. */
+export async function findDuplicatesOf(contactId: string): Promise<DuplicateContact[]> {
+  const group = (await findDuplicateGroups()).find((g) => g.some((c) => c.id === contactId));
+  return group?.filter((c) => c.id !== contactId) ?? [];
+}
+
 /**
  * Fusiona contactos duplicados en `keepId`: le pasa los leads, las etiquetas (sin pisar las
  * categorías que ya tiene), los campos que le faltan, el teléfono y el correo si no los tiene, y

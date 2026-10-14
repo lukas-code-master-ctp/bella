@@ -16,7 +16,8 @@ export function LeadDrawer({ closeHref, fullHref, children }: { closeHref: strin
   useEffect(() => {
     panel.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") router.push(closeHref, { scroll: false });
+      // Un diálogo o menú abierto dentro del panel se cierra primero con su propio Esc.
+      if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector("dialog[open]")) router.push(closeHref, { scroll: false });
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

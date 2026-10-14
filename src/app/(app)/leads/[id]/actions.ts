@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { afterInCompany } from "@/lib/company-request";
-import { canAccessLead, requireUser } from "@/lib/auth";
+import { canAccessLead, requireAdmin, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getAiConfig, missingKeyMessage } from "@/lib/ai/config";
 import { runAgent } from "@/lib/ai/agent";
@@ -10,6 +10,7 @@ import { sendFollowUpNow } from "@/lib/ai/follow-ups";
 import { withLeadClaim } from "@/lib/ai/respond";
 import { deliverOutbound } from "@/lib/domain/channels";
 import { blockContact, unblockContact } from "@/lib/domain/contacts";
+import { findDuplicatesOf, mergeContacts } from "@/lib/domain/contact-import";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
@@ -239,4 +240,31 @@ export async function unblockContactAction(leadId: string) {
   const { by } = await authorize(leadId);
   await unblockContact(leadId, by);
   done(leadId);
+}
+
+/** Contactos duplicados del lead (mismo teléfono o correo), para fusionarlos desde su ficha. */
+export async function leadDuplicatesAction(leadId: string) {
+  await requireAdmin();
+  const { lead } = await authorize(leadId);
+  return (await findDuplicatesOf(lead.contactId)).map((c) => ({
+    id: c.id,
+    name: c.name,
+    detail: [c.phone, c.email].filter(Boolean).join(" · "),
+    leads: c.leads,
+  }));
+}
+
+/** Fusiona en el contacto del lead los duplicados elegidos. */
+export async function mergeIntoLeadAction(leadId: string, otherIds: string[]): Promise<string | null> {
+  const user = await requireAdmin();
+  const { lead } = await authorize(leadId);
+  try {
+    await mergeContacts(lead.contactId, otherIds, { actor: "USER", userId: user.id });
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  done(leadId);
+  revalidatePath("/settings/contacts");
+  return null;
 }
