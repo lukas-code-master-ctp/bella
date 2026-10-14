@@ -83,9 +83,19 @@ const time = (d: Date) =>
 
 /**
  * Conversación y ficha de un lead. Se usa en su página (/leads/[id]) y como panel dentro de Chats
- * (/chats?lead=…): `back` es adónde lleva la flecha y `inPane` ajusta el alto al panel.
+ * (/chats?lead=…) o el panel lateral del funnel (/funnel?lead=…): `back` es adónde lleva la flecha
+ * y `layout` ajusta los altos a cada lugar.
  */
-export async function LeadView({ id, back = { href: "/funnel", label: "Volver al funnel" }, inPane = false }: { id: string; back?: { href: string; label: string }; inPane?: boolean }) {
+export async function LeadView({
+  id,
+  back = { href: "/funnel", label: "Volver al funnel" },
+  layout = "page",
+}: {
+  id: string;
+  back?: { href: string; label: string };
+  layout?: "page" | "pane" | "drawer";
+}) {
+  const inPane = layout === "pane";
   const user = await requireUser();
   const lead = await db.lead.findUnique({
     where: { id },
@@ -131,8 +141,13 @@ export async function LeadView({ id, back = { href: "/funnel", label: "Volver al
   return (
     <div className="@container">
     <div className="grid gap-6 @3xl:grid-cols-[minmax(0,1fr)_320px]">
-      <AutoRefresh />
-      <Card className={`flex min-h-[32rem] flex-col overflow-hidden ${inPane ? "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-10rem)]" : "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-4rem)]"}`}>
+      {/* Chats y el funnel ya refrescan la página entera. */}
+      {layout === "page" && <AutoRefresh />}
+      <Card
+        className={`flex min-h-[32rem] flex-col overflow-hidden ${
+          layout === "drawer" ? "h-[75dvh]" : inPane ? "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-10rem)]" : "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-4rem)]"
+        }`}
+      >
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
           <Link
             href={back.href}

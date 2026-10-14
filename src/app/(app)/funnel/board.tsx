@@ -37,7 +37,8 @@ export type BoardLead = {
 /** `hidden`: leads abiertos de la etapa que no se cargaron en el tablero. */
 export type BoardStage = { id: string; name: string; color: string; requiresHuman: boolean; hidden: number };
 
-export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLead[] }) {
+/** `leadHref`: enlace al panel del lead, con "__id__" en lugar del id (conserva los filtros de la URL). */
+export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads: BoardLead[]; leadHref: string }) {
   const [optimistic, move] = useOptimistic(leads, (state, { id, stageId }: { id: string; stageId: string }) =>
     state.map((l) => (l.id === id ? { ...l, stageId } : l)),
   );
@@ -101,7 +102,8 @@ export function Board({ stages, leads }: { stages: BoardStage[]; leads: BoardLea
               {items.map((lead) => (
                 <Link
                   key={lead.id}
-                  href={`/leads/${lead.id}`}
+                  href={leadHref.replace("__id__", encodeURIComponent(lead.id))}
+                  scroll={false}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData("text/plain", lead.id);
