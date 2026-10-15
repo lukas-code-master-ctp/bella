@@ -86,3 +86,30 @@ export async function campaignSpend(since: string, until: string): Promise<Campa
     return null;
   }
 }
+
+/**
+ * Pausa una campaña en Meta (status PAUSED). Necesita que el token de anuncios tenga el permiso
+ * ads_management, no solo ads_read. Devuelve null si Meta la pausó o el motivo si no.
+ */
+export async function pauseMetaCampaign(campaignId: string): Promise<string | null> {
+  const token = await adsToken();
+  if (!token) return "Falta el token de anuncios en Configuración → Credenciales.";
+  if (!/^\d+$/.test(campaignId)) return "La campaña no tiene un id de Meta válido.";
+  try {
+    const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${campaignId}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ status: "PAUSED" }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) return null;
+    const json = (await res.json().catch(() => null)) as { error?: { message?: string; code?: number } } | null;
+    // 200 y 10 son errores de permiso: el token tiene ads_read pero no ads_management.
+    if (json?.error?.code === 200 || json?.error?.code === 10) {
+      return "El token de anuncios no tiene permiso para modificar campañas (ads_management).";
+    }
+    return `Meta no pausó la campaña: ${json?.error?.message ?? `error ${res.status}`}`;
+  } catch {
+    return "No se pudo conectar con Meta. Inténtalo de nuevo.";
+  }
+}

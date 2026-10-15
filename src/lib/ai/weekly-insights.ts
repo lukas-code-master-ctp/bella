@@ -6,8 +6,8 @@ import { campaignOf } from "../domain/attribution";
 import { getMetrics } from "../domain/metrics";
 import { pushToUsers } from "../push";
 import { getAssistantSettings } from "../settings";
-import { getAiConfig } from "./config";
-import { defaultAnthropic, openRouterClient, type ProviderClients } from "./providers";
+import { completeOnce } from "./complete";
+import type { ProviderClients } from "./providers";
 
 /**
  * Insights semanales: cada lunes la IA lee las conversaciones de la semana y arma un resumen
@@ -166,34 +166,12 @@ async function buildInput(from: Date, to: Date) {
 export async function generateWeeklyInsight(
   { from, to, clients = {} }: { from: Date; to: Date; clients?: ProviderClients },
 ) {
-  const [{ input, stats }, settings, config] = await Promise.all([buildInput(from, to), getAssistantSettings(), getAiConfig()]);
-  const system = reportPrompt(settings.companyName);
-
-  let text: string;
-  if (config.provider === "anthropic") {
-    const api = clients.anthropic ?? (await defaultAnthropic());
-    const response = await api.beta.messages.create({
-      model: config.model,
-      max_tokens: 3000,
-      system,
-      messages: [{ role: "user", content: input }],
-    });
-    text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
-  } else {
-    const response = await (clients.openrouter ?? openRouterClient).complete({
-      model: config.model,
-      max_tokens: 3000,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: input },
-      ],
-    });
-    text = response.choices?.[0]?.message.content ?? "";
-  }
+  const [{ input, stats }, settings] = await Promise.all([buildInput(from, to), getAssistantSettings()]);
+  const { text, model } = await completeOnce({ system: reportPrompt(settings.companyName), input, clients });
   const report = parseReport(text);
   if (!report) throw new Error(`El resumen semanal no vino en JSON válido: ${text.slice(0, 200)}`);
 
-  const data = { periodStart: from, report, stats, model: config.model, seenBy: [] };
+  const data = { periodStart: from, report, stats, model, seenBy: [] };
   const insight = await db.weeklyInsight.upsert({
     where: { companyId_periodEnd: { companyId: await currentCompanyId(), periodEnd: to } },
     create: { periodEnd: to, ...data },

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChartNoAxesColumn, Clock, Megaphone, Sparkles, Trophy, UserRound } from "lucide-react";
+import { ChartNoAxesColumn, Clock, Megaphone, Sparkles, TriangleAlert, Trophy, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -7,6 +7,7 @@ import { startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { campaignSpend } from "@/lib/channels/ads";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
+import { countActiveCampaignAlerts } from "@/lib/domain/campaign-alerts";
 import { listFunnels } from "@/lib/domain/funnels";
 import { adReturns, formatDuration, getMetrics, type AdReturns, type Metrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
@@ -39,11 +40,12 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   const from = startOfLocalDay(now, -(days - 1));
   // El gasto es de la empresa entera: se cruza solo cuando el admin mira a todo el equipo.
   const withSpend = isAdmin && !assigneeId;
-  const [m, executives, newInsight, spends] = await Promise.all([
+  const [m, executives, newInsight, spends, campaignAlerts] = await Promise.all([
     getMetrics({ from, to: now, assigneeId, funnelId }),
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     isAdmin && hasUnseenInsight(user.id),
     withSpend ? campaignSpend(toLocalInput(from).slice(0, 10), toLocalInput(now).slice(0, 10)) : null,
+    isAdmin ? countActiveCampaignAlerts() : 0,
   ]);
   const ads = spends ? adReturns(m.byCampaign, spends) : null;
   // Entrar a Métricas apaga el "Nuevo" del menú; el botón del resumen lo sigue mostrando en esta visita.
@@ -61,6 +63,15 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             : "Cómo van tus leads, sobre los que entraron en el período."
         }
       >
+        {isAdmin && (
+          <Link href="/metrics/campaigns" className={buttonClass("secondary")}>
+            <TriangleAlert aria-hidden />
+            Campañas en alerta
+            {campaignAlerts > 0 && (
+              <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">{campaignAlerts}</span>
+            )}
+          </Link>
+        )}
         {isAdmin && (
           <Link href="/metrics/insights" className={buttonClass("secondary")}>
             <Sparkles aria-hidden />
@@ -111,6 +122,21 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
           <button className={buttonClass("secondary")}>Ver</button>
         </form>
       </PageHeader>
+
+      {campaignAlerts > 0 && (
+        <Link
+          href="/metrics/campaigns"
+          className="mb-6 flex items-center gap-3 rounded-xl bg-rose-50 p-4 text-sm text-rose-900 ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-100"
+        >
+          <TriangleAlert aria-hidden className="size-5 shrink-0 text-rose-600" />
+          <span>
+            <strong>
+              {campaignAlerts === 1 ? "1 campaña pierde" : `${campaignAlerts} campañas pierden`} casi todos sus leads.
+            </strong>{" "}
+            Mira por qué y qué recomienda la IA.
+          </span>
+        </Link>
+      )}
 
       {t.leads === 0 ? (
         <Card>
