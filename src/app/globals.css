@@ -40,6 +40,7 @@
   --animate-rise: rise 360ms var(--ease-out-soft) backwards;
   --animate-message-in: message-in 280ms var(--ease-out-soft) backwards;
   --animate-slide-in-right: slide-in-right 320ms var(--ease-out-soft) backwards;
+  --animate-sheet-up: sheet-up 320ms var(--ease-out-soft) backwards;
   --animate-pop: pop 320ms var(--ease-spring) backwards;
   --animate-indicator: indicator 280ms var(--ease-out-soft) backwards;
   --animate-float: float 14s ease-in-out infinite alternate;
@@ -93,6 +94,12 @@
     from {
       opacity: 0.4;
       transform: translateX(100%);
+    }
+  }
+  @keyframes sheet-up {
+    from {
+      opacity: 0.4;
+      transform: translateY(100%);
     }
   }
   @keyframes pop {
