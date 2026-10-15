@@ -16,7 +16,6 @@ import { enterCompanyAction } from "./settings/companies/actions";
 import { NavLink } from "./nav-link";
 import { SidebarToggle } from "./sidebar-toggle";
 import { CommandSearch } from "./command-search";
-import { NewLead } from "./new-lead";
 import { BottomNav } from "./bottom-nav";
 import { NewInsightBadge } from "./metrics/new-insight-badge";
 import { Logo } from "@/components/logo";
@@ -99,10 +98,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/funnel" aria-label="Ir al funnel" className="mr-auto overflow-hidden rounded-lg lg:group-data-[compact=true]/shell:mr-0 lg:group-data-[compact=true]/shell:w-9">
             <Logo />
           </Link>
-          {/* En pantallas chicas no hay barra superior: la búsqueda y "Nuevo lead" van aquí, y el resto en la barra inferior. */}
+          {/* En pantallas chicas no hay barra superior: la búsqueda va aquí y el resto en la barra inferior. */}
           <div className="flex items-center gap-1 lg:hidden">
             <CommandSearch compact />
-            <NewLead compact />
           </div>
         </div>
         <nav aria-label="Principal" className="mt-3 hidden flex-1 flex-col gap-1 px-3 pb-3 lg:flex">
@@ -180,8 +178,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <CommandSearch />
           </div>
           <div className="flex items-center gap-1">
-            <NewLead />
-            <span className="w-2" />
             {bell}
             {profile}
           </div>
