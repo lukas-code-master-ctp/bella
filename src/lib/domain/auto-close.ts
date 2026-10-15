@@ -11,6 +11,8 @@ export type AutoCloseSettings = {
   reason: string;
   /** Etapas cuyos leads se cierran como perdidos en la siguiente pasada, sin esperar inactividad. */
   lostStageIds: string[];
+  /** Interruptor de las etapas de descarte; apagado, `lostStageIds` se guarda pero no se usa. */
+  lostStagesEnabled: boolean;
 };
 
 export type AutoCloseRun = { at: string; closed: number };
@@ -20,6 +22,7 @@ export const DEFAULT_AUTO_CLOSE: AutoCloseSettings = {
   days: 7,
   reason: "Sin respuesta del cliente",
   lostStageIds: [],
+  lostStagesEnabled: false,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,7 +41,9 @@ export async function effectiveDays(days: number) {
 
 export async function getAutoCloseSettings(): Promise<AutoCloseSettings> {
   const saved = await getSetting<Partial<AutoCloseSettings>>("autoClose", {});
-  return { ...DEFAULT_AUTO_CLOSE, ...saved };
+  // Lo guardado antes del interruptor: las etapas marcadas seguían activas.
+  const lostStagesEnabled = saved.lostStagesEnabled ?? (saved.lostStageIds?.length ?? 0) > 0;
+  return { ...DEFAULT_AUTO_CLOSE, ...saved, lostStagesEnabled };
 }
 
 /**
@@ -72,7 +77,7 @@ export async function runAutoClose(now = new Date()): Promise<number> {
       -- Un recontacto que la IA agendó con el cliente todavía no llega: el lead sigue vivo.
       AND (l."followUpAt" IS NULL OR l."followUpAt" <= ${now})`;
 
-  const inLostStage = settings.lostStageIds.length
+  const inLostStage = settings.lostStagesEnabled && settings.lostStageIds.length
     ? await db.lead.findMany({
         where: { status: "OPEN", stageId: { in: settings.lostStageIds } },
         select: {

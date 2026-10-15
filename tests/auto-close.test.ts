@@ -104,6 +104,16 @@ describe("cierre automático por inactividad", () => {
     expect(await status(c.id)).toMatchObject({ status: "OPEN", stageId: nuevo.id });
   });
 
+  it("con el interruptor de etapas apagado, no cierra por etapa", async () => {
+    const [, , cotizacion] = await seedFunnel();
+    await setSetting("autoClose", { enabled: true, days: 30, lostStageIds: [cotizacion.id], lostStagesEnabled: false });
+    const a = await createLead({ name: "A", channel: "SIMULATOR" });
+    await moveStage(a.id, cotizacion.id, { actor: "USER" });
+
+    expect(await runAutoClose(now)).toBe(0);
+    expect((await status(a.id)).status).toBe("OPEN");
+  });
+
   it("no toca leads ya cerrados y deja registro de la pasada", async () => {
     await seedFunnel();
     await setSetting("autoClose", { enabled: true, days: 7 });
