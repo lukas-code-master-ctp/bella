@@ -34,3 +34,55 @@ export const marketingApi: AdsApi = {
     }
   },
 };
+
+/** Gasto de una campaña en el período, en la moneda de la cuenta publicitaria. */
+export type CampaignSpend = { campaignId: string; campaignName: string; spend: number };
+
+/** Respuesta de /insights a nivel de campaña. */
+export function parseInsights(json: unknown): CampaignSpend[] {
+  const data = (json as { data?: { campaign_id?: string; campaign_name?: string; spend?: string }[] })?.data ?? [];
+  return data
+    .filter((r) => r.campaign_id && r.campaign_name)
+    .map((r) => ({ campaignId: r.campaign_id!, campaignName: r.campaign_name!, spend: Math.round(Number(r.spend) || 0) }));
+}
+
+/**
+ * Cuánto gastó cada campaña entre dos fechas (AAAA-MM-DD, ambas incluidas) en las cuentas de
+ * META_AD_ACCOUNT_ID, o en todas las que vea el token si no hay. `null` si no hay token o Meta no
+ * responde: Métricas se muestra igual, sin gasto.
+ */
+export async function campaignSpend(since: string, until: string): Promise<CampaignSpend[] | null> {
+  const token = await adsToken();
+  if (!token) return null;
+  const get = async (path: string) => {
+    const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Meta ${res.status}`);
+    return res.json();
+  };
+  try {
+    const configured = ((await credentials()).META_AD_ACCOUNT_ID ?? "")
+      .split(",")
+      .map((s) => s.trim().replace(/^act_/, ""))
+      .filter((s) => /^\d+$/.test(s));
+    const accounts = configured.length
+      ? configured
+      : (((await get("me/adaccounts?fields=account_id&limit=50")) as { data?: { account_id?: string }[] }).data ?? [])
+          .map((a) => a.account_id ?? "")
+          .filter(Boolean);
+    if (!accounts.length) return null;
+    const range = encodeURIComponent(JSON.stringify({ since, until }));
+    const pages = await Promise.all(
+      accounts.map((id) =>
+        get(`act_${id}/insights?level=campaign&fields=campaign_id,campaign_name,spend&time_range=${range}&limit=500`).then(parseInsights),
+      ),
+    );
+    return pages.flat();
+  } catch {
+    // Sin permiso ads_read, cuenta equivocada o sin red.
+    return null;
+  }
+}

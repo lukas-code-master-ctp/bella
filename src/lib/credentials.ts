@@ -84,7 +84,14 @@ export const CREDENTIALS = [
     label: "Token de anuncios (ads_read)",
     group: "meta",
     secret: true,
-    help: "Opcional: muestra el nombre del anuncio y la campaña de cada lead. Sin él se prueba con el de WhatsApp o la página.",
+    help: "Opcional: muestra el nombre del anuncio y la campaña de cada lead, y en Métricas cuánto se gastó y cuánto vendió cada campaña. Sin él se prueba con el de WhatsApp o la página.",
+  },
+  {
+    key: "META_AD_ACCOUNT_ID",
+    label: "Cuentas publicitarias",
+    group: "meta",
+    secret: false,
+    help: "Opcional: id de la cuenta publicitaria (act_123…), o varias separadas por coma. Si queda vacío se usan todas las que el token de anuncios puede ver.",
   },
   {
     key: "META_CAPI_TOKEN",
