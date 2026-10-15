@@ -146,7 +146,7 @@ export async function LeadView({
       {layout === "page" && <AutoRefresh />}
       <Card
         className={`flex min-h-[32rem] flex-col overflow-hidden ${
-          layout === "drawer" ? "h-[75dvh]" : inPane ? "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-10rem)]" : "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-4rem)]"
+          layout === "drawer" ? "h-[75dvh]" : inPane ? "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-13.5rem)]" : "h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-7.5rem)]"
         }`}
       >
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
@@ -238,7 +238,7 @@ export async function LeadView({
 
       {/* En pantallas anchas la página no hace scroll: el chat y el sidebar quedan fijos y solo este panel se desplaza. */}
       <aside
-        className={`relative @3xl:overflow-y-auto @3xl:overscroll-contain @3xl:pr-1.5 ${inPane ? "@3xl:h-[calc(100dvh-10rem)]" : "@3xl:h-[calc(100dvh-4rem)]"}`}
+        className={`relative @3xl:overflow-y-auto @3xl:overscroll-contain @3xl:pr-1.5 ${inPane ? "@3xl:h-[calc(100dvh-13.5rem)]" : "@3xl:h-[calc(100dvh-7.5rem)]"}`}
       >
         <LeadTabs
           tabs={[

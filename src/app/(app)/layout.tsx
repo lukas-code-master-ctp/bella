@@ -1,36 +1,91 @@
 import Link from "next/link";
-import { Bell, ChartNoAxesColumn, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban, UserRoundCog } from "lucide-react";
+import { cookies } from "next/headers";
+import { Bell, Building2, ChartNoAxesColumn, Check, ChevronDown, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban, UserRoundCog } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { afterInCompany } from "@/lib/company-request";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
 import { countUrgentTasks } from "@/lib/domain/tasks";
 import { countPendingComments } from "@/lib/domain/comments";
 import { hasUnseenInsight } from "@/lib/ai/weekly-insights";
-import { companyName } from "@/lib/domain/companies";
+import { companyName, companyOptions } from "@/lib/domain/companies";
 import { currentCompanyId } from "@/lib/tenant";
-import { Avatar } from "@/components/ui";
+import { Avatar, dropdownItemClass } from "@/components/ui";
+import { Dropdown } from "@/components/dropdown";
 import { logoutAction } from "../login/actions";
+import { enterCompanyAction } from "./settings/companies/actions";
 import { NavLink } from "./nav-link";
+import { SidebarToggle } from "./sidebar-toggle";
+import { CommandSearch } from "./command-search";
 import { NewInsightBadge } from "./metrics/new-insight-badge";
 import { Logo } from "@/components/logo";
 import { unreadNotificationCount } from "@/lib/domain/notifications";
 import { UnreadBadge } from "./notifications/unread-badge";
+
+const countBadge = (n: number, tone: string, label: string) => (
+  <span key={n} className={`animate-pop rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white ${tone}`}>
+    <span className="sr-only">, </span>
+    {n}
+    <span className="sr-only"> {label}</span>
+  </span>
+);
+
+const iconButton =
+  "relative flex size-10 items-center justify-center rounded-lg text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   // Además del cron (cada 15 minutos), mientras el equipo usa la app los seguimientos
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   await afterInCompany(runDueFollowUpsIfStale);
-  const [urgentTasks, unread, pendingComments, newInsight] = await Promise.all([
+  const companyId = await currentCompanyId();
+  const [urgentTasks, unread, pendingComments, newInsight, company, companies, cookieStore] = await Promise.all([
     countUrgentTasks(user.id),
     unreadNotificationCount(user.id),
     countPendingComments(),
     user.role === "ADMIN" && hasUnseenInsight(user.id),
+    companyName(companyId),
+    user.superadmin ? companyOptions() : [],
+    cookies(),
   ]);
-  // El dueño de Beliapp puede estar en cualquier empresa: se le muestra en cuál.
-  const company = user.superadmin ? await companyName(await currentCompanyId()) : null;
+  const compact = cookieStore.get("nav")?.value === "compact";
+
+  const bell = (
+    <Link href="/notifications" className={iconButton} title="Avisos">
+      <Bell aria-hidden className="size-5" />
+      <span className="sr-only">Avisos</span>
+      <span className="absolute -right-0.5 -top-0.5 flex">
+        <UnreadBadge initial={unread} />
+      </span>
+    </Link>
+  );
+
+  const profile = (
+    <Dropdown label="Menú de tu cuenta" button={<Avatar name={user.name} size="sm" />} buttonClassName={`${iconButton} rounded-full`}>
+      <div className="border-b border-slate-100 px-3 pb-2 pt-1.5">
+        <p className="truncate text-sm font-semibold text-slate-900">{user.name}</p>
+        <p className="truncate text-xs text-slate-600">{user.role === "ADMIN" ? "Administrador" : "Ejecutivo"}</p>
+      </div>
+      <div className="pt-1">
+        <Link href="/profile" role="menuitem" tabIndex={-1} className={dropdownItemClass()}>
+          <UserRoundCog aria-hidden />
+          Mi perfil
+        </Link>
+        <form action={logoutAction}>
+          <button role="menuitem" tabIndex={-1} className={dropdownItemClass(true)}>
+            <LogOut aria-hidden />
+            Cerrar sesión
+          </button>
+        </form>
+      </div>
+    </Dropdown>
+  );
+
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
+    <div
+      id="app-shell"
+      data-compact={compact}
+      className="group/shell min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:data-[compact=true]:grid-cols-[72px_minmax(0,1fr)]"
+    >
       <a
         href="#contenido"
         className="sr-only z-50 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-700 shadow-lg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -38,100 +93,102 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         Saltar al contenido
       </a>
       <aside className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md lg:flex lg:h-dvh lg:flex-col lg:border-b-0 lg:border-r lg:bg-white">
-        <div className="flex items-center gap-3 px-4 py-2.5 lg:px-5 lg:py-5">
-          <Logo />
-          <div className="ml-auto flex items-center gap-1 lg:hidden">
-            <Link
-              href="/profile"
-              aria-label="Mi perfil"
-              title="Mi perfil"
-              className="flex size-10 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-slate-100"
-            >
-              <Avatar name={user.name} size="sm" />
-            </Link>
-            <form action={logoutAction}>
-              <button
-                aria-label="Cerrar sesión"
-                className="flex size-10 items-center justify-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900"
-              >
-                <LogOut aria-hidden className="size-[18px]" />
-              </button>
-            </form>
-          </div>
-        </div>
-        <nav aria-label="Principal" className="flex flex-wrap gap-1 px-3 pb-2 lg:flex-1 lg:flex-col lg:flex-nowrap lg:px-3 lg:pb-0">
-          <NavLink href="/funnel" icon={<SquareKanban />}>
-            Funnel
-          </NavLink>
-          <NavLink href="/chats" icon={<MessagesSquare />}>
-            Chats
-            {pendingComments > 0 && (
-              <span className="ml-auto rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
-                <span className="sr-only">, </span>
-                {pendingComments}
-                <span className="sr-only"> pendientes</span>
-              </span>
-            )}
-          </NavLink>
-          <NavLink href="/notifications" icon={<Bell />}>
-            Avisos
-            <UnreadBadge initial={unread} />
-          </NavLink>
-          <NavLink href="/tasks" icon={<ListTodo />}>
-            {user.role === "ADMIN" ? "Tareas" : "Mis tareas"}
-            {urgentTasks > 0 && (
-              <span key={urgentTasks} className="ml-auto animate-pop rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white">
-                <span className="sr-only">, </span>
-                {urgentTasks}
-                <span className="sr-only"> vencidas o para hoy</span>
-              </span>
-            )}
-          </NavLink>
-          <NavLink href="/metrics" icon={<ChartNoAxesColumn />}>
-            Métricas
-            {newInsight && <NewInsightBadge />}
-          </NavLink>
-          {user.role === "ADMIN" && (
-            <NavLink href="/settings" icon={<Settings />}>
-              Configuración
-            </NavLink>
-          )}
-        </nav>
-        <div className="hidden items-center gap-3 border-t border-slate-200 p-4 lg:flex">
-          <Link href="/profile" tabIndex={-1} aria-hidden className="rounded-full transition-opacity duration-150 hover:opacity-80">
-            <Avatar name={user.name} />
+        <div className="flex items-center gap-1 px-4 py-2.5 lg:h-14 lg:px-5 lg:py-0 lg:group-data-[compact=true]/shell:justify-center lg:group-data-[compact=true]/shell:px-0">
+          <Link href="/funnel" aria-label="Ir al funnel" className="mr-auto overflow-hidden rounded-lg lg:group-data-[compact=true]/shell:mr-0 lg:group-data-[compact=true]/shell:w-9">
+            <Logo />
           </Link>
-          <div className="min-w-0 flex-1">
-            <Link
-              href="/profile"
-              className="flex items-center gap-1 text-sm font-semibold text-slate-900 hover:text-brand-700"
-              title="Mi perfil: nombre y contraseña"
-            >
-              <span className="truncate">{user.name}</span>
-              <UserRoundCog aria-hidden className="size-3.5 shrink-0 text-slate-400" />
-            </Link>
-            {company ? (
-              <Link href="/settings/companies" className="block truncate text-xs text-brand-700 hover:underline" title="Cambiar de empresa">
-                {company}
-              </Link>
-            ) : (
-              <p className="text-xs text-slate-600">{user.role === "ADMIN" ? "Administrador" : "Ejecutivo"}</p>
-            )}
+          {/* En pantallas chicas la barra superior no existe: sus atajos van aquí. */}
+          <div className="flex items-center gap-1 lg:hidden">
+            <CommandSearch compact />
+            {bell}
+            {profile}
           </div>
-          <form action={logoutAction}>
-            <button
-              aria-label="Cerrar sesión"
-              title="Cerrar sesión"
-              className="flex size-10 items-center justify-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-rose-50 hover:text-rose-700"
-            >
-              <LogOut aria-hidden className="size-[18px]" />
-            </button>
-          </form>
         </div>
+        <nav aria-label="Principal" className="flex flex-wrap gap-1 px-3 pb-2 lg:mt-3 lg:flex-1 lg:flex-col lg:flex-nowrap lg:pb-3">
+          <div role="group" aria-labelledby="nav-trabajo" className="max-lg:contents lg:space-y-1">
+            <p id="nav-trabajo" className="hidden px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:block lg:group-data-[compact=true]/shell:sr-only">
+              Trabajo
+            </p>
+            <NavLink compactable href="/funnel" icon={<SquareKanban />} label="Funnel" />
+            <NavLink compactable
+              href="/chats"
+              icon={<MessagesSquare />}
+              label="Chats"
+              badge={pendingComments > 0 && countBadge(pendingComments, "bg-brand-600", "pendientes")}
+            />
+            <NavLink compactable
+              href="/tasks"
+              icon={<ListTodo />}
+              label={user.role === "ADMIN" ? "Tareas" : "Mis tareas"}
+              badge={urgentTasks > 0 && countBadge(urgentTasks, "bg-rose-600", "vencidas o para hoy")}
+            />
+          </div>
+          <div role="group" aria-labelledby="nav-analisis" className="max-lg:contents lg:mt-5 lg:space-y-1 lg:group-data-[compact=true]/shell:mt-3 lg:group-data-[compact=true]/shell:border-t lg:group-data-[compact=true]/shell:border-slate-100 lg:group-data-[compact=true]/shell:pt-3">
+            <p id="nav-analisis" className="hidden px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:block lg:group-data-[compact=true]/shell:sr-only">
+              Análisis
+            </p>
+            <NavLink compactable href="/metrics" icon={<ChartNoAxesColumn />} label="Métricas" badge={newInsight && <NewInsightBadge />} />
+          </div>
+          <div className="max-lg:contents lg:mt-auto lg:space-y-1 lg:border-t lg:border-slate-100 lg:pt-3">
+            {user.role === "ADMIN" && <NavLink compactable href="/settings" icon={<Settings />} label="Configuración" />}
+            <div className="hidden lg:block">
+              <SidebarToggle initial={compact} />
+            </div>
+          </div>
+        </nav>
       </aside>
-      <main id="contenido" tabIndex={-1} className="min-w-0 px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8">
-        <div className="mx-auto max-w-[1440px]">{children}</div>
-      </main>
+
+      <div className="min-w-0">
+        <header className="sticky top-0 z-20 hidden h-14 items-center gap-4 border-b border-slate-200 bg-white/90 px-8 backdrop-blur-md lg:flex">
+          {user.superadmin ? (
+            <Dropdown
+              label={`Empresa: ${company ?? "sin nombre"}. Cambiar de empresa`}
+              align="left"
+              width="w-72"
+              buttonClassName="flex h-9 max-w-56 items-center gap-2 rounded-lg px-2.5 text-sm font-semibold text-slate-800 transition-colors duration-150 hover:bg-slate-100"
+              button={
+                <>
+                  <Building2 aria-hidden className="size-4 shrink-0 text-slate-500" />
+                  <span className="truncate">{company}</span>
+                  <ChevronDown aria-hidden className="size-4 shrink-0 text-slate-500" />
+                </>
+              }
+            >
+              <div className="max-h-80 overflow-y-auto">
+                {companies.map((c) => (
+                  <form key={c.id} action={enterCompanyAction.bind(null, c.id)}>
+                    <button role="menuitem" tabIndex={-1} aria-current={c.id === companyId ? "true" : undefined} className={dropdownItemClass()}>
+                      <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                      {c.id === companyId && <Check aria-hidden className="text-brand-600" />}
+                    </button>
+                  </form>
+                ))}
+              </div>
+              <div className="mt-1 border-t border-slate-100 pt-1">
+                <Link href="/settings/companies" role="menuitem" tabIndex={-1} className={dropdownItemClass()}>
+                  <Settings aria-hidden />
+                  Administrar empresas
+                </Link>
+              </div>
+            </Dropdown>
+          ) : (
+            <p className="flex max-w-56 items-center gap-2 text-sm font-semibold text-slate-800">
+              <Building2 aria-hidden className="size-4 shrink-0 text-slate-500" />
+              <span className="truncate">{company}</span>
+            </p>
+          )}
+          <div className="flex flex-1 justify-center">
+            <CommandSearch />
+          </div>
+          <div className="flex items-center gap-1">
+            {bell}
+            {profile}
+          </div>
+        </header>
+        <main id="contenido" tabIndex={-1} className="min-w-0 px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8">
+          <div className="mx-auto max-w-[1440px]">{children}</div>
+        </main>
+      </div>
     </div>
   );
 }

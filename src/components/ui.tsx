@@ -187,3 +187,9 @@ export function TypingDots({ className = "" }: { className?: string }) {
     </span>
   );
 }
+
+/** Clase de una opción de un menú desplegable (ver Dropdown) (sirve para <button>, <Link> o el botón de un <form>). */
+export const dropdownItemClass = (danger = false) =>
+  `flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium outline-none transition-colors duration-150 [&_svg]:size-4 [&_svg]:shrink-0 ${
+    danger ? "text-rose-700 hover:bg-rose-50 focus:bg-rose-50" : "text-slate-700 hover:bg-slate-100 focus:bg-slate-100"
+  }`;

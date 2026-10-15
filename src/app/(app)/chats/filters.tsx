@@ -156,7 +156,7 @@ export function ChatsShell({
         id="chat-filters"
         aria-label="Filtros"
         className={`${mobileOpen ? "block animate-fade-in" : "hidden"} overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${
-          selected ? "max-lg:hidden lg:col-start-1" : "lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto"
+          selected ? "max-lg:hidden lg:col-start-1" : "lg:sticky lg:top-20 lg:block lg:max-h-[calc(100dvh-6.5rem)] lg:overflow-y-auto"
         }`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -301,7 +301,7 @@ export function ChatsShell({
       <section
         aria-label="Conversaciones"
         className={`min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm ${
-          selected ? "max-lg:hidden lg:col-start-1 lg:flex lg:h-[calc(100dvh-13.5rem)] lg:flex-col lg:overflow-hidden" : ""
+          selected ? "max-lg:hidden lg:col-start-1 lg:flex lg:h-[calc(100dvh-17rem)] lg:flex-col lg:overflow-hidden" : ""
         }`}
       >
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-3">
