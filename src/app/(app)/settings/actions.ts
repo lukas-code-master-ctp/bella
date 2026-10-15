@@ -10,7 +10,7 @@ import { listOpenRouterModels } from "@/lib/ai/models";
 import { db, rootDb } from "@/lib/db";
 import { currentCompanyId } from "@/lib/tenant";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
-import { getFollowUpSettings, parseDelays, type FollowUpSettings } from "@/lib/domain/follow-ups";
+import { getFollowUpSettings, parseDelays, templateError, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
 import { ChannelSendError, subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
@@ -371,12 +371,20 @@ export async function saveFollowUpsAction(_prev: string | null, form: FormData):
   if (sendFrom === sendTo % 24) return "El horario de envío debe terminar a una hora distinta de la que empieza.";
   const current = await getFollowUpSettings();
   const enabled = form.get("enabled") === "on";
+  const template = {
+    name: str(form, "templateName").toLowerCase(),
+    language: str(form, "templateLanguage") || "es",
+    text: str(form, "templateText"),
+  };
+  const invalid = templateError(template);
+  if (invalid) return invalid;
   await setSetting<FollowUpSettings>("followUps", {
     enabled,
     delays,
     sendFrom,
     sendTo,
     instructions: str(form, "instructions") || current.instructions,
+    template,
   });
   // Al apagarlos se descartan los pendientes, para que al encenderlos no salgan todos de golpe.
   if (!enabled) await db.lead.updateMany({ where: { followUpAt: { not: null } }, data: { followUpAt: null, followUpReason: null } });

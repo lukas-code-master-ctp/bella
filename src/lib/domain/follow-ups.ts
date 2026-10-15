@@ -17,7 +17,14 @@ export type FollowUpSettings = {
   sendTo: number;
   /** Cómo escribir los seguimientos (se suman a las instrucciones de la asistente). */
   instructions: string;
+  /**
+   * Plantilla aprobada en Meta para los seguimientos de WhatsApp que caen pasadas las 24 h. Sin
+   * nombre o texto no se usa. `text` es el cuerpo tal como se aprobó; {{1}} es el nombre del cliente.
+   */
+  template: FollowUpTemplate;
 };
+
+export type FollowUpTemplate = { name: string; language: string; text: string };
 
 export const DEFAULT_FOLLOW_UPS: FollowUpSettings = {
   enabled: false,
@@ -29,6 +36,7 @@ export const DEFAULT_FOLLOW_UPS: FollowUpSettings = {
     "Retoma la conversación de forma breve y cercana, sin presionar. Aporta algo nuevo (una pregunta " +
     "concreta, un dato útil o una opción que le pueda servir) y no repitas tu mensaje anterior. En el " +
     "último seguimiento, pregúntale si prefiere que le escribamos más adelante.",
+  template: { name: "", language: "es", text: "" },
 };
 
 export const TIME_ZONE = "America/Santiago";
@@ -45,7 +53,31 @@ const MAX_SCHEDULE_DAYS = 180;
 type Tx = Prisma.TransactionClient;
 
 export async function getFollowUpSettings(): Promise<FollowUpSettings> {
-  return { ...DEFAULT_FOLLOW_UPS, ...(await getSetting<Partial<FollowUpSettings>>("followUps", {})) };
+  const saved = await getSetting<Partial<FollowUpSettings>>("followUps", {});
+  return { ...DEFAULT_FOLLOW_UPS, ...saved, template: { ...DEFAULT_FOLLOW_UPS.template, ...saved.template } };
+}
+
+/** Hay plantilla de WhatsApp para seguir escribiendo pasadas las 24 h. */
+export function hasTemplate(s: FollowUpSettings): boolean {
+  return Boolean(s.template.name.trim() && s.template.text.trim());
+}
+
+/** Revisa la plantilla antes de guardarla. Devuelve el motivo si no sirve. */
+export function templateError(t: FollowUpTemplate): string | null {
+  if (!t.name && !t.text) return null;
+  if (!t.name || !t.text) return "Para usar una plantilla indica su nombre y su texto.";
+  if (!/^[a-z0-9_]+$/.test(t.name)) return "El nombre de la plantilla va en minúsculas, sin espacios ni tildes (ej. seguimiento_1).";
+  if (!/^[a-z]{2,3}(_[A-Z]{2})?$/.test(t.language)) return 'El idioma de la plantilla es un código como "es" o "es_CL".';
+  const vars = [...t.text.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]);
+  if (vars.some((v) => v !== "1")) return "La plantilla solo puede usar {{1}}, que se reemplaza por el nombre del cliente.";
+  return null;
+}
+
+/** Texto y parámetros de la plantilla para un cliente: {{1}} es su primer nombre. */
+export function renderTemplate(t: FollowUpTemplate, contactName: string): { body: string; params: string[] } {
+  const firstName = contactName.trim().split(/\s+/)[0] || "hola";
+  const usesName = /\{\{\s*1\s*\}\}/.test(t.text);
+  return { body: t.text.replace(/\{\{\s*1\s*\}\}/g, firstName), params: usesName ? [firstName] : [] };
 }
 
 // Plazos ("3h, 1d, 30m")
@@ -65,6 +97,13 @@ export async function replyWindowEnd(client: Tx | typeof db, leadId: string): Pr
     select: { createdAt: true },
   });
   return new Date((last?.createdAt.getTime() ?? 0) + REPLY_WINDOW_MS);
+}
+
+/** El lead es de WhatsApp y hay plantilla para escribirle fuera de la ventana de 24 h. */
+export async function whatsAppTemplateFor(client: Tx | typeof db, leadId: string, s: FollowUpSettings): Promise<boolean> {
+  if (!hasTemplate(s)) return false;
+  const lead = await client.lead.findUniqueOrThrow({ where: { id: leadId }, select: { contact: { select: { channel: true } } } });
+  return lead.contact.channel === "WHATSAPP";
 }
 
 /** Lee una lista de plazos como "3h, 1d, 3d, 7d". Devuelve null si alguno no se entiende. */
@@ -228,7 +267,10 @@ export async function scheduleFollowUpTx(
     return { isError: true, content: `Solo se puede agendar hasta ${MAX_SCHEDULE_DAYS} días hacia adelante.` };
   }
   const windowEnd = await replyWindowEnd(tx, leadId);
-  if (windowEnd && at > windowEnd) {
+  let templateNote = "";
+  if (windowEnd && at > windowEnd && (await whatsAppTemplateFor(tx, leadId, s))) {
+    templateNote = ` Como pasa las 24 horas desde su último mensaje, ese día se le enviará la plantilla de seguimiento: "${s.template.text}".`;
+  } else if (windowEnd && at > windowEnd) {
     return {
       isError: true,
       content:
@@ -242,7 +284,7 @@ export async function scheduleFollowUpTx(
     data: { leadId, type: "FOLLOW_UP_SCHEDULED", actor: "AI", reason, data: { at: at.toISOString() } },
   });
   const hours = withinSendingHours(s, at) ? "" : ` Queda fuera del horario de envío, así que saldrá a las ${s.sendFrom}:00.`;
-  return { content: `Recontacto agendado para el ${formatChileDateTime(at)}.${hours}` };
+  return { content: `Recontacto agendado para el ${formatChileDateTime(at)}.${hours}${templateNote}` };
 }
 
 /** Línea del <crm_state> con el recontacto que la IA dejó agendado, si hay uno. */

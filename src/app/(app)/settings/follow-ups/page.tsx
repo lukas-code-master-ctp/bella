@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BellRing, CalendarClock, MessageCircleMore } from "lucide-react";
 import { db } from "@/lib/db";
-import { formatChileDateTime, formatDelay, getFollowUpSettings, REPLY_WINDOW_MS } from "@/lib/domain/follow-ups";
+import { formatChileDateTime, formatDelay, getFollowUpSettings, hasTemplate, REPLY_WINDOW_MS } from "@/lib/domain/follow-ups";
 import { Avatar, Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Callout, Panel, StatusPill } from "@/components/settings-ui";
 import { FollowUpsForm, RunNowForm } from "./form";
@@ -43,11 +43,12 @@ export default async function FollowUpsPage() {
           sendFrom={s.sendFrom}
           sendTo={s.sendTo}
           instructions={s.instructions}
+          template={s.template}
         />
       </Panel>
       <Callout tone="neutral" title="Regla de 24 horas de Meta">
         WhatsApp, Instagram y Messenger solo dejan escribirle a un cliente hasta 24 horas después de su último mensaje.
-        Los seguimientos que caigan más tarde no se envían. Si la asistente ve que no corresponde escribir (por ejemplo, el
+        Los seguimientos que caigan más tarde no se envían, salvo en WhatsApp si configuras una plantilla aprobada. Si la asistente ve que no corresponde escribir (por ejemplo, el
         cliente se despidió), no insiste.
       </Callout>
 
@@ -66,6 +67,7 @@ export default async function FollowUpsPage() {
             {upcoming.map((l) => {
               const due = l.followUpAt! <= now;
               const late = outsideWindow(l);
+              const withTemplate = late && l.contact.channel === "WHATSAPP" && hasTemplate(s);
               return (
                 <li key={l.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm transition-colors duration-100 hover:bg-slate-50">
                   <Avatar name={l.contact.name} />
@@ -78,7 +80,9 @@ export default async function FollowUpsPage() {
                     </p>
                   </div>
                   <span className="flex items-center gap-2 tabular-nums text-slate-700">
-                    {late ? (
+                    {withTemplate ? (
+                      <Badge tone="brand">Con plantilla</Badge>
+                    ) : late ? (
                       <Badge tone="danger">No se enviará: pasa las 24 h</Badge>
                     ) : (
                       due && <Badge tone="warning">Vencido</Badge>
