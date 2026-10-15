@@ -8,7 +8,7 @@ import { campaignSpend } from "@/lib/channels/ads";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
 import { listFunnels } from "@/lib/domain/funnels";
-import { adReturns, formatDuration, getMetrics, type AdReturns, type ResponseStats, type Row } from "@/lib/domain/metrics";
+import { adReturns, formatDuration, getMetrics, type AdReturns, type Metrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
 
 const RANGES = [
@@ -180,6 +180,8 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             </ol>
           </Card>
 
+          {m.byCampaign.length > 1 && m.funnel.length > 1 && <CampaignFunnelCard m={m} />}
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Card className="p-5">
               <CardHeader icon={<Clock />} title="Tiempo de respuesta" description="Desde el primer mensaje del cliente." />
@@ -310,6 +312,66 @@ function AdReturnsCard({ ads, multiFunnel }: { ads: AdReturns; multiFunnel: bool
         </div>
       ) : (
         <p className="px-5 pb-5 text-sm text-slate-500">Meta no registra gasto en este período.</p>
+      )}
+    </Card>
+  );
+}
+
+function CampaignFunnelCard({ m }: { m: Metrics }) {
+  const stages = m.funnel.slice(1);
+  const rows = m.byCampaign.slice(0, 10);
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-5 pb-4">
+        <CardHeader
+          title="Embudo por campaña"
+          description="Hasta dónde llegan los leads de cada campaña: cuáles traen curiosos y cuáles traen compradores."
+        />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" style={{ minWidth: `${16 + 6 * (stages.length + 1)}rem` }}>
+          <thead>
+            <tr className="border-y border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+              <th className="px-5 py-2.5">Campaña</th>
+              <th className="px-3 py-2.5 text-right">Leads</th>
+              {stages.map((s) => (
+                <th key={s.stageId} className="max-w-[8rem] truncate px-3 py-2.5 text-right" title={s.name}>
+                  {s.name}
+                </th>
+              ))}
+              <th className="px-5 py-2.5 text-right">Ganados</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r) => {
+              const reach = m.campaignReach[r.key] ?? [];
+              return (
+                <tr key={r.key}>
+                  <td className="max-w-[16rem] truncate px-5 py-2.5 font-medium text-slate-900" title={r.label}>
+                    {r.label}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{int(r.leads)}</td>
+                  {stages.map((s, i) => {
+                    const n = reach[i + 1] ?? 0;
+                    return (
+                      <td key={s.stageId} className="px-3 py-2.5 text-right tabular-nums">
+                        {int(n)}
+                        <span className="ml-1.5 text-xs text-slate-500">{pct(n, r.leads)}</span>
+                      </td>
+                    );
+                  })}
+                  <td className="px-5 py-2.5 text-right tabular-nums">
+                    {int(r.won)}
+                    <span className="ml-1.5 text-xs text-slate-500">{pct(r.won, r.leads)}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {m.byCampaign.length > rows.length && (
+        <p className="px-5 py-3 text-xs text-slate-500">Y {m.byCampaign.length - rows.length} campañas más con menos leads.</p>
       )}
     </Card>
   );

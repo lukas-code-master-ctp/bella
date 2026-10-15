@@ -21,6 +21,8 @@ export type Metrics = {
   totals: { leads: number; open: number; won: number; lost: number; amount: number };
   byChannel: Row[];
   byCampaign: Row[];
+  /** Por campaña (misma clave que byCampaign): cuántos de sus leads llegaron a cada etapa del embudo. */
+  campaignReach: Record<string, number[]>;
   funnel: FunnelStep[];
   firstReply: ResponseStats;
   firstHumanReply: ResponseStats;
@@ -108,6 +110,7 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
   const campaigns = new Map<string, Tally>();
   const execs = new Map<string, Tally>();
   const reasons = new Map<string, number>();
+  const campaignKey = new Map<string, string>();
   for (const l of leads) {
     if (l.status === "OPEN") totals.open++;
     if (l.status === "WON") {
@@ -121,9 +124,11 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
     }
     tally(channels, l.contact.channel, l.contact.channel, l);
     const campaign = campaignOf(l.source);
+    const key = campaign ? `c:${campaign}` : l.source ? `s:${l.source.kind}` : "direct";
+    campaignKey.set(l.id, key);
     tally(
       campaigns,
-      campaign ? `c:${campaign}` : l.source ? `s:${l.source.kind}` : "direct",
+      key,
       campaign ?? (l.source?.kind === "AD" ? "Anuncio sin campaña" : l.source ? "Enlace sin campaña" : "Directo (sin anuncio ni UTM)"),
       l,
     );
@@ -138,6 +143,7 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
   const positionById = new Map(stages.map((s, i) => [s.id, i]));
   const reachedCount = new Array(stages.length).fill(0) as number[];
   const currentCount = new Array(stages.length).fill(0) as number[];
+  const campaignReach: Record<string, number[]> = {};
   for (const l of leads) {
     const at = positionById.get(l.stageId);
     if (at === undefined) continue;
@@ -148,7 +154,11 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
       const p = position.get(d.to ?? d.stage ?? "");
       if (p !== undefined && p > max) max = p;
     }
-    for (let i = 0; i <= max; i++) reachedCount[i]++;
+    const byKey = (campaignReach[campaignKey.get(l.id)!] ??= new Array(stages.length).fill(0) as number[]);
+    for (let i = 0; i <= max; i++) {
+      reachedCount[i]++;
+      byKey[i]++;
+    }
   }
   const funnel = stages.map((s, i) => ({ stageId: s.id, name: s.name, reached: reachedCount[i], current: currentCount[i] }));
 
@@ -172,6 +182,7 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
     totals,
     byChannel,
     byCampaign: rows(campaigns),
+    campaignReach,
     funnel,
     firstReply: responseStats([...firstReply.values()]),
     firstHumanReply: responseStats([...firstHuman.values()]),
