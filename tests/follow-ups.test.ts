@@ -93,8 +93,8 @@ describe("seguimientos", () => {
     const before = Date.now();
     const lead = await conversation();
     expect(lead.followUpCount).toBe(0);
-    expect(lead.followUpAt!.getTime() - before).toBeGreaterThanOrEqual(3 * HOUR);
-    expect(lead.followUpAt!.getTime() - Date.now()).toBeLessThanOrEqual(3 * HOUR);
+    expect(lead.followUpAt!.getTime() - before).toBeGreaterThanOrEqual(2 * HOUR);
+    expect(lead.followUpAt!.getTime() - Date.now()).toBeLessThanOrEqual(2 * HOUR);
   });
 
   it("desactivados, no se programa nada", async () => {
@@ -111,12 +111,12 @@ describe("seguimientos", () => {
     expect(await runDueFollowUps({ clients })).toMatchObject({ sent: 1, skipped: 0 });
 
     expect(lastTurn(requests)).toContain("<seguimiento>");
-    expect(lastTurn(requests)).toContain("seguimiento 1 de 4");
+    expect(lastTurn(requests)).toContain("seguimiento 1 de 2");
     const messages = await db.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
     expect(messages.at(-1)).toMatchObject({ author: "AI", body: "Ana, ¿pudiste ver las opciones en Pucón?" });
     const after = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(after.followUpCount).toBe(1);
-    expect(after.followUpAt!.getTime() - Date.now()).toBeGreaterThan(23 * HOUR);
+    expect(after.followUpAt!.getTime() - Date.now()).toBeGreaterThan(19 * HOUR);
     expect(await db.leadEvent.count({ where: { leadId: lead.id, type: "FOLLOW_UP_SENT" } })).toBe(1);
     // El historial de la IA solo crece: el turno de seguimiento va al final.
     const transcript = await db.agentTranscript.findUniqueOrThrow({ where: { leadId: lead.id } });
@@ -132,7 +132,7 @@ describe("seguimientos", () => {
     await runAgent(lead.id, fakeAnthropic([say("¡Genial!")]).clients);
     const after = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(after.followUpCount).toBe(0);
-    expect(after.followUpAt!.getTime() - Date.now()).toBeLessThanOrEqual(3 * HOUR);
+    expect(after.followUpAt!.getTime() - Date.now()).toBeLessThanOrEqual(2 * HOUR);
   });
 
   it("tras el último plazo no hay más seguimientos", async () => {
@@ -268,6 +268,21 @@ describe("seguimientos", () => {
     expect(await db.message.count({ where: { leadId: lead.id, author: "AI" } })).toBe(1);
     expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).followUpAt).toBeNull();
     expect(await db.leadEvent.findFirst({ where: { leadId: lead.id, type: "FOLLOW_UP_SKIPPED" } })).toMatchObject({ reason: OUT_OF_WINDOW });
+  });
+
+  it("en WhatsApp la IA no puede agendar un recontacto pasadas 24 h del último mensaje del cliente", async () => {
+    await useFollowUps();
+    await seedFunnel();
+    const lead = await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56911112222" });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Háblame la próxima semana" } });
+    const late = new Date(Date.now() + 5 * 24 * HOUR).toISOString().slice(0, 10);
+    const turn = fakeAnthropic([
+      toolUse("t1", "schedule_follow_up", { date: `${late} 11:00`, reason: "retomar" }),
+      say("Cuando quieras retomar, escríbeme por aquí."),
+    ]);
+    await runAgent(lead.id, turn.clients);
+    expect(JSON.stringify(turn.requests.at(-1)!.messages.at(-1))).toContain("24 horas desde su último mensaje");
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).followUpReason).toBeNull();
   });
 
   it("el botón del lead envía el seguimiento sin esperar el plazo", async () => {

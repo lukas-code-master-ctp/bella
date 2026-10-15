@@ -74,7 +74,8 @@ export const AGENT_TOOLS: Tool[] = [
     "schedule_follow_up",
     "Agenda un recontacto para una fecha: cuando el cliente pida que le escriban más adelante o " +
       "acuerden retomar en un día (ej. después de una visita). Ese día recibirás un bloque " +
-      "<seguimiento> para escribirle. Con la fecha vacía se cancelan los seguimientos (por ejemplo, " +
+      "<seguimiento> para escribirle. Fuera del simulador solo se puede agendar hasta 24 horas " +
+      "después del último mensaje del cliente (regla de Meta). Con la fecha vacía se cancelan los seguimientos (por ejemplo, " +
       "si pide que no le escriban más).",
     {
       date: text('Fecha y hora en hora de Chile, formato "AAAA-MM-DD HH:MM", o vacío para cancelar'),
