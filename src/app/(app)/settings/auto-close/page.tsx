@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { effectiveDays, getAutoCloseSettings, type AutoCloseRun } from "@/lib/domain/auto-close";
 import { Field, inputClass, PageHeader } from "@/components/ui";
-import { Callout, Chip, FieldGroup, Panel, PanelBody, PanelFooter, Stat, StatusPill } from "@/components/settings-ui";
+import { Callout, Chip, Panel, PanelBody, PanelFooter, Stat, StatusPill } from "@/components/settings-ui";
 import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAutoCloseAction } from "../actions";
@@ -21,7 +21,7 @@ export default async function AutoCloseSettingsPage() {
     stages.filter((st, i) => i === 0 || stages[i - 1].funnelId !== st.funnelId).map((st) => st.id),
   );
   const riskyFirst = stages.filter((st) => firstStages.has(st.id) && s.lostStageIds.includes(st.id));
-  const openInMarked = s.lostStageIds.length
+  const openInMarked = s.lostStagesEnabled && s.lostStageIds.length
     ? await db.lead.count({ where: { status: "OPEN", stageId: { in: s.lostStageIds } } })
     : 0;
   return (
@@ -63,9 +63,11 @@ export default async function AutoCloseSettingsPage() {
                 espera más un día). Nunca se cierra un lead cuyo último mensaje es del cliente sin respuesta.
                 {s.enabled && days > s.days && ` Por los plazos de la reactivación, hoy se cierra a los ${days} días.`}
               </Callout>
-              <FieldGroup
-                title="Etapas de descarte (opcional)"
-                description="No es a qué etapas se aplica la regla de los días: esa vale para todas. Marca solo etapas que ya significan perdido (como “Perdidos”): sus leads se cierran en la siguiente pasada, sin esperar los días. El motivo es el que se dio al moverlos ahí, o el de arriba."
+              <ToggleSection
+                name="lostStagesEnabled"
+                defaultChecked={s.lostStagesEnabled}
+                title="Cerrar al instante en etapas de descarte"
+                description="Aparte de los días: los leads en las etapas marcadas (como “Perdidos”) se cierran en la siguiente pasada, sin esperar. El motivo es el que se dio al moverlos ahí, o el de arriba."
               >
                 <div className="flex flex-wrap gap-2">
                   {stages.map((st) => (
@@ -74,19 +76,19 @@ export default async function AutoCloseSettingsPage() {
                     </Chip>
                   ))}
                 </div>
-                {riskyFirst.length > 0 && (
-                  <Callout tone="danger" className="mt-3" title="Esto cierra a los leads nuevos">
+                {s.lostStagesEnabled && riskyFirst.length > 0 && (
+                  <Callout tone="danger" title="Esto cierra a los leads nuevos">
                     Marcaste {riskyFirst.map((st) => `“${st.label}”`).join(", ")}, la etapa donde entran los leads: se cerrarán
                     como perdidos al día siguiente de escribir. Desmárcala salvo que sea lo que quieres.
                   </Callout>
                 )}
-                {s.enabled && openInMarked > 0 && (
-                  <Callout tone="warning" className="mt-3">
+                {s.enabled && s.lostStagesEnabled && openInMarked > 0 && (
+                  <Callout tone="warning">
                     Hoy hay {openInMarked} {openInMarked === 1 ? "lead abierto" : "leads abiertos"} en las etapas marcadas: se
                     cierran en la próxima pasada.
                   </Callout>
                 )}
-              </FieldGroup>
+              </ToggleSection>
             </ToggleSection>
           </PanelBody>
           <PanelFooter>

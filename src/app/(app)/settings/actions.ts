@@ -354,6 +354,7 @@ export async function saveAutoCloseAction(form: FormData) {
     days: Number.isFinite(days) ? Math.min(Math.max(days, 1), 365) : 7,
     reason: str(form, "reason") || "Sin respuesta del cliente",
     lostStageIds: form.getAll("lostStageIds").map(String),
+    lostStagesEnabled: form.get("lostStagesEnabled") === "on",
   });
   revalidatePath("/settings/auto-close");
 }
