@@ -386,7 +386,7 @@ export async function LeadView({
                       ))}
                     </div>
                     <form action={addTagAction.bind(null, lead.id)} className="flex gap-2">
-                      <select name="tagId" aria-label="Agregar etiqueta" className={inputClass} defaultValue="">
+                      <select name="tagId" required aria-label="Agregar etiqueta" className={inputClass} defaultValue="">
                         <option value="" disabled>
                           Agregar etiqueta…
                         </option>
