@@ -10,7 +10,7 @@ import {
   scheduleAfterAiTurnTx,
   type FollowUpSettings,
 } from "../domain/follow-ups";
-import { aiBlocked, getAiOperation, previousTicketLines, replyOutOfHours } from "../domain/ai-operation";
+import { aiBlocked, autoBlockCriteria, getAiOperation, previousTicketLines, replyOutOfHours } from "../domain/ai-operation";
 import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
 import { filesForPrompt, type FileForPrompt } from "../domain/files";
@@ -53,6 +53,7 @@ export function buildSystemPrompt(
   s: AssistantSettings,
   knowledge: KnowledgeDoc[] | null = null,
   files: FileForPrompt[] = [],
+  blockCriteria: string | null = null,
 ): string {
   const lines = [
     `Eres ${s.assistantName}, asistente de ventas de ${s.companyName}. Conversas por chat con ` +
@@ -88,6 +89,12 @@ export function buildSystemPrompt(
             "Envía solo esos archivos; nunca inventes enlaces.",
         ]
       : []),
+    ...(blockCriteria
+      ? [
+          "- Si la conversación cumple claramente uno de los <criterios_de_bloqueo> de la empresa, " +
+            "bloquea al contacto con block_contact. Ante la duda, no bloquees: atiende o deriva.",
+        ]
+      : []),
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
       "compra, esté molesto, o necesite algo que no puedes resolver.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
@@ -107,6 +114,9 @@ export function buildSystemPrompt(
       ]),
       "</archivos>",
     );
+  }
+  if (blockCriteria) {
+    lines.push("", "<criterios_de_bloqueo>", blockCriteria, "</criterios_de_bloqueo>");
   }
   if (knowledge?.length) {
     lines.push(
@@ -329,7 +339,7 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   const context = blocks.join("\n\n");
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
   const [knowledge, files] = await Promise.all([knowledgeForPrompt(), filesForPrompt()]);
-  const system = buildSystemPrompt(settings, knowledge, files);
+  const system = buildSystemPrompt(settings, knowledge, files, autoBlockCriteria(operation));
 
   // Línea de tiempo del turno para el monitor de actividad.
   const trace: TraceStep[] = [];
@@ -418,6 +428,12 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     handedOff = false;
   }
   if (reply.trim() === NO_FOLLOW_UP) reply = "";
+  // Si la IA bloqueó al contacto, no se le escribe nada más.
+  const blockedNow = trace.some((t) => t.type === "tool" && t.name === "block_contact" && !t.isError);
+  if (blockedNow) {
+    reply = "";
+    handedOff = false;
+  }
   const agendaChanged = trace.some((t) => t.type === "tool" && t.name === "schedule_follow_up" && !t.isError);
 
   const sent = await db.$transaction(async (tx) => {

@@ -23,6 +23,10 @@ export type AiOperationSettings = {
   outOfHoursMessage: string;
   /** La IA recibe un resumen de los últimos tickets cerrados del contacto. */
   previousTickets: boolean;
+  /** La IA puede bloquear contactos que cumplan `autoBlockCriteria` (apagado por defecto). */
+  autoBlock: boolean;
+  /** Criterios de bloqueo escritos por la empresa (spam, postulantes, mensajes personales…). */
+  autoBlockCriteria: string;
 };
 
 export const DEFAULT_AI_OPERATION: AiOperationSettings = {
@@ -36,6 +40,8 @@ export const DEFAULT_AI_OPERATION: AiOperationSettings = {
     "¡Hola! Gracias por escribirnos. En este momento estamos fuera de nuestro horario de atención; " +
     "te responderemos apenas volvamos.",
   previousTickets: true,
+  autoBlock: false,
+  autoBlockCriteria: "",
 };
 
 /** Tickets cerrados que ve la IA como contexto. */
@@ -60,6 +66,11 @@ export function withinBusinessHours(s: AiOperationSettings, now: Date): boolean 
   if (s.from < s.to) return s.days.includes(weekday) && hour >= s.from && hour < s.to;
   // Horario nocturno (ej. 20 a 2): la madrugada pertenece al día en que empezó.
   return hour >= s.from ? s.days.includes(weekday) : hour < s.to && s.days.includes((weekday + 6) % 7);
+}
+
+/** Criterios de bloqueo vigentes, o null si la IA no puede bloquear contactos. */
+export function autoBlockCriteria(s: AiOperationSettings): string | null {
+  return (s.autoBlock && s.autoBlockCriteria.trim()) || null;
 }
 
 /** Por qué la IA no debe escribir ahora en un canal, o null si puede. */

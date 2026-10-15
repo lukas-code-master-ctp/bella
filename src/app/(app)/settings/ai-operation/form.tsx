@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { BellOff, CalendarClock, History, MessageSquareText } from "lucide-react";
+import { Ban, BellOff, CalendarClock, History, MessageSquareText } from "lucide-react";
 import type { AiOperationSettings } from "@/lib/domain/ai-operation";
 import { Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, Chip, FieldGroup, HourSelect, Panel, PanelBody, SaveBar, ToggleRow } from "@/components/settings-ui";
@@ -87,6 +87,26 @@ export function AiOperationForm({
             title={`Recordar los últimos ${previousTicketsCount} tickets cerrados`}
             description="Si un cliente que ya compró o consultó vuelve a escribir, la asistente sabe cómo terminó cada conversación (ganada o perdida, motivo, monto y resumen) y no parte de cero."
           />
+        </PanelBody>
+      </Panel>
+
+      <Panel icon={<Ban />} title="Bloqueo automático">
+        <PanelBody>
+          <ToggleRow
+            name="autoBlock"
+            defaultChecked={s.autoBlock}
+            title="Permitir que la IA bloquee contactos"
+            description="Si una conversación cumple uno de los criterios, la asistente bloquea al contacto sin responderle: su lead se cierra como perdido y sus mensajes nuevos se descartan. El motivo queda en la ficha y se puede desbloquear desde el menú ⋯ del lead."
+          />
+          <Field label="Criterios de bloqueo" hint="Uno por línea. Sé específico: ante la duda, la IA no bloquea.">
+            <textarea
+              name="autoBlockCriteria"
+              rows={4}
+              defaultValue={s.autoBlockCriteria}
+              placeholder={"Spam o publicidad de otras empresas\nPersonas que buscan trabajo o envían su currículum\nInsultos o amenazas"}
+              className={inputClass}
+            />
+          </Field>
         </PanelBody>
       </Panel>
 
