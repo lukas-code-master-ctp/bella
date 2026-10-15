@@ -32,9 +32,11 @@ export function LeadDrawer({ closeHref, fullHref, children }: { closeHref: strin
         role="dialog"
         aria-modal="true"
         aria-label="Lead"
-        className="absolute inset-y-0 right-0 flex w-full max-w-[720px] animate-slide-in-right flex-col overflow-y-auto overscroll-contain bg-slate-50 shadow-2xl outline-none"
+        className="absolute inset-x-0 bottom-0 top-[6dvh] flex animate-sheet-up flex-col overflow-y-auto overscroll-contain rounded-t-2xl bg-slate-50 shadow-2xl outline-none md:inset-y-0 md:left-auto md:right-0 md:w-full md:max-w-[720px] md:animate-slide-in-right md:rounded-none"
       >
         <div className="sticky top-0 z-10 flex items-center justify-end gap-1 border-b border-slate-200 bg-white/95 px-3 py-2 backdrop-blur">
+          {/* En el teléfono el panel es una hoja que sube desde abajo. */}
+          <span aria-hidden className="absolute left-1/2 top-1.5 h-1 w-10 -translate-x-1/2 rounded-full bg-slate-300 md:hidden" />
           <Link href={fullHref} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100">
             <Maximize2 aria-hidden className="size-4" />
             Ficha completa

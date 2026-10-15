@@ -45,6 +45,8 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
   const [, startTransition] = useTransition();
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  // En el teléfono el tablero es una lista por etapa: se elige la etapa en una tira de pestañas.
+  const [mobileStage, setMobileStage] = useState(() => (stages.find((s) => leads.some((l) => l.stageId === s.id)) ?? stages[0])?.id);
 
   function onDrop(event: React.DragEvent, stageId: string) {
     event.preventDefault();
@@ -59,112 +61,136 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
   }
 
   return (
-    <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0">
-      {stages.map((stage) => {
-        const items = optimistic.filter((l) => l.stageId === stage.id);
-        const total = items.length + stage.hidden;
-        const isOver = over === stage.id && dragging !== null;
-        return (
-          <section
-            key={stage.id}
-            aria-label={`${stage.name}: ${total} leads`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              if (over !== stage.id) setOver(stage.id);
-            }}
-            onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null);
-            }}
-            onDrop={(e) => onDrop(e, stage.id)}
-            className={`flex w-[288px] shrink-0 snap-start flex-col rounded-xl border transition-[background-color,border-color,box-shadow] duration-200 ${
-              isOver ? "border-brand-300 bg-brand-50 shadow-[0_0_0_4px_var(--color-brand-100)]" : "border-transparent bg-slate-100"
-            }`}
-          >
-            <header className="flex items-center gap-2 px-3 pb-2 pt-3">
-              <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
-              <h2 className="truncate text-sm font-semibold text-slate-900">{stage.name}</h2>
-              {stage.requiresHuman && (
-                <Badge tone="warning">
-                  <UserRound aria-hidden />
-                  Humano
-                </Badge>
-              )}
-              <span key={total} className="ml-auto animate-pop rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-inset ring-slate-200">
-                {total}
-              </span>
-            </header>
-            <div className="stagger flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1">
-              {items.length === 0 && (
-                <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">
-                  {isOver ? "Suelta aquí" : "Sin leads"}
-                </p>
-              )}
-              {items.map((lead) => (
-                <Link
-                  key={lead.id}
-                  href={leadHref.replace("__id__", encodeURIComponent(lead.id))}
-                  scroll={false}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", lead.id);
-                    setDragging(lead.id);
-                  }}
-                  onDragEnd={() => {
-                    setDragging(null);
-                    setOver(null);
-                  }}
-                  className={`group relative block cursor-grab overflow-hidden rounded-lg border bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
-                    lead.attention === "waiting" ? "border-amber-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-amber-400" : "border-slate-200"
-                  } ${dragging === lead.id ? "scale-[0.97] opacity-50" : ""}`}
-                >
-                  <div className="flex items-start gap-2">
-                    <ChannelAvatar name={lead.name} channel={lead.channelKey} label={lead.channel} />
-                    <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                      <span className="w-full truncate font-semibold leading-snug text-slate-900 group-hover:text-brand-700" title={lead.name}>
-                        {lead.name}
+    <>
+      <div role="tablist" aria-label="Etapas" className="-mx-4 mb-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden">
+        {stages.map((stage) => {
+          const total = optimistic.filter((l) => l.stageId === stage.id).length + stage.hidden;
+          const active = stage.id === mobileStage;
+          return (
+            <button
+              key={stage.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setMobileStage(stage.id)}
+              className={`flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors duration-150 ${
+                active ? "border-brand-600 bg-brand-50 text-brand-800" : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />
+              {stage.name}
+              <span className="tabular-nums text-slate-500">{total}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 max-md:mx-0 max-md:block max-md:px-0 sm:mx-0 sm:px-0">
+        {stages.map((stage) => {
+          const items = optimistic.filter((l) => l.stageId === stage.id);
+          const total = items.length + stage.hidden;
+          const isOver = over === stage.id && dragging !== null;
+          return (
+            <section
+              key={stage.id}
+              aria-label={`${stage.name}: ${total} leads`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (over !== stage.id) setOver(stage.id);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null);
+              }}
+              onDrop={(e) => onDrop(e, stage.id)}
+              className={`flex w-[288px] shrink-0 snap-start flex-col rounded-xl border max-md:w-full ${stage.id === mobileStage ? "" : "max-md:hidden"} transition-[background-color,border-color,box-shadow] duration-200 ${
+                isOver ? "border-brand-300 bg-brand-50 shadow-[0_0_0_4px_var(--color-brand-100)]" : "border-transparent bg-slate-100"
+              }`}
+            >
+              <header className="flex items-center gap-2 px-3 pb-2 pt-3 max-md:hidden">
+                <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
+                <h2 className="truncate text-sm font-semibold text-slate-900">{stage.name}</h2>
+                {stage.requiresHuman && (
+                  <Badge tone="warning">
+                    <UserRound aria-hidden />
+                    Humano
+                  </Badge>
+                )}
+                <span key={total} className="ml-auto animate-pop rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-700 ring-1 ring-inset ring-slate-200">
+                  {total}
+                </span>
+              </header>
+              <div className="stagger flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1 max-md:pt-2">
+                {items.length === 0 && (
+                  <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">
+                    {isOver ? "Suelta aquí" : "Sin leads"}
+                  </p>
+                )}
+                {items.map((lead) => (
+                  <Link
+                    key={lead.id}
+                    href={leadHref.replace("__id__", encodeURIComponent(lead.id))}
+                    scroll={false}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", lead.id);
+                      setDragging(lead.id);
+                    }}
+                    onDragEnd={() => {
+                      setDragging(null);
+                      setOver(null);
+                    }}
+                    className={`group relative block cursor-grab overflow-hidden rounded-lg border bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
+                      lead.attention === "waiting" ? "border-amber-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-amber-400" : "border-slate-200"
+                    } ${dragging === lead.id ? "scale-[0.97] opacity-50" : ""}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <ChannelAvatar name={lead.name} channel={lead.channelKey} label={lead.channel} />
+                      <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                        <span className="w-full truncate font-semibold leading-snug text-slate-900 group-hover:text-brand-700" title={lead.name}>
+                          {lead.name}
+                        </span>
+                        <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
+                      </div>
+                    </div>
+                    {lead.summary ? (
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-700">
+                        <Sparkles aria-label="Resumen IA:" className="mr-1 inline size-3 -translate-y-px text-brand-500" />
+                        {lead.summary}
+                      </p>
+                    ) : (
+                      lead.lastMessage && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-600">{lead.lastMessage}</p>
+                    )}
+                    {lead.nextTask && <TaskDue task={lead.nextTask} />}
+                    {lead.tags.length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-1">
+                        {lead.tags.map((t) => (
+                          <TagPill key={t.label} {...t} />
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 text-xs text-slate-600">
+                      {lead.assignee ? <Avatar name={lead.assignee} size="sm" /> : <UserRound aria-hidden className="size-4 text-slate-400" />}
+                      <span className="truncate">{lead.assignee ?? "Sin asignar"}</span>
+                      <span className="ml-auto flex shrink-0 items-center gap-2">
+                        {lead.score !== null && <ScoreBadge score={lead.score} reason={lead.scoreReason} />}
                       </span>
-                      <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
                     </div>
-                  </div>
-                  {lead.summary ? (
-                    <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-700">
-                      <Sparkles aria-label="Resumen IA:" className="mr-1 inline size-3 -translate-y-px text-brand-500" />
-                      {lead.summary}
-                    </p>
-                  ) : (
-                    lead.lastMessage && <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-600">{lead.lastMessage}</p>
-                  )}
-                  {lead.nextTask && <TaskDue task={lead.nextTask} />}
-                  {lead.tags.length > 0 && (
-                    <div className="mt-2.5 flex flex-wrap gap-1">
-                      {lead.tags.map((t) => (
-                        <TagPill key={t.label} {...t} />
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 text-xs text-slate-600">
-                    {lead.assignee ? <Avatar name={lead.assignee} size="sm" /> : <UserRound aria-hidden className="size-4 text-slate-400" />}
-                    <span className="truncate">{lead.assignee ?? "Sin asignar"}</span>
-                    <span className="ml-auto flex shrink-0 items-center gap-2">
-                      {lead.score !== null && <ScoreBadge score={lead.score} reason={lead.scoreReason} />}
-                    </span>
-                  </div>
-                  <LinkPending />
-                </Link>
-              ))}
-              {stage.hidden > 0 && (
-                <p className="px-1 py-2 text-center text-xs text-slate-500">
-                  y {stage.hidden} más; búscalos en{" "}
-                  <Link href="/chats" className="font-medium text-brand-700 underline-offset-2 hover:underline">
-                    Chats
+                    <LinkPending />
                   </Link>
-                </p>
-              )}
-            </div>
-          </section>
-        );
-      })}
-    </div>
+                ))}
+                {stage.hidden > 0 && (
+                  <p className="px-1 py-2 text-center text-xs text-slate-500">
+                    y {stage.hidden} más; búscalos en{" "}
+                    <Link href="/chats" className="font-medium text-brand-700 underline-offset-2 hover:underline">
+                      Chats
+                    </Link>
+                  </p>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

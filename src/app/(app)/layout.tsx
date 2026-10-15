@@ -17,6 +17,7 @@ import { NavLink } from "./nav-link";
 import { SidebarToggle } from "./sidebar-toggle";
 import { CommandSearch } from "./command-search";
 import { NewLead } from "./new-lead";
+import { BottomNav } from "./bottom-nav";
 import { NewInsightBadge } from "./metrics/new-insight-badge";
 import { Logo } from "@/components/logo";
 import { unreadNotificationCount } from "@/lib/domain/notifications";
@@ -98,17 +99,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link href="/funnel" aria-label="Ir al funnel" className="mr-auto overflow-hidden rounded-lg lg:group-data-[compact=true]/shell:mr-0 lg:group-data-[compact=true]/shell:w-9">
             <Logo />
           </Link>
-          {/* En pantallas chicas la barra superior no existe: sus atajos van aquí. */}
+          {/* En pantallas chicas no hay barra superior: la búsqueda y "Nuevo lead" van aquí, y el resto en la barra inferior. */}
           <div className="flex items-center gap-1 lg:hidden">
             <CommandSearch compact />
             <NewLead compact />
-            {bell}
-            {profile}
           </div>
         </div>
-        <nav aria-label="Principal" className="flex flex-wrap gap-1 px-3 pb-2 lg:mt-3 lg:flex-1 lg:flex-col lg:flex-nowrap lg:pb-3">
-          <div role="group" aria-labelledby="nav-trabajo" className="max-lg:contents lg:space-y-1">
-            <p id="nav-trabajo" className="hidden px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:block lg:group-data-[compact=true]/shell:sr-only">
+        <nav aria-label="Principal" className="mt-3 hidden flex-1 flex-col gap-1 px-3 pb-3 lg:flex">
+          <div role="group" aria-labelledby="nav-trabajo" className="space-y-1">
+            <p id="nav-trabajo" className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:group-data-[compact=true]/shell:sr-only">
               Trabajo
             </p>
             <NavLink compactable href="/funnel" icon={<SquareKanban />} label="Funnel" />
@@ -125,17 +124,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               badge={urgentTasks > 0 && countBadge(urgentTasks, "bg-rose-600", "vencidas o para hoy")}
             />
           </div>
-          <div role="group" aria-labelledby="nav-analisis" className="max-lg:contents lg:mt-5 lg:space-y-1 lg:group-data-[compact=true]/shell:mt-3 lg:group-data-[compact=true]/shell:border-t lg:group-data-[compact=true]/shell:border-slate-100 lg:group-data-[compact=true]/shell:pt-3">
-            <p id="nav-analisis" className="hidden px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:block lg:group-data-[compact=true]/shell:sr-only">
+          <div role="group" aria-labelledby="nav-analisis" className="mt-5 space-y-1 lg:group-data-[compact=true]/shell:mt-3 lg:group-data-[compact=true]/shell:border-t lg:group-data-[compact=true]/shell:border-slate-100 lg:group-data-[compact=true]/shell:pt-3">
+            <p id="nav-analisis" className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:group-data-[compact=true]/shell:sr-only">
               Análisis
             </p>
             <NavLink compactable href="/metrics" icon={<ChartNoAxesColumn />} label="Métricas" badge={newInsight && <NewInsightBadge />} />
           </div>
-          <div className="max-lg:contents lg:mt-auto lg:space-y-1 lg:border-t lg:border-slate-100 lg:pt-3">
+          <div className="mt-auto space-y-1 border-t border-slate-100 pt-3">
             {user.role === "ADMIN" && <NavLink compactable href="/settings" icon={<Settings />} label="Configuración" />}
-            <div className="hidden lg:block">
-              <SidebarToggle initial={compact} />
-            </div>
+            <SidebarToggle initial={compact} />
           </div>
         </nav>
       </aside>
@@ -189,10 +186,56 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {profile}
           </div>
         </header>
-        <main id="contenido" tabIndex={-1} className="min-w-0 px-4 py-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8">
+        <main id="contenido" tabIndex={-1} className="min-w-0 px-4 pb-28 pt-6 focus:outline-none sm:px-6 lg:px-8 lg:py-8">
           <div className="mx-auto max-w-[1440px]">{children}</div>
         </main>
       </div>
+      <BottomNav
+        moreActive={["/metrics", "/settings", "/profile"]}
+        badges={{
+          chats: pendingComments > 0 && countBadge(pendingComments, "bg-brand-600", "pendientes"),
+          tasks: urgentTasks > 0 && countBadge(urgentTasks, "bg-rose-600", "vencidas o para hoy"),
+          notifications: <UnreadBadge initial={unread} />,
+          more: newInsight && <NewInsightBadge />,
+        }}
+        more={
+          <>
+            {company && (
+              <p className="flex items-center gap-2 px-3 pb-2 text-xs text-slate-600">
+                <Building2 aria-hidden className="size-3.5" />
+                {user.superadmin ? (
+                  <Link href="/settings/companies" className="font-medium text-brand-700 underline-offset-2 hover:underline">
+                    {company} · cambiar
+                  </Link>
+                ) : (
+                  company
+                )}
+              </p>
+            )}
+            <Link href="/metrics" className={dropdownItemClass()}>
+              <ChartNoAxesColumn aria-hidden />
+              Métricas
+              {newInsight && <span className="ml-auto">{<NewInsightBadge />}</span>}
+            </Link>
+            {user.role === "ADMIN" && (
+              <Link href="/settings" className={dropdownItemClass()}>
+                <Settings aria-hidden />
+                Configuración
+              </Link>
+            )}
+            <Link href="/profile" className={dropdownItemClass()}>
+              <UserRoundCog aria-hidden />
+              Mi perfil · {user.name}
+            </Link>
+            <form action={logoutAction}>
+              <button className={dropdownItemClass(true)}>
+                <LogOut aria-hidden />
+                Cerrar sesión
+              </button>
+            </form>
+          </>
+        }
+      />
     </div>
   );
 }
