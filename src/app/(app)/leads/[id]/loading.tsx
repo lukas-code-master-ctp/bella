@@ -11,7 +11,7 @@ export default function LeadLoading() {
   return (
     <LoadingScreen label="Cargando la conversación…">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card className="flex h-[calc(100dvh-9rem)] min-h-[32rem] flex-col overflow-hidden lg:h-[calc(100dvh-4rem)]">
+        <Card className="flex h-[calc(100dvh-9rem)] min-h-[32rem] flex-col overflow-hidden lg:h-[calc(100dvh-7.5rem)]">
           <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
             <Skeleton className="size-10" />
             <Skeleton className="size-10 rounded-full" />
@@ -33,7 +33,7 @@ export default function LeadLoading() {
             <Skeleton className="h-10 w-24" />
           </div>
         </Card>
-        <aside className="relative space-y-4 xl:h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1.5">
+        <aside className="relative space-y-4 xl:h-[calc(100dvh-7.5rem)] xl:overflow-y-auto xl:overscroll-contain xl:pr-1.5">
           <Card className="divide-y divide-slate-100">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="space-y-3 p-4">

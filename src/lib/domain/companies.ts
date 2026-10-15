@@ -67,6 +67,11 @@ export async function listCompanies(): Promise<CompanySummary[]> {
   return companies.map((c) => ({ ...c, users: count(users, c.id), openLeads: count(leads, c.id) }));
 }
 
+/** Nombres de todas las empresas, para el selector del dueño de Beliapp en la barra superior. */
+export async function companyOptions(): Promise<{ id: string; name: string }[]> {
+  return rootDb.company.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
+}
+
 export async function companyName(id: string): Promise<string | null> {
   return (await rootDb.company.findUnique({ where: { id }, select: { name: true } }))?.name ?? null;
 }

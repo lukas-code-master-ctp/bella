@@ -56,16 +56,14 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   const groups = user.superadmin ? [...GROUPS, OWNER_GROUP] : GROUPS;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:gap-8">
-      <nav aria-label="Configuración" className="min-w-0 md:sticky md:top-8 md:max-h-[calc(100dvh-4rem)] md:self-start md:overflow-y-auto">
+      <nav aria-label="Configuración" className="min-w-0 md:sticky md:top-8 md:max-h-[calc(100dvh-4rem)] lg:top-22 lg:max-h-[calc(100dvh-7.5rem)] md:self-start md:overflow-y-auto">
         {/* En móvil, una tira que se desliza de lado; en escritorio, grupos con su título. */}
         <div data-strip className="relative -mx-4 flex gap-1 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 [scrollbar-width:none] md:mx-0 md:flex-col md:gap-3 md:overflow-visible md:px-0 md:pb-0 [&_a]:shrink-0 [&_a]:whitespace-nowrap">
           {groups.map(([group, tabs]) => (
             <div key={group} role="group" aria-label={group} className="flex gap-1 md:flex-col md:gap-0.5">
               <p className="hidden px-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 md:block">{group}</p>
               {tabs.map(([href, label, icon]) => (
-                <NavLink key={href} href={href} icon={icon}>
-                  {label}
-                </NavLink>
+                <NavLink key={href} href={href} icon={icon} label={label} />
               ))}
             </div>
           ))}
