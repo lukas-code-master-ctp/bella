@@ -80,6 +80,9 @@ export function useToastWhenSent(text: string | undefined) {
     if (was.current && !pending && text) toast(text);
     was.current = pending;
   }, [pending, text]);
+  // Al borrar o quitar algo, la página se vuelve a pintar sin este botón: deja de existir antes de
+  // ver que terminó el envío. Si desaparece mientras enviaba, el envío ya terminó.
+  useEffect(() => () => void (was.current && text && toast(text)), [text]);
 }
 
 /**

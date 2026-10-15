@@ -94,7 +94,10 @@ export function BottomNav({
             <X aria-hidden className="size-5" />
           </button>
         </div>
-        <div className="px-2 pb-3">{more}</div>
+        {/* Cierra también al tocar la página en la que ya estás (ahí no cambia la ruta). */}
+        <div className="px-2 pb-3" onClick={(e) => (e.target as HTMLElement).closest("a") && setOpen(false)}>
+          {more}
+        </div>
       </dialog>
     </>
   );

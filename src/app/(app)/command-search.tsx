@@ -16,6 +16,7 @@ export function CommandSearch({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -26,18 +27,17 @@ export function CommandSearch({ compact = false }: { compact?: boolean }) {
 
   useEffect(() => {
     setMac(/Mac|iPhone|iPad/.test(navigator.platform));
-    // Hay dos botones (el de la barra superior y el ícono del encabezado móvil): solo el de la
-    // barra atiende el atajo, para que no se abran dos buscadores a la vez.
-    if (compact) return;
+    // Hay dos botones (el de la barra superior y el ícono del encabezado móvil): atiende el atajo
+    // solo el que se ve, para no abrir dos buscadores ni uno dentro de un contenedor oculto.
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && triggerRef.current?.offsetParent) {
         e.preventDefault();
         setOpen(true);
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [compact]);
+  }, []);
 
   useEffect(() => {
     const d = dialogRef.current;
@@ -93,6 +93,7 @@ export function CommandSearch({ compact = false }: { compact?: boolean }) {
   return (
     <>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Buscar lead"
