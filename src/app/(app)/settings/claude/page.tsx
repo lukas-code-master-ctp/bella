@@ -23,6 +23,7 @@ const ENV_KEYS: CredentialKey[] = [
   "WHATSAPP_BUSINESS_ACCOUNT_ID",
   "META_IG_ACCOUNT_ID",
   "META_ADS_TOKEN",
+  "META_AD_ACCOUNT_ID",
   "META_CAPI_TOKEN",
   API_KEY_ENV.openrouter,
 ];

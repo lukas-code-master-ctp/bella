@@ -1,5 +1,6 @@
 import type { Channel } from "@prisma/client";
 import { db } from "../db";
+import type { CampaignSpend } from "../channels/ads";
 import { campaignOf } from "./attribution";
 
 /**
@@ -176,6 +177,43 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
     firstHumanReply: responseStats([...firstHuman.values()]),
     byExecutive,
     lostReasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
+  };
+}
+
+export type CampaignReturn = Row & { spend: number | null };
+export type AdReturns = {
+  rows: CampaignReturn[];
+  /** Solo de las campañas con gasto: lo invertido y lo que trajeron. */
+  spend: number;
+  leads: number;
+  won: number;
+  amount: number;
+};
+
+/**
+ * Cruza las filas "Por campaña" con el gasto de Meta (por nombre de campaña, que es el mismo que
+ * se guardó en el origen del lead). Las campañas que gastaron sin traer leads también aparecen:
+ * es justo lo que hay que ver. Las filas sin campaña de Meta (UTM, directo) quedan sin gasto.
+ */
+export function adReturns(byCampaign: Row[], spends: CampaignSpend[]): AdReturns {
+  const spendByName = new Map<string, number>();
+  for (const s of spends) spendByName.set(s.campaignName, (spendByName.get(s.campaignName) ?? 0) + s.spend);
+  const rows: CampaignReturn[] = byCampaign.map((r) => ({
+    ...r,
+    spend: r.key.startsWith("c:") ? (spendByName.get(r.label) ?? null) : null,
+  }));
+  const seen = new Set(rows.map((r) => r.label));
+  for (const [name, spend] of spendByName) {
+    if (!seen.has(name) && spend > 0) rows.push({ key: `c:${name}`, label: name, leads: 0, won: 0, lost: 0, amount: 0, spend });
+  }
+  rows.sort((a, b) => (b.spend ?? -1) - (a.spend ?? -1) || b.leads - a.leads || a.label.localeCompare(b.label));
+  const paid = rows.filter((r) => r.spend !== null);
+  return {
+    rows,
+    spend: paid.reduce((n, r) => n + (r.spend ?? 0), 0),
+    leads: paid.reduce((n, r) => n + r.leads, 0),
+    won: paid.reduce((n, r) => n + r.won, 0),
+    amount: paid.reduce((n, r) => n + r.amount, 0),
   };
 }
 

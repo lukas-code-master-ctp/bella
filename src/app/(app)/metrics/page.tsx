@@ -1,13 +1,14 @@
 import Link from "next/link";
-import { ChartNoAxesColumn, Clock, Sparkles, Trophy, UserRound } from "lucide-react";
+import { ChartNoAxesColumn, Clock, Megaphone, Sparkles, Trophy, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { startOfLocalDay } from "@/lib/dates";
+import { startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { campaignSpend } from "@/lib/channels/ads";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
 import { listFunnels } from "@/lib/domain/funnels";
-import { formatDuration, getMetrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
+import { adReturns, formatDuration, getMetrics, type AdReturns, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
 
 const RANGES = [
@@ -20,6 +21,9 @@ const RANGES = [
 const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : "—");
 const money = (n: number) => `$${n.toLocaleString("es-CL")}`;
 const int = (n: number) => n.toLocaleString("es-CL");
+/** Cuántos pesos vendió cada peso invertido, ej. "×12,4". */
+const roas = (amount: number, spend: number) => (spend ? `×${(amount / spend).toLocaleString("es-CL", { maximumFractionDigits: 1 })}` : "—");
+const per = (spend: number, n: number) => (n ? money(Math.round(spend / n)) : "—");
 
 export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ d?: string; executive?: string; funnel?: string }> }) {
   const user = await requireUser();
@@ -32,11 +36,16 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   // Con varios embudos, las métricas son de uno a la vez (las etapas de cada uno son distintas).
   const funnels = await listFunnels();
   const funnelId = funnels.length > 1 ? (funnels.find((f) => f.id === params.funnel) ?? funnels[0]).id : undefined;
-  const [m, executives, newInsight] = await Promise.all([
-    getMetrics({ from: startOfLocalDay(now, -(days - 1)), to: now, assigneeId, funnelId }),
+  const from = startOfLocalDay(now, -(days - 1));
+  // El gasto es de la empresa entera: se cruza solo cuando el admin mira a todo el equipo.
+  const withSpend = isAdmin && !assigneeId;
+  const [m, executives, newInsight, spends] = await Promise.all([
+    getMetrics({ from, to: now, assigneeId, funnelId }),
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     isAdmin && hasUnseenInsight(user.id),
+    withSpend ? campaignSpend(toLocalInput(from).slice(0, 10), toLocalInput(now).slice(0, 10)) : null,
   ]);
+  const ads = spends ? adReturns(m.byCampaign, spends) : null;
   // Entrar a Métricas apaga el "Nuevo" del menú; el botón del resumen lo sigue mostrando en esta visita.
   if (newInsight) await markInsightSeen(user.id);
   const t = m.totals;
@@ -124,10 +133,28 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
               <Bars rows={m.byChannel.map((r) => ({ ...r, label: CHANNEL_LABEL[r.key as Channel] ?? r.label }))} />
             </Card>
             <Card className="p-5">
-              <CardHeader title="Por campaña" description="Campaña del anuncio de Meta o utm_campaign de la landing." />
+              <CardHeader
+                title="Por campaña"
+                description={
+                  withSpend && !ads ? (
+                    <>
+                      Campaña del anuncio de Meta o utm_campaign de la landing. Para ver cuánto costó y cuánto vendió cada una, carga el
+                      token de anuncios en{" "}
+                      <Link href="/settings/credentials" className="font-medium text-brand-700 underline">
+                        Credenciales
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    "Campaña del anuncio de Meta o utm_campaign de la landing."
+                  )
+                }
+              />
               <Bars rows={m.byCampaign.slice(0, 12)} more={m.byCampaign.length - 12} />
             </Card>
           </div>
+
+          {ads && <AdReturnsCard ads={ads} multiFunnel={!!funnelId} />}
 
           <Card className="p-5">
             <CardHeader
@@ -224,6 +251,77 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         </div>
       )}
     </>
+  );
+}
+
+function AdReturnsCard({ ads, multiFunnel }: { ads: AdReturns; multiFunnel: boolean }) {
+  const rows = ads.rows.filter((r) => r.spend !== null);
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-5 pb-4">
+        <CardHeader
+          icon={<Megaphone />}
+          title="Inversión y retorno"
+          description={`Gasto de Meta en el período cruzado con los leads que trajo cada campaña y lo que se les vendió.${
+            multiFunnel ? " El gasto es de la campaña completa, aunque sus leads estén en otro embudo." : ""
+          }`}
+        />
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <Figure label="Invertido" value={money(ads.spend)} />
+          <Figure label="Costo por lead" value={per(ads.spend, ads.leads)} hint={`${int(ads.leads)} leads de anuncios`} />
+          <Figure label="Costo por venta" value={per(ads.spend, ads.won)} hint={`${int(ads.won)} ventas`} />
+          <Figure label="Retorno" value={roas(ads.amount, ads.spend)} hint={`${money(ads.amount)} vendidos`} />
+        </dl>
+      </div>
+      {rows.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[44rem] text-sm">
+            <thead>
+              <tr className="border-y border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                <th className="px-5 py-2.5">Campaña</th>
+                <th className="px-3 py-2.5 text-right">Invertido</th>
+                <th className="px-3 py-2.5 text-right">Leads</th>
+                <th className="px-3 py-2.5 text-right">Costo por lead</th>
+                <th className="px-3 py-2.5 text-right">Ventas</th>
+                <th className="px-3 py-2.5 text-right">Costo por venta</th>
+                <th className="px-3 py-2.5 text-right">Vendido</th>
+                <th className="px-5 py-2.5 text-right" title="Pesos vendidos por cada peso invertido">
+                  Retorno
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((r) => (
+                <tr key={r.key}>
+                  <td className="max-w-[16rem] truncate px-5 py-2.5 font-medium text-slate-900" title={r.label}>
+                    {r.label}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{money(r.spend ?? 0)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{int(r.leads)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{per(r.spend ?? 0, r.leads)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{int(r.won)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{per(r.spend ?? 0, r.won)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{money(r.amount)}</td>
+                  <td className="px-5 py-2.5 text-right font-semibold tabular-nums text-slate-900">{roas(r.amount, r.spend ?? 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="px-5 pb-5 text-sm text-slate-500">Meta no registra gasto en este período.</p>
+      )}
+    </Card>
+  );
+}
+
+function Figure({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</dt>
+      <dd className="mt-0.5 text-xl font-bold tabular-nums tracking-tight text-slate-900">{value}</dd>
+      {hint && <dd className="text-xs text-slate-600">{hint}</dd>}
+    </div>
   );
 }
 

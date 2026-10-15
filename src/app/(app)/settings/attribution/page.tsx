@@ -49,7 +49,7 @@ document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
                 hasAdsToken,
                 <>
                   Opcional. Token de un usuario del sistema con permiso ads_read sobre la cuenta publicitaria, para ver el
-                  nombre de la campaña y del conjunto de anuncios.
+                  nombre de la campaña y del conjunto de anuncios, y en Métricas cuánto se gastó y vendió cada campaña.
                   {!hasAdsToken && fallbackToken && " Mientras no esté, Beliapp prueba con el token de WhatsApp o de la página."}
                 </>,
               ],
