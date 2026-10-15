@@ -36,6 +36,8 @@ export type WhatsAppApi = {
   /** Imagen, video o documento por URL pública; `caption` va como texto del archivo. */
   sendFile(to: string, file: { kind: FileKind; url: string; fileName?: string; caption?: string }, from?: string): Promise<string>;
   downloadMedia(mediaId: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
+  /** Plantilla aprobada en Meta; `params` llena las variables del cuerpo ({{1}}, {{2}}…). */
+  sendTemplate?(to: string, template: { name: string; language: string; params: string[] }, from?: string): Promise<string>;
 };
 
 /** Motivo legible de los errores de Meta más comunes al enviar. */
@@ -43,6 +45,10 @@ export function describeMetaError(code: number | undefined, fallback: string): s
   switch (code) {
     case 131047:
       return "Pasaron más de 24 horas desde el último mensaje del cliente: WhatsApp solo permite escribirle con una plantilla aprobada.";
+    case 132001:
+      return "La plantilla no existe en WhatsApp Manager o no está aprobada en ese idioma.";
+    case 132000:
+      return "La plantilla espera otra cantidad de variables: revisa su texto en Configuración → Seguimientos.";
     case 131026:
       return "WhatsApp no pudo entregarlo (el número no tiene WhatsApp o no aceptó los términos).";
     case 131053:
@@ -98,6 +104,17 @@ export const cloudApi: WhatsAppApi = {
         link: url,
         ...(caption ? { caption } : {}),
         ...(kind === "document" && fileName ? { filename: fileName } : {}),
+      },
+    }, from),
+  sendTemplate: (to, { name, language, params }, from) =>
+    send(to, {
+      type: "template",
+      template: {
+        name,
+        language: { code: language },
+        ...(params.length
+          ? { components: [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }] }
+          : {}),
       },
     }, from),
   async downloadMedia(mediaId) {

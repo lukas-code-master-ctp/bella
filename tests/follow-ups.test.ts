@@ -11,10 +11,13 @@ import {
   formatDelay,
   parseChileDateTime,
   parseDelays,
+  renderTemplate,
+  templateError,
   withinSendingHours,
   type FollowUpSettings,
 } from "@/lib/domain/follow-ups";
 import { seedFunnel } from "./factories";
+import type { WhatsAppApi } from "@/lib/channels/whatsapp";
 
 type Scripted = { stop_reason: string; content: object[] };
 
@@ -283,6 +286,57 @@ describe("seguimientos", () => {
     await runAgent(lead.id, turn.clients);
     expect(JSON.stringify(turn.requests.at(-1)!.messages.at(-1))).toContain("24 horas desde su último mensaje");
     expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).followUpReason).toBeNull();
+  });
+
+  it("valida y arma la plantilla con el nombre del cliente", () => {
+    const t = { name: "seguimiento_1", language: "es", text: "Hola {{1}}, ¿seguimos?" };
+    expect(templateError(t)).toBeNull();
+    expect(templateError({ ...t, name: "" })).toContain("nombre");
+    expect(templateError({ ...t, name: "Seguimiento 1" })).toContain("minúsculas");
+    expect(templateError({ ...t, text: "Hola {{1}}, tu {{2}}" })).toContain("{{1}}");
+    expect(templateError({ name: "", language: "es", text: "" })).toBeNull();
+    expect(renderTemplate(t, "Ana María Pérez")).toEqual({ body: "Hola Ana, ¿seguimos?", params: ["Ana"] });
+    expect(renderTemplate({ ...t, text: "¿Seguimos?" }, "Ana")).toEqual({ body: "¿Seguimos?", params: [] });
+  });
+
+  it("pasadas 24 h en WhatsApp envía la plantilla y programa el siguiente", async () => {
+    await useFollowUps({ delays: [60, 3 * 24 * 60], template: { name: "seguimiento_1", language: "es", text: "Hola {{1}}, ¿seguimos?" } });
+    await seedFunnel();
+    const lead = await createLead({ name: "Ana Pérez", channel: "WHATSAPP", phone: "+56911112222", externalId: "56911112222" });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Hola" } });
+    await runAgent(lead.id, fakeAnthropic([say("¡Hola!")]).clients);
+    await db.message.updateMany({ where: { leadId: lead.id, author: "CONTACT" }, data: { createdAt: new Date(Date.now() - 30 * HOUR) } });
+    await db.message.updateMany({ where: { leadId: lead.id, author: "AI" }, data: { createdAt: new Date(Date.now() - 29 * HOUR) } });
+    await makeDue(lead.id);
+
+    const sent: unknown[] = [];
+    const whatsapp = { sendTemplate: async (to: string, t: object) => (sent.push({ to, ...t }), "wamid.t1") } as unknown as WhatsAppApi;
+    const { clients, requests } = fakeAnthropic([]);
+    expect(await sendFollowUpNow(lead.id, { ...clients, whatsapp })).toBe("sent");
+
+    expect(requests).toHaveLength(0);
+    expect(sent).toEqual([{ to: "56911112222", name: "seguimiento_1", language: "es", params: ["Ana"] }]);
+    expect(await db.message.findFirst({ where: { leadId: lead.id }, orderBy: { createdAt: "desc" } })).toMatchObject({
+      author: "AI",
+      body: "Hola Ana, ¿seguimos?",
+      deliveryStatus: "SENT",
+      externalId: "wamid.t1",
+    });
+    const after = await db.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(after.followUpCount).toBe(1);
+    expect(after.followUpAt!.getTime() - Date.now()).toBeGreaterThan(71 * HOUR);
+  });
+
+  it("con plantilla, la IA puede agendar un recontacto en WhatsApp después de 24 h", async () => {
+    await useFollowUps({ template: { name: "seguimiento_1", language: "es", text: "Hola {{1}}, ¿seguimos?" } });
+    await seedFunnel();
+    const lead = await createLead({ name: "Ana", channel: "WHATSAPP", phone: "+56911112222" });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Háblame la próxima semana" } });
+    const late = new Date(Date.now() + 5 * 24 * HOUR).toISOString().slice(0, 10);
+    const turn = fakeAnthropic([toolUse("t1", "schedule_follow_up", { date: `${late} 11:00`, reason: "retomar" }), say("¡Listo!")]);
+    await runAgent(lead.id, turn.clients);
+    expect(JSON.stringify(turn.requests.at(-1)!.messages.at(-1))).toContain("plantilla de seguimiento");
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).followUpReason).toBe("retomar");
   });
 
   it("el botón del lead envía el seguimiento sin esperar el plazo", async () => {
