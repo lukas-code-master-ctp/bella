@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { db } from "../db";
-import { getAssistantSettings, getSetting, setSetting } from "../settings";
+import { db, rootDb } from "../db";
+import { DEFAULT_ASSISTANT, getAssistantSettings, getSetting, setSetting } from "../settings";
+import { currentCompanyId } from "../tenant";
 
 /** Datos públicos de la política de privacidad (Meta los pide para revisar la app). */
 export type LegalSettings = {
@@ -10,10 +11,21 @@ export type LegalSettings = {
   contactEmail: string;
 };
 
+/**
+ * Sin empresa responsable configurada se usa el nombre de la empresa de la asistente y, si
+ * sigue siendo el genérico ("nuestra empresa"), el nombre de la empresa en Beliapp: la política
+ * pública siempre nombra a alguien.
+ */
 export async function getLegalSettings(): Promise<LegalSettings> {
   const saved = await getSetting<Partial<LegalSettings>>("legal", {});
   const { companyName } = await getAssistantSettings();
-  return { legalName: saved.legalName || companyName, contactEmail: saved.contactEmail ?? "" };
+  const named = companyName !== DEFAULT_ASSISTANT.companyName ? companyName : "";
+  const legalName =
+    saved.legalName ||
+    named ||
+    (await rootDb.company.findUnique({ where: { id: await currentCompanyId() }, select: { name: true } }))?.name ||
+    companyName;
+  return { legalName, contactEmail: saved.contactEmail ?? "" };
 }
 
 export async function saveLegalSettings(s: LegalSettings) {
