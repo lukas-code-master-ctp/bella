@@ -88,7 +88,7 @@ ${envLine(s, "META_VERIFY_TOKEN", "inventa un texto largo al azar; se usa igual 
 ${envLine(s, "META_PAGE_ACCESS_TOKEN", "token del usuario del sistema con la página asignada y los permisos pages_messaging, pages_manage_metadata, pages_manage_engagement, pages_read_engagement, instagram_basic, instagram_manage_messages e instagram_manage_comments.")}
 ${envLine(s, "META_PAGE_ID", "id de la página de Facebook (Configuración de la página → Información).")}
 ${envLine(s, "META_IG_ACCOUNT_ID", "id de la cuenta profesional de Instagram vinculada a la página.")}
-${envLine(s, "META_ADS_TOKEN", "opcional: token del usuario del sistema con ads_read, para ver los nombres de campaña y el gasto de cada una en Métricas.")}
+${envLine(s, "META_ADS_TOKEN", "opcional: token del usuario del sistema con ads_read, para ver los nombres de campaña y el gasto de cada una en Métricas (con ads_management además se pueden pausar campañas en alerta desde Beliapp).")}
 ${envLine(s, "META_AD_ACCOUNT_ID", "opcional: id de la cuenta publicitaria (act_…), o varias separadas por coma; si queda vacío se usan todas las que vea el token de anuncios.")}
 ${envLine(s, "META_CAPI_TOKEN", "Administrador de eventos → el píxel → Configuración → API de Conversiones → Generar token de acceso.")}
 8. Webhooks en la app (usa el mismo token de verificación del webhook que guardaste en Beliapp):

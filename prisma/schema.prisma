@@ -884,3 +884,36 @@ model LoginAttempt {
   @@index([key, createdAt])
   @@index([createdAt])
 }
+
+/// Campaña cuyos leads se pierden casi todos (ver src/lib/domain/campaign-alerts.ts). Una por
+/// campaña: se abre al cruzar el umbral, guarda la recomendación de la IA y se cierra sola
+/// (resolvedAt) cuando la campaña vuelve a quedar bajo el umbral.
+model CampaignAlert {
+  id          String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String    @default("default")
+  /// Nombre con que se agrupan sus leads en Métricas (campaignOf en attribution.ts).
+  campaign    String
+  /// Id de la campaña en Meta, si el origen de sus leads lo trae (sirve para pausarla).
+  campaignId  String?
+  /// Números de la ventana revisada: leads, perdidos y ganados.
+  leads       Int
+  lost        Int
+  won         Int       @default(0)
+  /// Motivos de pérdida más repetidos: [{ reason, count }].
+  reasons     Json      @default("[]")
+  /// Recomendación de la IA (CampaignAdvice en src/lib/ai/campaign-advice.ts).
+  advice      Json?
+  adviceModel String?
+  adviceAt    DateTime?
+  /// Cuándo un admin la pausó en Meta desde Beliapp.
+  pausedAt    DateTime?
+  pausedById  String?
+  detectedAt  DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Cuándo volvió a quedar bajo el umbral; null = sigue en alerta.
+  resolvedAt  DateTime?
+
+  @@unique([companyId, campaign])
+  @@index([companyId, resolvedAt])
+}
