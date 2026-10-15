@@ -100,8 +100,8 @@ export default async function FunnelPage({
         )}
         <dl className="flex items-baseline gap-4 text-sm text-slate-600">
           <Stat label="Abiertos" value={open.reduce((n, o) => n + o._count._all, 0)} />
-          <Stat label="Ganados" value={count("WON")} />
-          <Stat label="Perdidos" value={count("LOST")} />
+          <Stat label="Ganados" value={count("WON")} href="/chats?estado=won" />
+          <Stat label="Perdidos" value={count("LOST")} href="/chats?estado=lost" />
         </dl>
         <span aria-hidden className="hidden h-6 w-px bg-slate-200 sm:block" />
         <div className="flex flex-wrap items-center gap-2">
@@ -199,10 +199,11 @@ export default async function FunnelPage({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+// Los cerrados salen del tablero (incluso de una columna "Perdidos"): se ven en Chats con su filtro.
+function Stat({ label, value, href }: { label: string; value: number; href?: string }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <dt>{label}</dt>
+      <dt>{href ? <Link href={href} title={`Ver ${label.toLowerCase()} en Chats`} className="underline decoration-slate-300 underline-offset-4 hover:text-slate-900">{label}</Link> : label}</dt>
       <dd key={value} className="inline-block animate-pop text-base font-bold tabular-nums text-slate-900">
         {value}
       </dd>
