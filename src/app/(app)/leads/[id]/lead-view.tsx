@@ -11,7 +11,7 @@ import { stageOptions } from "@/lib/domain/funnels";
 import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { sourceLabel } from "@/lib/domain/attribution";
-import { formatAgo, startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { formatAgo, formatLocal, startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Card, inputClass, TagPill } from "@/components/ui";
@@ -104,6 +104,7 @@ export async function LeadView({
       stage: true,
       assignee: true,
       source: true,
+      conversions: { orderBy: { createdAt: "asc" }, select: { id: true, kind: true, status: true, error: true, sentAt: true } },
       variant: { select: { name: true } },
       messages: { include: { user: true }, orderBy: { createdAt: "asc" } },
       events: { include: { user: true }, orderBy: { createdAt: "desc" } },
@@ -437,7 +438,7 @@ export async function LeadView({
                   </Section>
 
                   <Section title="Origen">
-                    <LeadOrigin source={lead.source} />
+                    <LeadOrigin source={lead.source} conversions={lead.conversions} />
                   </Section>
 
                 </Card>
@@ -510,8 +511,52 @@ export async function LeadView({
   );
 }
 
-function LeadOrigin({ source: s }: { source: LeadSource | null }) {
-  if (!s) return <p className="text-sm text-slate-500">Llegó directo, sin anuncio ni enlace con UTM.</p>;
+type Conversion = { id: string; kind: string; status: string; error: string | null; sentAt: Date | null };
+
+const CONVERSION_LABEL: Record<string, string> = { QUALIFIED: "Lead calificado", PURCHASE: "Venta" };
+const CONVERSION_STATUS: Record<string, [label: string, tone: "success" | "warning" | "danger" | "neutral"]> = {
+  SENT: ["Enviado", "success"],
+  PENDING: ["Por enviar", "neutral"],
+  SENDING: ["Enviando", "neutral"],
+  FAILED: ["Con error, se reintenta", "danger"],
+  SKIPPED: ["No enviado: faltan datos para que Meta reconozca al cliente", "warning"],
+};
+
+/** Qué se le avisó a Meta de este lead por la API de Conversiones. */
+function LeadConversions({ conversions }: { conversions: Conversion[] }) {
+  if (!conversions.length) return null;
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      <p className="mb-1.5 text-xs font-semibold text-slate-600">Avisos a Meta</p>
+      <ul className="space-y-1.5">
+        {conversions.map((c) => {
+          const [label, tone] = CONVERSION_STATUS[c.status] ?? [c.status, "neutral" as const];
+          return (
+            <li key={c.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-slate-900">{CONVERSION_LABEL[c.kind] ?? c.kind}</span>
+              <Badge tone={tone}>{label}</Badge>
+              {c.sentAt && <span className="text-xs text-slate-500">{formatLocal(c.sentAt)}</span>}
+              {c.status === "FAILED" && c.error && (
+                <span className="w-full truncate text-xs text-red-700" title={c.error}>
+                  {c.error}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function LeadOrigin({ source: s, conversions }: { source: LeadSource | null; conversions: Conversion[] }) {
+  if (!s)
+    return (
+      <div className="text-sm">
+        <p className="text-slate-500">Llegó directo, sin anuncio ni enlace con UTM.</p>
+        <LeadConversions conversions={conversions} />
+      </div>
+    );
   const rows: [string, string | null][] =
     s.kind === "AD"
       ? [
@@ -552,6 +597,7 @@ function LeadOrigin({ source: s }: { source: LeadSource | null }) {
           {s.kind === "AD" ? "Ver anuncio" : "Ver landing"}
         </a>
       )}
+      <LeadConversions conversions={conversions} />
     </div>
   );
 }

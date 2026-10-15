@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
-import { Bot, CalendarClock, Headset, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
+import { Bot, CalendarClock, Headset, Megaphone, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import type { Attention } from "@/lib/domain/attention";
 import type { TaskBucket } from "@/lib/domain/tasks";
@@ -31,6 +31,8 @@ export type BoardLead = {
   /** La tarea pendiente que vence primero, con su plazo en palabras ("Venció hace 2 h", "Hoy 15:30"). */
   nextTask: { title: string; due: string; bucket: TaskBucket } | null;
   tags: { label: string; color: string }[];
+  /** Campaña o anuncio por el que llegó (ver campaignOf); null si llegó directo. */
+  origin: string | null;
   updatedAt: string;
 };
 
@@ -170,7 +172,16 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
                     <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 text-xs text-slate-600">
                       {lead.assignee ? <Avatar name={lead.assignee} size="sm" /> : <UserRound aria-hidden className="size-4 text-slate-400" />}
                       <span className="truncate">{lead.assignee ?? "Sin asignar"}</span>
-                      <span className="ml-auto flex shrink-0 items-center gap-2">
+                      <span className="ml-auto flex min-w-0 items-center gap-2">
+                        {lead.origin && (
+                          <span
+                            title={`Llegó por: ${lead.origin}`}
+                            className="inline-flex min-w-0 items-center gap-1 rounded-full bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-800"
+                          >
+                            <Megaphone aria-label="Campaña:" className="size-3 shrink-0" />
+                            <span className="max-w-[7rem] truncate">{lead.origin}</span>
+                          </span>
+                        )}
                         {lead.score !== null && <ScoreBadge score={lead.score} reason={lead.scoreReason} />}
                       </span>
                     </div>
