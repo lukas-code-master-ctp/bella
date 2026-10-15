@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatAgo } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
+import { campaignOf } from "@/lib/domain/attribution";
 import { formatDue } from "@/lib/dates";
 import { bucketOf } from "@/lib/domain/tasks";
 import { listFunnels } from "@/lib/domain/funnels";
@@ -65,6 +66,7 @@ export default async function FunnelPage({
             assignee: true,
             messages: { orderBy: { createdAt: "desc" }, take: 1 },
             tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" }, take: 1, select: { title: true, dueAt: true } },
+            source: { select: { campaignName: true, utmCampaign: true, adHeadline: true, adId: true } },
           },
           orderBy: byScore ? [{ score: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }] : { updatedAt: "desc" },
           take: PER_STAGE,
@@ -182,6 +184,7 @@ export default async function FunnelPage({
               ? { title: l.tasks[0].title, due: formatDue(l.tasks[0].dueAt, now), bucket: bucketOf(l.tasks[0].dueAt, now) }
               : null,
             tags: l.contact.tags.map((ct) => ({ label: ct.tag.name, color: ct.tag.color })),
+            origin: campaignOf(l.source),
             updatedAt: l.updatedAt.toISOString(),
           }))}
         />
