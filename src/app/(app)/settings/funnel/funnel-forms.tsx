@@ -8,6 +8,7 @@ import { Chip, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { createFunnelAction, deleteFunnelAction, updateFunnelAction } from "../actions";
+import { isSaved, savedToast, withToast } from "@/components/toast";
 
 const CHANNELS = Object.keys(CHANNEL_LABEL) as Channel[];
 
@@ -34,7 +35,7 @@ type FunnelData = {
 };
 
 export function FunnelForm({ funnel, defaultAssistant, removable }: { funnel: FunnelData; defaultAssistant: string; removable: boolean }) {
-  const [message, action] = useActionState(updateFunnelAction.bind(null, funnel.id), null);
+  const [message, action] = useActionState(withToast(updateFunnelAction.bind(null, funnel.id), savedToast), null);
   const [deleteError, remove] = useActionState(deleteFunnelAction.bind(null, funnel.id), null);
   return (
     <>
@@ -63,7 +64,7 @@ export function FunnelForm({ funnel, defaultAssistant, removable }: { funnel: Fu
             <textarea name="instructions" rows={4} defaultValue={funnel.instructions ?? ""} className={inputClass} />
           </Field>
         </PanelBody>
-        <PanelFooter note={message && <FormMessage tone={message === "Guardado." ? "neutral" : "danger"}>{message}</FormMessage>}>
+        <PanelFooter note={message && !isSaved(message) && <FormMessage>{message}</FormMessage>}>
           <SubmitButton pendingText="Guardando…">Guardar embudo</SubmitButton>
         </PanelFooter>
       </form>

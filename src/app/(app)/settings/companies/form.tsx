@@ -6,9 +6,10 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createCompanyAction } from "./actions";
+import { withToast } from "@/components/toast";
 
 export function NewCompanyForm() {
-  const [error, action] = useActionState(createCompanyAction, null);
+  const [error, action] = useActionState(withToast(createCompanyAction, (e) => (e ? null : "Empresa creada")), null);
   return (
     <form action={action}>
       <PanelBody>

@@ -6,9 +6,10 @@ import { Button, Field, FormMessage, inputClass } from "@/components/ui";
 import { PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createWebhookAction, testWebhookAction } from "./actions";
+import { withToast } from "@/components/toast";
 
 export function NewWebhookForm({ stages }: { stages: { id: string; name: string }[] }) {
-  const [message, action] = useActionState(createWebhookAction, null);
+  const [message, action] = useActionState(withToast(createWebhookAction, (e) => (e ? null : "Webhook creado")), null);
   return (
     <form action={action}>
       <PanelBody>

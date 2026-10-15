@@ -46,7 +46,7 @@ export default async function RulesPage() {
                   </p>
                 </div>
                 <form action={deleteRuleAction.bind(null, r.id)}>
-                  <SubmitButton variant="ghost-danger" size="icon" aria-label={`Borrar regla ${r.name}`} title="Borrar regla" confirm={`¿Borrar la regla "${r.name}"?`} pendingText="">
+                  <SubmitButton toast="Regla borrada" variant="ghost-danger" size="icon" aria-label={`Borrar regla ${r.name}`} title="Borrar regla" confirm={`¿Borrar la regla "${r.name}"?`} pendingText="">
                     <Trash2 aria-hidden />
                   </SubmitButton>
                 </form>
@@ -151,7 +151,7 @@ export default async function RulesPage() {
             </div>
           </PanelBody>
           <PanelFooter>
-            <SubmitButton>
+            <SubmitButton toast="Regla creada">
               <Plus aria-hidden />
               Crear regla
             </SubmitButton>

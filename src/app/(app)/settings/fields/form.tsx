@@ -8,12 +8,13 @@ import { Chip } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { FIELD_TYPE_LABEL } from "@/lib/labels";
 import { createFieldAction, updateFieldAction } from "./actions";
+import { isSaved, withToast } from "@/components/toast";
 
 type FieldData = { id: string; name: string; type: FieldType; options: string[]; description: string };
 
 /** Formulario de un campo del cliente: sin `field` crea uno nuevo. */
 export function FieldForm({ field }: { field?: FieldData }) {
-  const [message, action] = useActionState(field ? updateFieldAction.bind(null, field.id) : createFieldAction, null);
+  const [message, action] = useActionState(withToast(field ? updateFieldAction.bind(null, field.id) : createFieldAction, (m) => (isSaved(m) ? (field ? "Cambios guardados" : "Campo creado") : null)), null);
   const [type, setType] = useState<FieldType>(field?.type ?? "TEXT");
   return (
     <form action={action} className="space-y-4">
@@ -47,7 +48,7 @@ export function FieldForm({ field }: { field?: FieldData }) {
         />
       </Field>
       <div className="flex flex-wrap items-center justify-end gap-3">
-        {message && <FormMessage tone={message === "Guardado." ? "neutral" : "danger"}>{message}</FormMessage>}
+        {message && !isSaved(message) && <FormMessage>{message}</FormMessage>}
         {field ? (
           <SubmitButton>Guardar cambios</SubmitButton>
         ) : (

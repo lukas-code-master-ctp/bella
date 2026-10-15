@@ -106,7 +106,7 @@ export default async function FilesPage() {
                           <Trash2 aria-hidden />
                           Quitar
                         </ConfirmButton>
-                        <SubmitButton>Guardar cambios</SubmitButton>
+                        <SubmitButton toast="Cambios guardados">Guardar cambios</SubmitButton>
                       </div>
                     </form>
                   </Disclosure>

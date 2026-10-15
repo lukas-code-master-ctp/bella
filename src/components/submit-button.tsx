@@ -3,17 +3,25 @@
 import { useFormStatus } from "react-dom";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "./ui";
+import { useToastWhenSent } from "./toast";
 import type { ComponentProps } from "react";
 
 export function SubmitButton({
   pendingText,
   confirm,
+  toast,
   children,
   onClick,
   disabled,
   ...props
-}: ComponentProps<typeof Button> & { pendingText?: string; confirm?: string }) {
+}: ComponentProps<typeof Button> & {
+  pendingText?: string;
+  confirm?: string;
+  /** Aviso flotante al terminar de enviar (ej. "Cambios guardados"). */
+  toast?: string;
+}) {
   const { pending } = useFormStatus();
+  useToastWhenSent(toast);
   return (
     <Button
       {...props}

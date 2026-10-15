@@ -7,12 +7,13 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { ChoiceCard, PanelBody, PanelFooter, Segmented } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createCommentRuleAction } from "./actions";
+import { withToast } from "@/components/toast";
 
 const NETWORK = { INSTAGRAM: "Instagram", FACEBOOK: "Facebook" } as const;
 
 /** Formulario de una regla nueva. La publicación se elige de las recientes o se pega su id. */
 export function CommentRuleForm({ posts, postsError }: { posts: SocialPost[]; postsError: string | null }) {
-  const [message, action] = useActionState(createCommentRuleAction, null);
+  const [message, action] = useActionState(withToast(createCommentRuleAction, (m) => (m?.startsWith("Regla creada") ? m : null)), null);
   const ok = message?.startsWith("Regla creada");
   return (
     <form action={action} key={ok ? message : undefined}>
@@ -68,7 +69,7 @@ export function CommentRuleForm({ posts, postsError }: { posts: SocialPost[]; po
           </div>
         </fieldset>
       </PanelBody>
-      <PanelFooter note={message && <FormMessage tone={ok ? "neutral" : "danger"}>{message}</FormMessage>}>
+      <PanelFooter note={message && !ok && <FormMessage>{message}</FormMessage>}>
         <SubmitButton>
           <Plus aria-hidden />
           Crear regla

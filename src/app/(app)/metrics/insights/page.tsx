@@ -121,7 +121,7 @@ export default async function WeeklyInsightsPage({ searchParams }: { searchParam
           <p className="text-xs text-slate-600">
             {recipients.length ? `Lo reciben: ${recipients.join(", ")}.` : "Todavía no hay destinatarios."}
           </p>
-          <SubmitButton>Guardar</SubmitButton>
+          <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
         </form>
         {insight && (
           <form action={sendWeeklyEmailNowAction.bind(null, insight.id)} className="mt-4 border-t border-slate-100 pt-4">

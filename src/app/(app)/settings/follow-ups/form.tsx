@@ -6,6 +6,7 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { HourSelect, PanelBody, PanelFooter, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { runFollowUpsNowAction, saveFollowUpsAction } from "../actions";
+import { isSaved, savedToast, withToast } from "@/components/toast";
 
 const UNIT: Record<string, string> = { m: "min", min: "min", h: "h", d: "d" };
 
@@ -38,7 +39,7 @@ export function FollowUpsForm(props: {
   sendTo: number;
   instructions: string;
 }) {
-  const [message, action] = useActionState(saveFollowUpsAction, null);
+  const [message, action] = useActionState(withToast(saveFollowUpsAction, savedToast), null);
   const [delays, setDelays] = useState(props.delays);
   return (
     <form action={action}>
@@ -65,7 +66,7 @@ export function FollowUpsForm(props: {
           <textarea name="instructions" rows={4} defaultValue={props.instructions} className={inputClass} />
         </Field>
       </PanelBody>
-      <PanelFooter note={message && <FormMessage tone={message === "Guardado." ? "neutral" : "danger"}>{message}</FormMessage>}>
+      <PanelFooter note={message && !isSaved(message) && <FormMessage>{message}</FormMessage>}>
         <SubmitButton>Guardar</SubmitButton>
       </PanelFooter>
     </form>

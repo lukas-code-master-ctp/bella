@@ -86,7 +86,7 @@ export default async function PixelSettingsPage() {
             </div>
           </PanelBody>
           <PanelFooter>
-            <SubmitButton>Guardar</SubmitButton>
+            <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
           </PanelFooter>
         </form>
       </Panel>

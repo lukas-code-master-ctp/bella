@@ -5,6 +5,7 @@ import { Bot } from "lucide-react";
 import { FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveFieldsAction } from "./actions";
+import { isSaved, savedToast, withToast } from "@/components/toast";
 
 export type LeadField = {
   id: string;
@@ -17,7 +18,7 @@ export type LeadField = {
 
 /** Campos del cliente en la ficha del lead: los llena la IA y el ejecutivo los corrige aquí. */
 export function LeadFieldsForm({ leadId, fields }: { leadId: string; fields: LeadField[] }) {
-  const [message, action] = useActionState(saveFieldsAction.bind(null, leadId), null);
+  const [message, action] = useActionState(withToast(saveFieldsAction.bind(null, leadId), savedToast), null);
   // La key con los valores guardados reinicia los inputs cuando la IA o alguien más los cambia.
   const key = fields.map((f) => f.value).join("\u0000");
   return (
@@ -49,7 +50,7 @@ export function LeadFieldsForm({ leadId, fields }: { leadId: string; fields: Lea
       ))}
       <div className="flex items-center gap-3 pt-1">
         <SubmitButton variant="secondary">Guardar datos</SubmitButton>
-        {message && <FormMessage tone={message === "Guardado." ? "neutral" : "danger"}>{message}</FormMessage>}
+        {message && !isSaved(message) && <FormMessage>{message}</FormMessage>}
       </div>
     </form>
   );

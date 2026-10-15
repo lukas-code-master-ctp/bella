@@ -58,7 +58,7 @@ export default async function CommentRulesPage() {
                     </p>
                   </div>
                   <form action={deleteCommentRuleAction.bind(null, r.id)}>
-                    <SubmitButton variant="ghost-danger" size="icon" aria-label={`Borrar regla ${r.name}`} title="Borrar regla" confirm={`¿Borrar la regla "${r.name}"?`} pendingText="">
+                    <SubmitButton toast="Regla borrada" variant="ghost-danger" size="icon" aria-label={`Borrar regla ${r.name}`} title="Borrar regla" confirm={`¿Borrar la regla "${r.name}"?`} pendingText="">
                       <Trash2 aria-hidden />
                     </SubmitButton>
                   </form>

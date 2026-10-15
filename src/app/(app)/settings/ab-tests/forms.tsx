@@ -8,6 +8,7 @@ import { Chip, PanelBody, PanelFooter, ToggleRow } from "@/components/settings-u
 import { SubmitButton } from "@/components/submit-button";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { createVariantAction, deleteVariantAction, updateVariantAction } from "./actions";
+import { withToast } from "@/components/toast";
 
 type Variant = {
   id: string;
@@ -47,7 +48,7 @@ function VariantFields({ variant, defaultAssistant }: { variant?: Variant; defau
 }
 
 export function NewVariantForm({ channels, defaultAssistant }: { channels: Channel[]; defaultAssistant: string }) {
-  const [error, action] = useActionState(createVariantAction, null);
+  const [error, action] = useActionState(withToast(createVariantAction, (e) => (e ? null : "Variante creada")), null);
   return (
     <form action={action}>
       <PanelBody>
@@ -74,8 +75,8 @@ export function NewVariantForm({ channels, defaultAssistant }: { channels: Chann
 }
 
 export function VariantForm({ variant, defaultAssistant }: { variant: Variant; defaultAssistant: string }) {
-  const [error, action] = useActionState(updateVariantAction.bind(null, variant.id), null);
-  const [deleteError, remove] = useActionState(deleteVariantAction.bind(null, variant.id), null);
+  const [error, action] = useActionState(withToast(updateVariantAction.bind(null, variant.id), (e) => (e ? null : "Cambios guardados")), null);
+  const [deleteError, remove] = useActionState(withToast(deleteVariantAction.bind(null, variant.id), (e) => (e ? null : "Variante borrada")), null);
   return (
     <div className="space-y-4">
       <form action={action} className="space-y-4">

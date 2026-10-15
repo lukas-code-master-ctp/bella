@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createTaskAction } from "./actions";
+import { withToast } from "@/components/toast";
 
 /** Formulario para agregar una tarea a un lead. `executives` solo se pasa al admin. */
 export function TaskForm({
@@ -19,7 +20,7 @@ export function TaskForm({
   executives?: { id: string; name: string }[];
   defaultAssigneeId?: string | null;
 }) {
-  const [error, action] = useActionState(createTaskAction.bind(null, leadId), null);
+  const [error, action] = useActionState(withToast(createTaskAction.bind(null, leadId), (e) => (e ? null : "Tarea creada")), null);
   // React limpia el formulario al terminar la acción, listo para la siguiente tarea.
   return (
     <form action={action} className="space-y-2">

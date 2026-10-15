@@ -64,7 +64,7 @@ export default async function CredentialsPage() {
           </Panel>
         ))}
         <SaveBar note="Las credenciales guardadas aquí reemplazan a las variables del servidor.">
-          <SubmitButton>Guardar credenciales</SubmitButton>
+          <SubmitButton toast="Credenciales guardadas">Guardar credenciales</SubmitButton>
         </SaveBar>
       </form>
     </div>

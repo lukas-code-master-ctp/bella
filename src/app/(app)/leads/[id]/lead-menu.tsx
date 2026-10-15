@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { Ban, CircleX, Ellipsis, LockOpen, Merge, RotateCcw, Trophy, X } from "lucide-react";
 import { Button, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { toast } from "@/components/toast";
 import {
   blockContactAction,
   closeLeadAction,
@@ -189,7 +190,10 @@ function MenuItem({ icon, danger, onClick, children }: { icon: React.ReactNode; 
 function CloseForm({ leadId, outcome, onDone }: { leadId: string; outcome: "WON" | "LOST"; onDone: () => void }) {
   const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
     const result = await closeLeadAction(leadId, prev, form);
-    if (!result) onDone();
+    if (!result) {
+      toast(outcome === "WON" ? "Lead marcado como ganado" : "Lead marcado como perdido");
+      onDone();
+    }
     return result;
   }, null);
   return (
@@ -225,6 +229,7 @@ function BlockForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
     <form
       action={async (form) => {
         await blockContactAction(leadId, form);
+        toast("Contacto bloqueado");
         onDone();
       }}
       className="space-y-3"
