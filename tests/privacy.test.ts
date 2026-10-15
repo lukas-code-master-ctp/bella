@@ -81,4 +81,8 @@ describe("privacidad y eliminación de datos", () => {
     await saveLegalSettings({ legalName: "CTP SpA", contactEmail: "privacidad@ctp.cl" });
     expect((await getLegalSettings()).legalName).toBe("CTP SpA");
   });
+
+  it("sin nombre de empresa en la asistente, la política usa el nombre de la empresa en Beliapp", async () => {
+    expect((await getLegalSettings()).legalName).toBe("Empresa de prueba");
+  });
 });
