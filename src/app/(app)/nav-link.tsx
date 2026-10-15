@@ -15,6 +15,7 @@ export function NavLink({
   label,
   badge,
   compactable = false,
+  exact = false,
 }: {
   href: string;
   icon: React.ReactNode;
@@ -22,11 +23,13 @@ export function NavLink({
   badge?: React.ReactNode;
   /** Es del menú lateral principal, que se puede contraer (no el de Configuración). */
   compactable?: boolean;
+  /** Activo solo en esa ruta exacta, no en las de abajo (la portada de Configuración). */
+  exact?: boolean;
 }) {
   const pathname = usePathname();
   // Las variantes de "menú contraído" solo valen en el menú principal.
   const c = (cls: string) => (compactable ? cls : "");
-  const active = pathname === href || pathname.startsWith(`${href}/`);
+  const active = pathname === href || (!exact && pathname.startsWith(`${href}/`));
   return (
     <Link
       href={href}

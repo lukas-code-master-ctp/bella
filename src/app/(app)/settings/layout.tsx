@@ -1,9 +1,10 @@
-import { Archive, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
+import { Archive, ListChecks, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { NavLink } from "../nav-link";
 import { ScrollActiveIntoView } from "./scroll-active";
 
 const GROUPS = [
+  ["Empezar", [["/settings", "Configura tu empresa", <ListChecks key="i" />]]],
   [
     "Asistente IA",
     [
@@ -63,7 +64,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
             <div key={group} role="group" aria-label={group} className="flex gap-1 md:flex-col md:gap-0.5">
               <p className="hidden px-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 md:block">{group}</p>
               {tabs.map(([href, label, icon]) => (
-                <NavLink key={href} href={href} icon={icon} label={label} />
+                <NavLink key={href} href={href} icon={icon} label={label} exact={href === "/settings"} />
               ))}
             </div>
           ))}
