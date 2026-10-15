@@ -6,6 +6,7 @@ import { FALLBACK_REPLY, runAgent, TRANSIENT_GRACE_MS } from "@/lib/ai/agent";
 import type { AiConfig } from "@/lib/ai/config";
 import { TransientAiError, type AnthropicClient, type ChatClient, type ChatResponse } from "@/lib/ai/providers";
 import { KNOWLEDGE_INLINE_MAX_CHARS } from "@/lib/knowledge";
+import { saveAiOperation } from "@/lib/domain/ai-operation";
 import { executive, seedFunnel } from "./factories";
 
 type Scripted = { stop_reason: string; content: object[] };
@@ -223,6 +224,35 @@ describe("asistente IA (Anthropic)", () => {
     const result = (requests[1].messages.at(-1)!.content as { is_error?: boolean; content: string }[])[0];
     expect(result.is_error).toBe(true);
     expect(result.content).toContain("Etapas válidas");
+  });
+
+  it("bloquea al contacto solo con el bloqueo automático encendido y sin responderle", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Spam", channel: "SIMULATOR" });
+    await inbound(lead.id, "Vendo seguidores baratos");
+    const script = () => [
+      { stop_reason: "tool_use", content: [toolUse("t1", "block_contact", { reason: "spam" })] },
+      { stop_reason: "end_turn", content: [text("Adiós.")] },
+    ];
+
+    // Apagado (por defecto): la herramienta falla y no hay criterios en el prompt.
+    const off = fakeAnthropic(script());
+    await runAgent(lead.id, off.client);
+    expect((off.requests[0] as { system?: string }).system).not.toContain("<criterios_de_bloqueo>");
+    expect((await db.contact.findFirstOrThrow()).blockedAt).toBeNull();
+
+    await saveAiOperation({ autoBlock: true, autoBlockCriteria: "Spam o publicidad" });
+    await inbound(lead.id, "Seguidores a $1000");
+    const on = fakeAnthropic(script());
+    await runAgent(lead.id, on.client);
+    expect((on.requests[0] as { system?: string }).system).toContain("<criterios_de_bloqueo>\nSpam o publicidad");
+    const contact = await db.contact.findFirstOrThrow();
+    expect(contact.blockedAt).not.toBeNull();
+    expect(contact.blockedReason).toBe("Por la IA: spam");
+    const updated = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { messages: true } });
+    expect(updated).toMatchObject({ status: "LOST", aiEnabled: false });
+    expect(updated.messages.at(-1)?.author).toBe("CONTACT");
+    expect(await db.leadEvent.count({ where: { leadId: lead.id, type: "BLOCKED", actor: "AI" } })).toBe(1);
   });
 });
 

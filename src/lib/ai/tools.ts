@@ -5,6 +5,8 @@ import { findField, setFieldValueTx } from "../domain/fields";
 import { funnelStages } from "../domain/funnels";
 import { scheduleFollowUpTx } from "../domain/follow-ups";
 import { addTagTx, DomainError, handoffToHumanTx, moveStageTx } from "../domain/leads";
+import { autoBlockCriteria, getAiOperation } from "../domain/ai-operation";
+import { blockContact } from "../domain/contacts";
 import { sendMediaFiles } from "../domain/files";
 import { createTask } from "../domain/tasks";
 import { deliverPendingConversions } from "../domain/conversions";
@@ -129,7 +131,17 @@ export const AGENT_TOOLS: Tool[] = [
       "puedes responder con la base de conocimiento.",
     { reason: text("Motivo de la derivación, en una frase") },
   ),
+  tool(
+    "block_contact",
+    "Bloquea al contacto: cierra su lead como perdido y sus mensajes futuros se descartan, sin " +
+      "respuesta. Úsala solo si tus instrucciones incluyen <criterios_de_bloqueo> y la conversación " +
+      "cumple claramente uno de ellos; ante la duda, no bloquees.",
+    { reason: text("Qué criterio cumple y por qué, en una frase") },
+  ),
 ];
+
+/** Prefijo del motivo de bloqueo cuando bloquea la IA, para distinguirlo en la ficha. */
+export const AI_BLOCK_PREFIX = "Por la IA: ";
 
 export type ToolOutcome = { content: string; isError?: boolean };
 
@@ -282,6 +294,14 @@ export async function executeTool(
           `Derivado a un ejecutivo${stage ? ` (etapa "${stage.name}")` : ""}. Quedas pausada: ` +
           "despídete brevemente avisando que un ejecutivo continuará la conversación.",
       };
+    }
+    case "block_contact": {
+      if (!autoBlockCriteria(await getAiOperation())) {
+        return { isError: true, content: "El bloqueo automático está desactivado: no puedes bloquear contactos." };
+      }
+      if (!str("reason")) return { isError: true, content: "Indica qué criterio cumple el contacto." };
+      await blockContact(leadId, { actor: "AI" }, `${AI_BLOCK_PREFIX}${str("reason")}`);
+      return { content: "Contacto bloqueado. No le escribas nada más." };
     }
     default:
       return { isError: true, content: `Herramienta desconocida: ${name}` };

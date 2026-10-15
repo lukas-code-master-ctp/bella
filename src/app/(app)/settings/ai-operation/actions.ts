@@ -23,6 +23,9 @@ export async function saveAiOperationAction(_prev: string | null, form: FormData
   const days = form.getAll("days").map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
   const outOfHoursMessage = String(form.get("outOfHoursMessage") ?? "").trim();
   const outOfHours = form.get("outOfHours") === "silent" ? "silent" : "message";
+  const autoBlock = form.get("autoBlock") === "on";
+  const autoBlockCriteria = String(form.get("autoBlockCriteria") ?? "").trim();
+  if (autoBlock && !autoBlockCriteria) return "Escribe los criterios de bloqueo.";
   if (hoursEnabled && !days.length) return "Elige al menos un día de atención.";
   if (hoursEnabled && outOfHours === "message" && !outOfHoursMessage) return "Escribe el mensaje fuera de horario.";
   await saveAiOperation({
@@ -33,6 +36,8 @@ export async function saveAiOperationAction(_prev: string | null, form: FormData
     outOfHours,
     ...(outOfHoursMessage ? { outOfHoursMessage } : {}),
     previousTickets: form.get("previousTickets") === "on",
+    autoBlock,
+    autoBlockCriteria,
   });
   revalidatePath("/settings/ai-operation");
   return "Guardado.";
