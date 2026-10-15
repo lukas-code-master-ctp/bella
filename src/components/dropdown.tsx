@@ -66,15 +66,16 @@ export function Dropdown({
       >
         {button}
       </button>
-      {open && (
-        <div
-          role="menu"
-          aria-label={label}
-          className={`absolute top-full z-40 mt-1.5 ${width} ${align === "right" ? "right-0" : "left-0"} animate-fade-in rounded-xl border border-slate-200 bg-white p-1 shadow-lg`}
-        >
-          {children}
-        </div>
-      )}
+      {/* Siempre montado y solo oculto: si se desmontara al elegir, los <form> de las opciones
+          (cambiar de empresa, cerrar sesión) quedarían fuera del documento antes de enviarse. */}
+      <div
+        role="menu"
+        aria-label={label}
+        hidden={!open}
+        className={`absolute top-full z-40 mt-1.5 ${width} ${align === "right" ? "right-0" : "left-0"} animate-fade-in rounded-xl border border-slate-200 bg-white p-1 shadow-lg`}
+      >
+        {children}
+      </div>
     </div>
   );
 }
