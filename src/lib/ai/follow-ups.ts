@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { getAiOperation } from "../domain/ai-operation";
 import { aiChannels } from "../domain/channels";
-import { getFollowUpSettings, withinSendingHours } from "../domain/follow-ups";
+import { getFollowUpSettings, replyWindowEnd, withinSendingHours } from "../domain/follow-ups";
 import { getSetting, setSetting } from "../settings";
 import { getAiConfig, missingKeyMessage } from "./config";
 import { runAgent, type TurnOutcome } from "./agent";
@@ -13,8 +13,6 @@ const BATCH = 10;
 /** Cada cuánto se revisan los seguimientos al usar la app (además del cron cada 15 minutos). */
 export const FOLLOW_UP_CHECK_MS = 5 * 60 * 1000;
 
-/** Ventana de Meta para escribirle texto libre al cliente desde su último mensaje. */
-const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const OUT_OF_WINDOW = "Pasaron más de 24 horas desde el último mensaje del cliente: el canal no permite escribirle.";
 
 export type FollowUpRun = { sent: number; skipped: number; failed: number; reason?: string };
@@ -75,7 +73,7 @@ async function followUpClaimed(
     data: { followUpAt: null },
   });
   if (claimed.count === 0) return "skipped";
-  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { contact: { select: { channel: true } } } });
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, });
   const last = await db.message.findFirst({ where: { leadId }, orderBy: { createdAt: "desc" } });
   // Un seguimiento automático es para cuando la última palabra fue de la IA: si un ejecutivo
   // escribió después, la conversación es suya. Lo agendado por la IA se respeta igual.
@@ -84,21 +82,15 @@ async function followUpClaimed(
     return "skipped";
   }
   // WhatsApp, Instagram y Messenger rechazan texto libre pasadas 24 h del último mensaje del cliente.
-  if (lead.contact.channel !== "SIMULATOR") {
-    const lastContact = await db.message.findFirst({
-      where: { leadId, author: "CONTACT" },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
-    if (!lastContact || Date.now() - lastContact.createdAt.getTime() > REPLY_WINDOW_MS) {
-      await db.$transaction([
-        db.lead.update({ where: { id: leadId }, data: { followUpReason: null } }),
-        db.leadEvent.create({
-          data: { leadId, type: "FOLLOW_UP_SKIPPED", actor: "SYSTEM", reason: OUT_OF_WINDOW },
-        }),
-      ]);
-      return "skipped";
-    }
+  const windowEnd = await replyWindowEnd(db, leadId);
+  if (windowEnd && Date.now() > windowEnd.getTime()) {
+    await db.$transaction([
+      db.lead.update({ where: { id: leadId }, data: { followUpReason: null } }),
+      db.leadEvent.create({
+        data: { leadId, type: "FOLLOW_UP_SKIPPED", actor: "SYSTEM", reason: OUT_OF_WINDOW },
+      }),
+    ]);
+    return "skipped";
   }
   try {
     return await runAgent(leadId, clients, { count: lead.followUpCount, reason: lead.followUpReason });

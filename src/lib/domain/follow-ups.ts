@@ -21,7 +21,8 @@ export type FollowUpSettings = {
 
 export const DEFAULT_FOLLOW_UPS: FollowUpSettings = {
   enabled: false,
-  delays: [3 * 60, 24 * 60, 3 * 24 * 60, 7 * 24 * 60],
+  // Caben en la ventana de 24 h de Meta: 2 h + 20 h desde la última respuesta de la IA.
+  delays: [2 * 60, 20 * 60],
   sendFrom: 9,
   sendTo: 21,
   instructions:
@@ -33,6 +34,11 @@ export const DEFAULT_FOLLOW_UPS: FollowUpSettings = {
 export const TIME_ZONE = "America/Santiago";
 /** La IA responde exactamente esto cuando decide que no corresponde escribirle al cliente. */
 export const NO_FOLLOW_UP = "SIN_SEGUIMIENTO";
+/**
+ * WhatsApp, Instagram y Messenger solo permiten escribirle texto libre al cliente hasta 24 h
+ * después de su último mensaje.
+ */
+export const REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Hasta cuándo puede agendar la IA un recontacto. */
 const MAX_SCHEDULE_DAYS = 180;
 
@@ -45,6 +51,21 @@ export async function getFollowUpSettings(): Promise<FollowUpSettings> {
 // Plazos ("3h, 1d, 30m")
 
 const UNIT_MINUTES: Record<string, number> = { m: 1, min: 1, h: 60, d: 24 * 60 };
+
+/**
+ * Hasta cuándo se le puede escribir libremente al cliente del lead: 24 h desde su último mensaje.
+ * Null si el canal no tiene ventana (simulador). Si el cliente nunca escribió, la ventana ya cerró.
+ */
+export async function replyWindowEnd(client: Tx | typeof db, leadId: string): Promise<Date | null> {
+  const lead = await client.lead.findUniqueOrThrow({ where: { id: leadId }, select: { contact: { select: { channel: true } } } });
+  if (lead.contact.channel === "SIMULATOR") return null;
+  const last = await client.message.findFirst({
+    where: { leadId, author: "CONTACT" },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  return new Date((last?.createdAt.getTime() ?? 0) + REPLY_WINDOW_MS);
+}
 
 /** Lee una lista de plazos como "3h, 1d, 3d, 7d". Devuelve null si alguno no se entiende. */
 export function parseDelays(text: string): number[] | null {
@@ -205,6 +226,15 @@ export async function scheduleFollowUpTx(
   if (at <= now) return { isError: true, content: "La fecha ya pasó: elige una fecha futura." };
   if (at.getTime() - now.getTime() > MAX_SCHEDULE_DAYS * 24 * 3600_000) {
     return { isError: true, content: `Solo se puede agendar hasta ${MAX_SCHEDULE_DAYS} días hacia adelante.` };
+  }
+  const windowEnd = await replyWindowEnd(tx, leadId);
+  if (windowEnd && at > windowEnd) {
+    return {
+      isError: true,
+      content:
+        `El canal solo permite escribirle hasta el ${formatChileDateTime(windowEnd)} (24 horas desde su último ` +
+        "mensaje). No prometas escribirle después de esa fecha: agenda antes o pídele que te escriba cuando quiera retomar.",
+    };
   }
   const reason = input.reason.trim() || "Recontacto acordado con el cliente";
   await tx.lead.update({ where: { id: leadId }, data: { followUpAt: at, followUpReason: reason } });

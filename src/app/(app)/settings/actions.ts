@@ -364,7 +364,7 @@ export async function saveAutoCloseAction(form: FormData) {
 export async function saveFollowUpsAction(_prev: string | null, form: FormData): Promise<string | null> {
   await requireAdmin();
   const delays = parseDelays(str(form, "delays"));
-  if (!delays) return 'No entendí los plazos. Escríbelos como "3h, 1d, 3d, 7d" (m = minutos, h = horas, d = días).';
+  if (!delays) return 'No entendí los plazos. Escríbelos como "2h, 20h" (m = minutos, h = horas, d = días).';
   if (delays.length > 10) return "Configura como máximo 10 seguimientos.";
   const hour = (key: string) => Math.min(24, Math.max(0, Math.round(Number(str(form, key)) || 0)));
   const [sendFrom, sendTo] = [hour("sendFrom"), hour("sendTo")];
