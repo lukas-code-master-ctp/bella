@@ -1,10 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { CloudUpload, Plus } from "lucide-react";
-import { Field, FormMessage, inputClass } from "@/components/ui";
+import { CloudUpload, LoaderCircle, Plus } from "lucide-react";
+import { Button, Field, FormMessage, inputClass } from "@/components/ui";
 import { PanelBody, PanelFooter } from "@/components/settings-ui";
-import { SubmitButton } from "@/components/submit-button";
 import { addFileAction } from "./actions";
 import { ProductInput } from "./product-input";
 
@@ -15,6 +14,7 @@ export function AddFileForm({ maxMb, metaLimits, products }: { maxMb: number; me
   const [picked, setPicked] = useState<File[]>([]);
   const [status, setStatus] = useState<Status>(null);
   const [formKey, setFormKey] = useState(0);
+  const [busy, setBusy] = useState(false);
   const many = picked.length > 1;
 
   // Un archivo por llamada: Vercel no acepta cuerpos de más de 4,5 MB, así varios suman sin problema.
@@ -24,6 +24,7 @@ export function AddFileForm({ maxMb, metaLimits, products }: { maxMb: number; me
     for (const key of ["title", "product", "description", "url"]) base.set(key, String(fd.get(key) ?? ""));
     if (files.length > 1) base.set("title", "");
     const failed: string[] = [];
+    const failedFiles: File[] = [];
     let done = 0;
     for (const file of files.length ? files : [null]) {
       if (files.length > 1) setStatus({ tone: "neutral", text: `Subiendo ${done + failed.length + 1} de ${files.length}…` });
@@ -35,10 +36,20 @@ export function AddFileForm({ maxMb, metaLimits, products }: { maxMb: number; me
         file && file.size > maxMb * 1024 * 1024
           ? `El archivo pesa más de ${maxMb} MB: súbelo a otro sitio y pega el enlace.`
           : await addFileAction(one).catch(() => "No se pudo subir. Intenta de nuevo.");
-      if (error) failed.push(files.length > 1 && file ? `${file.name}: ${error}` : error);
-      else done++;
+      if (error) {
+        failed.push(files.length > 1 && file ? `${file.name}: ${error}` : error);
+        if (file) failedFiles.push(file);
+      } else done++;
     }
     if (failed.length) {
+      // Quedan elegidos solo los que fallaron; el producto y la descripción se mantienen para reintentar.
+      const input = form.current?.elements.namedItem("file");
+      if (input instanceof HTMLInputElement) {
+        const keep = new DataTransfer();
+        failedFiles.forEach((f) => keep.items.add(f));
+        input.files = keep.files;
+      }
+      setPicked(failedFiles);
       setStatus({ tone: "danger", text: (done ? `Se agregaron ${done}. ` : "") + failed.join(" · ") });
       return;
     }
@@ -49,7 +60,16 @@ export function AddFileForm({ maxMb, metaLimits, products }: { maxMb: number; me
   }
 
   return (
-    <form ref={form} action={upload}>
+    // onSubmit y no `action`: React limpia el formulario tras cada `action`, y si algo falla hay que conservarlo.
+    <form
+      ref={form}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (busy) return;
+        setBusy(true);
+        upload(new FormData(e.currentTarget)).finally(() => setBusy(false));
+      }}
+    >
       <PanelBody>
         <label className="relative flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors duration-150 hover:border-brand-400 hover:bg-brand-50/40 has-[:focus-visible]:border-brand-500 has-[:focus-visible]:bg-brand-50/40">
           <CloudUpload aria-hidden className="size-7 text-brand-600" />
@@ -99,10 +119,10 @@ export function AddFileForm({ maxMb, metaLimits, products }: { maxMb: number; me
         </Field>
       </PanelBody>
       <PanelFooter note={status && <FormMessage tone={status.tone}>{status.text}</FormMessage>}>
-        <SubmitButton pendingText="Subiendo…">
-          <Plus aria-hidden />
-          {many ? `Agregar ${picked.length} archivos` : "Agregar archivo"}
-        </SubmitButton>
+        <Button type="submit" disabled={busy} aria-busy={busy}>
+          {busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <Plus aria-hidden />}
+          {busy ? "Subiendo…" : many ? `Agregar ${picked.length} archivos` : "Agregar archivo"}
+        </Button>
       </PanelFooter>
     </form>
   );
