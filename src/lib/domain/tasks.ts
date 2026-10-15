@@ -138,6 +138,19 @@ export async function listTasks(assigneeId: string | null | undefined, now = new
   return { ...groups, done };
 }
 
+/**
+ * Tareas para la vista de calendario: las que vencen en [`from`, `to`), pendientes y cumplidas,
+ * ordenadas por plazo. `assigneeId` igual que en listTasks.
+ */
+export async function listTasksBetween(assigneeId: string | null | undefined, from: Date, to: Date) {
+  const scope: Prisma.TaskWhereInput = assigneeId === undefined ? {} : { assigneeId };
+  return db.task.findMany({
+    where: { ...scope, dueAt: { gte: from, lt: to } },
+    include: taskInclude,
+    orderBy: { dueAt: "asc" },
+  });
+}
+
 /** Tareas pendientes de un ejecutivo vencidas o que vencen hoy (contador del menú). */
 export async function countUrgentTasks(assigneeId: string, now = new Date()) {
   return db.task.count({ where: { assigneeId, completedAt: null, dueAt: { lt: startOfLocalDay(now, 1) } } });

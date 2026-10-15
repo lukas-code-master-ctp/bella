@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { formatDue, parseLocalDateTime, startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { createLead, DomainError, moveStage, setAssignee } from "@/lib/domain/leads";
-import { bucketOf, countUrgentTasks, createTask, findDueTasks, listTasks, sendTaskReminders, setTaskDone } from "@/lib/domain/tasks";
+import { bucketOf, countUrgentTasks, createTask, findDueTasks, listTasks, listTasksBetween, sendTaskReminders, setTaskDone } from "@/lib/domain/tasks";
 import { executeTool } from "@/lib/ai/tools";
 import { executive, seedFunnel } from "./factories";
 
@@ -101,6 +101,24 @@ describe("tareas", () => {
     const due = await findDueTasks(now);
     expect(due.map((t) => [t.title, t.assignee?.email, t.lead.contact.name])).toEqual([["Vencida", "ana@test.cl", "Cliente"]]);
     expect(await findDueTasks(now, now)).toHaveLength(0);
+  });
+
+  it("el calendario entrega las tareas del rango, pendientes y cumplidas", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    await setAssignee(lead.id, ana.id, { actor: "SYSTEM" });
+    const by = { actor: "USER" as const, userId: ana.id };
+    const at = (s: string) => parseLocalDateTime(s)!;
+    await createTask(lead.id, { title: "Antes", dueAt: at("2026-09-30 23:59") }, by);
+    const done = await createTask(lead.id, { title: "Hecha", dueAt: at("2026-10-01 00:00") }, by);
+    await setTaskDone(done.id, true, by);
+    await createTask(lead.id, { title: "Fin de mes", dueAt: at("2026-10-31 23:59") }, by);
+    await createTask(lead.id, { title: "Después", dueAt: at("2026-11-01 00:00") }, by);
+
+    const october = await listTasksBetween(ana.id, at("2026-10-01 00:00"), at("2026-11-01 00:00"));
+    expect(october.map((t) => t.title)).toEqual(["Hecha", "Fin de mes"]);
+    expect(await listTasksBetween(null, at("2026-10-01 00:00"), at("2026-11-01 00:00"))).toHaveLength(0);
   });
 });
 
