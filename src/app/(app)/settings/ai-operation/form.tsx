@@ -7,6 +7,7 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, Chip, FieldGroup, HourSelect, Panel, PanelBody, SaveBar, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAiOperationAction } from "./actions";
+import { isSaved, savedToast, withToast } from "@/components/toast";
 
 // Lunes primero; el valor es el día de la semana (0 = domingo).
 const DAYS: [number, string][] = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
@@ -20,7 +21,7 @@ export function AiOperationForm({
   status: string | null;
   previousTicketsCount: number;
 }) {
-  const [message, action] = useActionState(saveAiOperationAction, null);
+  const [message, action] = useActionState(withToast(saveAiOperationAction, savedToast), null);
   return (
     <form action={action} className="space-y-6">
       <Panel icon={<CalendarClock />} title="Horario de atención" description={status ?? "Sin horario: la IA responde a cualquier hora."}>
@@ -110,7 +111,7 @@ export function AiOperationForm({
         </PanelBody>
       </Panel>
 
-      <SaveBar note={message && <FormMessage tone={message === "Guardado." ? "neutral" : "danger"}>{message}</FormMessage>}>
+      <SaveBar note={message && !isSaved(message) && <FormMessage>{message}</FormMessage>}>
         <SubmitButton>Guardar cambios</SubmitButton>
       </SaveBar>
     </form>

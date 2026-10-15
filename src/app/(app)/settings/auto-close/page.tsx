@@ -68,7 +68,7 @@ export default async function AutoCloseSettingsPage() {
             </FieldGroup>
           </PanelBody>
           <PanelFooter>
-            <SubmitButton>Guardar</SubmitButton>
+            <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
           </PanelFooter>
         </form>
       </Panel>

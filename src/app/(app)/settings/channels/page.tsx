@@ -243,10 +243,10 @@ export default async function ChannelsSettingsPage() {
                         <div className="sm:w-56">
                           <FunnelSelect funnels={funnelOptions} defaultValue={n.funnelId} label={`Embudo de ${n.label}`} />
                         </div>
-                        <SubmitButton variant="secondary">Guardar</SubmitButton>
+                        <SubmitButton toast="Cambios guardados" variant="secondary">Guardar</SubmitButton>
                       </form>
                       <form action={deleteWhatsAppNumberAction.bind(null, n.id)}>
-                        <SubmitButton
+                        <SubmitButton toast="Número quitado"
                           variant="ghost-danger"
                           size="icon"
                           aria-label={`Quitar ${n.label}`}
@@ -311,7 +311,7 @@ export default async function ChannelsSettingsPage() {
               <input name="contactEmail" type="email" required defaultValue={legal.contactEmail} className={inputClass} />
             </Field>
             <div>
-              <SubmitButton>Guardar</SubmitButton>
+              <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
             </div>
           </form>
           {deletions.length > 0 && (
@@ -373,7 +373,7 @@ export default async function ChannelsSettingsPage() {
                 className={`${inputClass} max-w-32`}
               />
             </Field>
-            <SubmitButton>Guardar</SubmitButton>
+            <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
           </form>
         </Card>
       </div>

@@ -308,7 +308,7 @@ export async function LeadView({
                           </option>
                         ))}
                       </select>
-                      <SubmitButton variant="secondary">Mover</SubmitButton>
+                      <SubmitButton toast="Etapa actualizada" variant="secondary">Mover</SubmitButton>
                     </form>
                   </Section>
 
@@ -329,7 +329,7 @@ export async function LeadView({
                             </option>
                           ))}
                         </select>
-                        <SubmitButton variant="secondary">Asignar</SubmitButton>
+                        <SubmitButton toast="Lead asignado" variant="secondary">Asignar</SubmitButton>
                       </form>
                     ) : (
                       <p className="flex items-center gap-2 text-sm text-slate-800">
@@ -366,7 +366,7 @@ export async function LeadView({
                         <FollowUpNowButton leadId={lead.id} />
                         {lead.followUpAt && (
                           <form action={cancelFollowUpAction.bind(null, lead.id)}>
-                            <SubmitButton variant="ghost">Cancelar</SubmitButton>
+                            <SubmitButton toast="Seguimiento cancelado" variant="ghost">Cancelar</SubmitButton>
                           </form>
                         )}
                       </div>
@@ -397,7 +397,7 @@ export async function LeadView({
                             </option>
                           ))}
                       </select>
-                      <SubmitButton variant="secondary">Agregar</SubmitButton>
+                      <SubmitButton toast="Etiqueta agregada" variant="secondary">Agregar</SubmitButton>
                     </form>
                   </Section>
 

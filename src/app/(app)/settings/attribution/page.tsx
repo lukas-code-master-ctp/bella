@@ -75,7 +75,7 @@ document.querySelectorAll('a[href^="${origin}/wa"]').forEach(function (a) {
             </div>
           </PanelBody>
           <PanelFooter>
-            <SubmitButton>Guardar</SubmitButton>
+            <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
           </PanelFooter>
         </form>
         <PanelBody className="border-t border-slate-100">

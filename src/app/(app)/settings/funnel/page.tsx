@@ -105,7 +105,7 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
                     <Badge tone={leadsIn(s.id) ? "brand" : "neutral"}>
                       {leadsIn(s.id)} {leadsIn(s.id) === 1 ? "lead" : "leads"}
                     </Badge>
-                    <SubmitButton variant="secondary" size="sm">
+                    <SubmitButton toast="Etapa guardada" variant="secondary" size="sm">
                       Guardar
                     </SubmitButton>
                   </span>
@@ -133,7 +133,7 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
                 )}
               </form>
               <form action={deleteStageAction.bind(null, s.id)} className="self-start">
-                <SubmitButton
+                <SubmitButton toast="Etapa borrada"
                   variant="ghost-danger"
                   size="icon"
                   disabled={leadsIn(s.id) > 0}
@@ -156,7 +156,7 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
           <input type="color" name="color" aria-label="Color" defaultValue="#64748b" className={colorInputClass} />
           <input name="name" required aria-label="Nueva etapa" placeholder="Nueva etapa" className={`${inputClass} min-w-40 flex-1 sm:max-w-xs`} />
           <InlineSwitch name="requiresHuman" label="Atención humana" />
-          <SubmitButton className="ml-auto">
+          <SubmitButton toast="Etapa agregada" className="ml-auto">
             <Plus aria-hidden />
             Agregar etapa
           </SubmitButton>
@@ -201,7 +201,7 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
               ))}
             </datalist>
             <input name="name" required aria-label="Etiqueta" placeholder="Etiqueta (ej. Motos)" className={`${inputClass} sm:max-w-[200px]`} />
-            <SubmitButton>
+            <SubmitButton toast="Etiqueta agregada">
               <Plus aria-hidden />
               Agregar
             </SubmitButton>

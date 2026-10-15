@@ -6,9 +6,10 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveInventoryAction } from "../../actions";
+import { withToast } from "@/components/toast";
 
 export function InventoryForm({ sheetUrl }: { sheetUrl: string }) {
-  const [message, action] = useActionState(saveInventoryAction, null);
+  const [message, action] = useActionState(withToast(saveInventoryAction, (m) => (m?.startsWith("Sincronizado") ? m : null)), null);
   return (
     <form action={action}>
       <PanelBody>
@@ -25,7 +26,7 @@ export function InventoryForm({ sheetUrl }: { sheetUrl: string }) {
           />
         </Field>
       </PanelBody>
-      <PanelFooter note={message && <FormMessage tone="neutral">{message}</FormMessage>}>
+      <PanelFooter note={message && !message.startsWith("Sincronizado") && <FormMessage>{message}</FormMessage>}>
         <SubmitButton pendingText="Sincronizando…">
           <RefreshCw aria-hidden />
           Guardar y sincronizar

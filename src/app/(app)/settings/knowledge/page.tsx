@@ -56,7 +56,7 @@ export default async function KnowledgePage() {
                     <Trash2 aria-hidden />
                     Borrar
                   </ConfirmButton>
-                  <SubmitButton>Guardar cambios</SubmitButton>
+                  <SubmitButton toast="Cambios guardados">Guardar cambios</SubmitButton>
                 </div>
               </form>
             </Disclosure>
@@ -75,7 +75,7 @@ export default async function KnowledgePage() {
             </Field>
           </PanelBody>
           <PanelFooter>
-            <SubmitButton pendingText="Agregando…">
+            <SubmitButton toast="Documento agregado" pendingText="Agregando…">
               <Plus aria-hidden />
               Agregar documento
             </SubmitButton>

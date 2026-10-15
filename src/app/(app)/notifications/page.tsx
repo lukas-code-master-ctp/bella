@@ -35,7 +35,7 @@ export default async function NotificationsPage() {
       >
         {unread > 0 && (
           <form action={markAllReadAction}>
-            <SubmitButton variant="secondary" pendingText="Marcando…">
+            <SubmitButton toast="Avisos marcados como leídos" variant="secondary" pendingText="Marcando…">
               <CheckCheck aria-hidden />
               Marcar todo como leído
             </SubmitButton>

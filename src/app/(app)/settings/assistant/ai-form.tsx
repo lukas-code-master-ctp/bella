@@ -9,6 +9,7 @@ import { Callout, ChoiceCard, PanelBody, PanelFooter, Segmented } from "@/compon
 import { SubmitButton } from "@/components/submit-button";
 import Link from "next/link";
 import { saveAiAction } from "../actions";
+import { isSaved, savedToast, withToast } from "@/components/toast";
 
 const PROVIDERS = [
   ["openrouter", "OpenRouter", "Cientos de modelos con una sola clave. Recomendado.", <Network key="i" />],
@@ -30,7 +31,7 @@ export function AiForm({
   keys: Record<AiProvider, boolean>;
   keyInfo: OpenRouterKeyInfo | null;
 }) {
-  const [message, action] = useActionState(saveAiAction, null);
+  const [message, action] = useActionState(withToast(saveAiAction, savedToast), null);
   const [provider, setProvider] = useState(config.provider);
   const [model, setModel] = useState(config.model);
   const [summaryModel, setSummaryModel] = useState(config.summaryModel);
@@ -120,8 +121,8 @@ export function AiForm({
       </PanelBody>
       <PanelFooter
         note={
-          message ? (
-            <FormMessage tone={message.startsWith("Guardado") ? "neutral" : "danger"}>{message}</FormMessage>
+          message && !isSaved(message) ? (
+            <FormMessage>{message}</FormMessage>
           ) : provider === "openrouter" && keyInfo ? (
             <span className="inline-flex items-center gap-1.5">
               <KeyRound aria-hidden className="size-3.5" />

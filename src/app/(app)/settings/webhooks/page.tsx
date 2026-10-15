@@ -62,7 +62,7 @@ export default async function WebhooksPage() {
                 </div>
                 <TestWebhookButton id={w.id} />
                 <form action={deleteWebhookAction.bind(null, w.id)}>
-                  <SubmitButton
+                  <SubmitButton toast="Webhook borrado"
                     variant="ghost-danger"
                     size="icon"
                     aria-label={`Borrar webhook ${w.name}`}

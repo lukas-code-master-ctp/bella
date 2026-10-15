@@ -64,7 +64,7 @@ export default async function FieldsSettingsPage() {
                 >
                   <FieldForm field={f} />
                   <form action={deleteFieldAction.bind(null, f.id)} className="mt-3 border-t border-slate-100 pt-3">
-                    <SubmitButton
+                    <SubmitButton toast="Campo borrado"
                       variant="ghost-danger"
                       size="sm"
                       confirm={`¿Borrar el campo "${f.name}"? Se pierde el dato en ${f._count.values} contactos.`}

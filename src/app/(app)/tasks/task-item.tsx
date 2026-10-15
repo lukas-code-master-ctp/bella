@@ -71,7 +71,7 @@ export function TaskItem({
         {task.notes && <p className="mt-1 whitespace-pre-line text-xs text-slate-700">{task.notes}</p>}
       </div>
       <form action={deleteTaskAction.bind(null, task.id)}>
-        <SubmitButton
+        <SubmitButton toast="Tarea eliminada"
           variant="ghost"
           size="icon"
           pendingText=""

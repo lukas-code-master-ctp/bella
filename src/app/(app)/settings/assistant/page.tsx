@@ -63,7 +63,7 @@ export default async function AssistantSettingsPage() {
             </Field>
           </PanelBody>
           <PanelFooter note={`${s.instructions.length.toLocaleString("es-CL")} caracteres guardados`}>
-            <SubmitButton>Guardar</SubmitButton>
+            <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
           </PanelFooter>
         </form>
       </Panel>

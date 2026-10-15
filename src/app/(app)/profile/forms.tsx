@@ -6,14 +6,15 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { changePasswordAction, updateNameAction, type ProfileState } from "./actions";
+import { withToast } from "@/components/toast";
 
 function Result({ state }: { state: ProfileState }) {
-  if (!state) return null;
-  return state.ok ? <FormMessage tone="neutral">{state.message}</FormMessage> : <FormMessage>{state.message}</FormMessage>;
+  if (!state || state.ok) return null;
+  return <FormMessage>{state.message}</FormMessage>;
 }
 
 export function NameForm({ name, email }: { name: string; email: string }) {
-  const [state, action] = useActionState(updateNameAction, null);
+  const [state, action] = useActionState(withToast(updateNameAction, (s) => (s?.ok ? s.message : null)), null);
   return (
     <form action={action}>
       <PanelBody>
@@ -37,7 +38,7 @@ export function NameForm({ name, email }: { name: string; email: string }) {
 }
 
 export function PasswordForm() {
-  const [state, action] = useActionState(changePasswordAction, null);
+  const [state, action] = useActionState(withToast(changePasswordAction, (s) => (s?.ok ? s.message : null)), null);
   const [show, setShow] = useState(false);
   const type = show ? "text" : "password";
   return (

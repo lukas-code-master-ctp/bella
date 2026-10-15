@@ -6,9 +6,10 @@ import { Field, FormMessage, inputClass } from "@/components/ui";
 import { ChoiceCard, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createUserAction } from "../actions";
+import { withToast } from "@/components/toast";
 
 export function NewUserForm() {
-  const [error, action] = useActionState(createUserAction, null);
+  const [error, action] = useActionState(withToast(createUserAction, (e) => (e ? null : "Usuario creado")), null);
   return (
     <form action={action}>
       <PanelBody>
