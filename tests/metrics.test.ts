@@ -58,6 +58,7 @@ describe("Métricas", () => {
       ["Cotización", 1, 0],
       ["Atención humana", 0, 0],
     ]);
+    expect(m.campaignReach).toEqual({ "c:Parcelas Sur": [2, 2, 1, 0], direct: [1, 0, 0, 0] });
     // A: 1 min (IA) y 10 min (equipo). B: 30 min (equipo, desde el primer mensaje del cliente). C: sin respuesta.
     expect([m.firstReply.count, m.firstReply.medianMs, m.firstReply.p90Ms]).toEqual([2, 1 * MIN, 30 * MIN]);
     expect([m.firstHumanReply.count, m.firstHumanReply.medianMs, m.firstReply.within5m]).toEqual([2, 10 * MIN, 1]);
