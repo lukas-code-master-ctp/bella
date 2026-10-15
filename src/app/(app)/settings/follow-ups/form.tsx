@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import { Send } from "lucide-react";
 import { Field, FormMessage, inputClass } from "@/components/ui";
-import { HourSelect, PanelBody, PanelFooter, ToggleRow } from "@/components/settings-ui";
+import { HourSelect, PanelBody, PanelFooter } from "@/components/settings-ui";
+import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
 import { runFollowUpsNowAction, saveFollowUpsAction } from "../actions";
 import { isSaved, savedToast, withToast } from "@/components/toast";
@@ -44,27 +45,28 @@ export function FollowUpsForm(props: {
   return (
     <form action={action}>
       <PanelBody>
-        <ToggleRow
+        <ToggleSection
           name="enabled"
           defaultChecked={props.enabled}
           title="Hacer seguimiento a los leads que dejan de responder"
           description="La asistente vuelve a escribir en los plazos de abajo, solo dentro del horario de envío."
-        />
-        <Field label="Plazos" hint="Silencio antes de cada seguimiento, desde el último mensaje de la IA. m = minutos, h = horas, d = días.">
-          <input name="delays" required value={delays} onChange={(e) => setDelays(e.target.value)} placeholder="3h, 1d, 3d, 7d" className={`${inputClass} font-mono`} />
-        </Field>
-        <DelayTimeline value={delays} />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Enviar desde" hint="Hora de Chile">
-            <HourSelect name="sendFrom" max={23} defaultValue={props.sendFrom} className={inputClass} />
+        >
+          <Field label="Plazos" hint="Silencio antes de cada seguimiento, desde el último mensaje de la IA. m = minutos, h = horas, d = días.">
+            <input name="delays" required value={delays} onChange={(e) => setDelays(e.target.value)} placeholder="3h, 1d, 3d, 7d" className={`${inputClass} font-mono`} />
           </Field>
-          <Field label="Hasta" hint="Fuera de horario esperan hasta el día siguiente">
-            <HourSelect name="sendTo" min={1} max={24} defaultValue={props.sendTo} className={inputClass} />
+          <DelayTimeline value={delays} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Enviar desde" hint="Hora de Chile">
+              <HourSelect name="sendFrom" max={23} defaultValue={props.sendFrom} className={inputClass} />
+            </Field>
+            <Field label="Hasta" hint="Fuera de horario esperan hasta el día siguiente">
+              <HourSelect name="sendTo" min={1} max={24} defaultValue={props.sendTo} className={inputClass} />
+            </Field>
+          </div>
+          <Field label="Cómo escribir los seguimientos" hint="Se suman a las instrucciones de la asistente.">
+            <textarea name="instructions" rows={4} defaultValue={props.instructions} className={inputClass} />
           </Field>
-        </div>
-        <Field label="Cómo escribir los seguimientos" hint="Se suman a las instrucciones de la asistente.">
-          <textarea name="instructions" rows={4} defaultValue={props.instructions} className={inputClass} />
-        </Field>
+        </ToggleSection>
       </PanelBody>
       <PanelFooter note={message && !isSaved(message) && <FormMessage>{message}</FormMessage>}>
         <SubmitButton>Guardar</SubmitButton>

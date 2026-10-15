@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { credentials } from "@/lib/credentials";
 import { getPixelSettings } from "@/lib/domain/conversions";
 import { EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
-import { EnvChecklist, EventList, Panel, PanelBody, PanelFooter, StatusPill, ToggleRow } from "@/components/settings-ui";
+import { EnvChecklist, EventList, Panel, PanelBody, PanelFooter, StatusPill } from "@/components/settings-ui";
+import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
 import { retryConversionsAction, savePixelAction } from "../actions";
 
@@ -60,30 +61,31 @@ export default async function PixelSettingsPage() {
                 ],
               ]}
             />
-            <ToggleRow
+            <ToggleSection
               name="enabled"
               defaultChecked={s.enabled}
               title="Enviar eventos a Meta"
               description="Las ventas se envían al marcar un lead como ganado, con su monto en pesos. Solo cuentan los leads desde que la enciendes."
-            />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Id del píxel (dataset)" hint="Administrador de eventos → Orígenes de datos.">
-                <input name="datasetId" inputMode="numeric" defaultValue={s.datasetId} placeholder="123456789012345" className={inputClass} />
-              </Field>
-              <Field label="Etapa de lead calificado" hint="Al entrar a esta etapa se envía el evento.">
-                <select name="qualifiedStageId" defaultValue={s.qualifiedStageId} className={inputClass}>
-                  <option value="">No enviar lead calificado</option>
-                  {stages.map((st) => (
-                    <option key={st.id} value={st.id}>
-                      {st.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Código de prueba (opcional)" hint="De la pestaña Probar eventos. Bórralo cuando termines de probar.">
-                <input name="testEventCode" defaultValue={s.testEventCode} placeholder="TEST12345" className={`${inputClass} font-mono`} />
-              </Field>
-            </div>
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Id del píxel (dataset)" hint="Administrador de eventos → Orígenes de datos.">
+                  <input name="datasetId" inputMode="numeric" defaultValue={s.datasetId} placeholder="123456789012345" className={inputClass} />
+                </Field>
+                <Field label="Etapa de lead calificado" hint="Al entrar a esta etapa se envía el evento.">
+                  <select name="qualifiedStageId" defaultValue={s.qualifiedStageId} className={inputClass}>
+                    <option value="">No enviar lead calificado</option>
+                    {stages.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Código de prueba (opcional)" hint="De la pestaña Probar eventos. Bórralo cuando termines de probar.">
+                  <input name="testEventCode" defaultValue={s.testEventCode} placeholder="TEST12345" className={`${inputClass} font-mono`} />
+                </Field>
+              </div>
+            </ToggleSection>
           </PanelBody>
           <PanelFooter>
             <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>

@@ -49,7 +49,7 @@ export default async function FilesPage() {
       ) : (
         <div className="space-y-6">
           {groups.map(([product, items = []]) => (
-            <details key={product} open className="group/product">
+            <details key={product} className="group/product">
               <summary
                 className={`${products.length ? "flex" : "hidden"} cursor-pointer list-none items-center gap-2 rounded-lg py-1 text-sm font-semibold text-slate-900 select-none hover:text-brand-700 [&::-webkit-details-marker]:hidden`}
               >
