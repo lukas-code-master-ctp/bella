@@ -16,6 +16,7 @@ import { enterCompanyAction } from "./settings/companies/actions";
 import { NavLink } from "./nav-link";
 import { SidebarToggle } from "./sidebar-toggle";
 import { CommandSearch } from "./command-search";
+import { NewLead } from "./new-lead";
 import { NewInsightBadge } from "./metrics/new-insight-badge";
 import { Logo } from "@/components/logo";
 import { unreadNotificationCount } from "@/lib/domain/notifications";
@@ -100,6 +101,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {/* En pantallas chicas la barra superior no existe: sus atajos van aquí. */}
           <div className="flex items-center gap-1 lg:hidden">
             <CommandSearch compact />
+            <NewLead compact />
             {bell}
             {profile}
           </div>
@@ -181,6 +183,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <CommandSearch />
           </div>
           <div className="flex items-center gap-1">
+            <NewLead />
+            <span className="w-2" />
             {bell}
             {profile}
           </div>

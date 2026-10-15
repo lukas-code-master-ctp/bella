@@ -6,7 +6,7 @@ import { CHANNEL_LABEL } from "../labels";
 import { normalize } from "../text";
 import { displayFieldValue, findField, parseFieldValue } from "./fields";
 import { entryStage, stageOptions } from "./funnels";
-import { DomainError, type ActorRef } from "./leads";
+import { createLead, DomainError, setAssignee, type ActorRef } from "./leads";
 
 type Tx = Prisma.TransactionClient;
 
@@ -226,6 +226,43 @@ export async function importContactsCsv(csv: string, by: ActorRef, options: { de
     }
   }
   return result;
+}
+
+export type NewLeadInput = { name: string; phone: string; email: string; funnelId?: string | null; assigneeId?: string | null };
+
+/**
+ * "Nuevo lead" de la barra superior: un cliente que llegó por fuera de los canales (llamada,
+ * referido, feria). Pide teléfono con código de país o correo. Si el contacto ya existe se
+ * reutiliza; si además tiene un lead abierto, no se duplica y se devuelve ese.
+ */
+export async function createLeadByHand(input: NewLeadInput, by: ActorRef): Promise<{ leadId: string; existing: boolean }> {
+  const name = input.name.trim();
+  const rawPhone = input.phone.trim();
+  const phone = rawPhone ? normalizePhone(rawPhone) : null;
+  const email = input.email.trim().toLowerCase() || null;
+  if (!name) throw new DomainError("Escribe el nombre.");
+  if (rawPhone && !phone) throw new DomainError("Revisa el teléfono: incluye el código de país, ej. +56 9 1234 5678.");
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new DomainError("Revisa el correo.");
+  if (!phone && !email) throw new DomainError("Agrega un teléfono o un correo para poder contactarlo.");
+
+  const existing = await db.$transaction((tx) => findExisting(tx, phone, email));
+  if (existing?.blockedAt) throw new DomainError(`${existing.name} está bloqueado. Desbloquéalo desde su ficha para crearle un lead.`);
+  const open = existing && (await db.lead.findFirst({ where: { contactId: existing.id, status: "OPEN" } }));
+  if (open) return { leadId: open.id, existing: true };
+
+  const options = { funnelId: input.funnelId || null };
+  const lead = existing
+    ? await createLead({ contactId: existing.id }, options)
+    : // Con teléfono queda como contacto de WhatsApp (igual que al importar): si escribe, entra aquí.
+      await createLead({ name, channel: "WHATSAPP", phone: phone ? `+${phone}` : undefined, externalId: phone ?? undefined }, options);
+  if (!existing && email) await db.contact.update({ where: { id: lead.contactId }, data: { email } });
+  await db.leadEvent.updateMany({ where: { leadId: lead.id, type: "CREATED" }, data: { actor: by.actor, userId: by.userId ?? null, reason: "Creado a mano" } });
+  if (input.assigneeId !== undefined) {
+    // createLead ya aplicó las reglas de asignación; solo se cambia si se eligió a otra persona.
+    const current = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, select: { assigneeId: true } });
+    if (current.assigneeId !== input.assigneeId) await setAssignee(lead.id, input.assigneeId, by);
+  }
+  return { leadId: lead.id, existing: false };
 }
 
 async function findExisting(tx: Tx, phone: string | null, email: string | null): Promise<Contact | null> {
