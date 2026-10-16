@@ -3,8 +3,7 @@ import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { db, rootDb } from "../db";
 import { withCompany } from "../tenant";
-import { emailConfigured, escapeHtml, resendSender, type EmailSender } from "../email";
-import { getWeeklyEmailSettings } from "./weekly-email";
+import { emailConfigured, emailFrom, escapeHtml, resendSender, type EmailSender } from "../email";
 
 /**
  * Recuperación de contraseña por correo: un enlace de un solo uso que vence en una hora. Se guarda
@@ -17,19 +16,10 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
-/**
- * Remitente de los correos de la cuenta: EMAIL_FROM si está en el servidor; si no, el que la
- * empresa configuró para el resumen semanal (un dominio verificado en Resend).
- */
-export async function accountEmailFrom(): Promise<string | null> {
-  const from = process.env.EMAIL_FROM?.trim() || (await getWeeklyEmailSettings()).from.trim();
-  return from.includes("@") ? from : null;
-}
-
 /** Si el servidor puede mandar el correo de recuperación. */
 export async function passwordResetAvailable(sender: EmailSender = resendSender) {
-  if (sender === resendSender && !emailConfigured()) return false;
-  return (await accountEmailFrom()) != null;
+  if (sender === resendSender && !(await emailConfigured())) return false;
+  return (await emailFrom()) != null;
 }
 
 export function renderPasswordResetEmail({ name, link }: { name: string; link: string }) {
@@ -72,8 +62,8 @@ async function sendResetLink(user: User, baseUrl: string, sender: EmailSender, n
     where: { userId: user.id, createdAt: { gt: new Date(now.getTime() - RESEND_COOLDOWN_MS) } },
   });
   if (recent) return;
-  const from = await accountEmailFrom();
-  if (!from) throw new Error("Falta el remitente de correos (EMAIL_FROM o el del resumen semanal).");
+  const from = await emailFrom();
+  if (!from) throw new Error("Falta el remitente de correos en Configuración → Credenciales.");
 
   const token = randomBytes(32).toString("base64url");
   // Un enlace nuevo deja sin efecto los anteriores.

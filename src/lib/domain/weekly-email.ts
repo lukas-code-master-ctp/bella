@@ -1,6 +1,6 @@
 import type { WeeklyInsight } from "@prisma/client";
 import { db } from "../db";
-import { emailConfigured, escapeHtml, parseEmails, resendSender, type EmailSender } from "../email";
+import { APP_URL, emailConfigured, emailFrom, escapeHtml, parseEmails, resendSender, type EmailSender } from "../email";
 import { getAssistantSettings, getSetting, setSetting } from "../settings";
 import { REPORT_SECTIONS, type WeeklyReport, type WeeklyStats } from "../ai/weekly-insights";
 
@@ -22,10 +22,6 @@ export const DEFAULT_WEEKLY_EMAIL: WeeklyEmailSettings = { enabled: false, from:
 
 /** Resultado del último envío, para mostrarlo en la página. */
 export type WeeklyEmailLog = { at: string; ok: boolean; detail: string };
-
-const APP_URL =
-  process.env.APP_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "");
 
 export async function getWeeklyEmailSettings(): Promise<WeeklyEmailSettings> {
   return { ...DEFAULT_WEEKLY_EMAIL, ...(await getSetting<Partial<WeeklyEmailSettings>>("weeklyEmail", {})) };
@@ -106,13 +102,14 @@ export async function sendWeeklyInsightEmail(
     return entry;
   };
   if (sender === resendSender && !(await emailConfigured())) return log(false, "Falta la clave de Resend en Configuración → Credenciales.");
-  if (!s.from.includes("@")) return log(false, "Falta el remitente.");
+  const from = s.from.includes("@") ? s.from : await emailFrom();
+  if (!from) return log(false, "Falta el remitente.");
   const to = await weeklyEmailRecipients(s);
   if (!to.length) return log(false, "No hay destinatarios.");
   const insight = await db.weeklyInsight.findUniqueOrThrow({ where: { id: insightId } });
   const { companyName } = await getAssistantSettings();
   try {
-    await sender.send({ from: s.from, to, ...renderWeeklyEmail(insight, companyName) });
+    await sender.send({ from, to, ...renderWeeklyEmail(insight, companyName) });
   } catch (err) {
     return log(false, err instanceof Error ? err.message : String(err));
   }

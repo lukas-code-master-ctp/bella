@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { Bell, CheckCheck, ClockAlert, Hand, MessageCircle, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, ClockAlert, Hand, Mail, MessageCircle, UserPlus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { vapidPublicKey } from "@/lib/push";
-import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { emailConfigured, emailFrom } from "@/lib/email";
+import { EMAIL_NOTIFICATION_TYPES } from "@/lib/domain/email-notifications";
+import { Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { markAllReadAction } from "./actions";
+import { markAllReadAction, saveEmailPrefsAction } from "./actions";
 import { PushToggle } from "./push-toggle";
 
 const ICON: Record<string, React.ReactNode> = {
@@ -26,6 +28,8 @@ export default async function NotificationsPage() {
     take: 100,
   });
   const unread = notifications.filter((n) => !n.readAt).length;
+  const isAdmin = user.role === "ADMIN";
+  const emailReady = (await emailConfigured()) && (await emailFrom()) != null;
 
   return (
     <>
@@ -83,7 +87,47 @@ export default async function NotificationsPage() {
           )}
         </Card>
 
-        <PushToggle publicKey={vapidPublicKey()} isAdmin={user.role === "ADMIN"} />
+        <div className="space-y-6">
+          <PushToggle publicKey={vapidPublicKey()} isAdmin={isAdmin} />
+          <Card className="h-fit p-5">
+            <CardHeader
+              title="Avisos por correo"
+              icon={<Mail />}
+              description={
+                emailReady ? (
+                  `Elige qué avisos quieres recibir también en ${user.email}.`
+                ) : isAdmin ? (
+                  <>
+                    Para mandar correos falta la clave de Resend o el remitente en{" "}
+                    <Link href="/settings/credentials" className="font-medium text-brand-700 underline">
+                      Configuración → Credenciales
+                    </Link>
+                    . Puedes dejar elegidos tus avisos desde ya.
+                  </>
+                ) : (
+                  "Los correos aún no están configurados en tu empresa. Puedes dejar elegidos tus avisos desde ya."
+                )
+              }
+            />
+            <form action={saveEmailPrefsAction} className="space-y-3">
+              {EMAIL_NOTIFICATION_TYPES.filter((t) => isAdmin || !t.adminOnly).map((t) => (
+                <label key={t.type} className="flex items-start gap-2.5 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="type"
+                    value={t.type}
+                    defaultChecked={user.emailNotifications.includes(t.type)}
+                    className="mt-0.5 size-4 rounded border-slate-300 accent-brand-600"
+                  />
+                  {t.label}
+                </label>
+              ))}
+              <SubmitButton toast="Avisos por correo guardados" variant="secondary" className="w-full">
+                Guardar
+              </SubmitButton>
+            </form>
+          </Card>
+        </div>
       </div>
     </>
   );

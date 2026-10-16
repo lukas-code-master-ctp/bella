@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { db } from "./db";
+import { deliverPendingEmails } from "./domain/email-notifications";
 
 /**
  * Web Push al navegador. Requiere VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY (genéralas con
@@ -28,10 +29,11 @@ export type PushPayload = { title: string; body: string; url: string; tag: strin
 
 /**
  * Envía los avisos con push pendiente a los navegadores suscritos de cada usuario.
- * Se llama después de cada transacción que puede crear avisos. Nunca lanza: un push
- * fallido no debe romper la acción que lo originó.
+ * Se llama después de cada transacción que puede crear avisos, y de paso manda los que la
+ * persona pidió por correo. Nunca lanza: un push fallido no debe romper la acción que lo originó.
  */
 export async function deliverPendingPush() {
+  await deliverPendingEmails();
   try {
     const pending = await db.notification.findMany({ where: { pushedAt: null }, take: 100 });
     if (pending.length === 0) return;

@@ -119,7 +119,14 @@ export const CREDENTIALS = [
     label: "Clave de Resend",
     group: "email",
     secret: true,
-    help: "resend.com → API Keys. Envía el resumen semanal por correo.",
+    help: "resend.com → API Keys. Con ella salen los avisos por correo, el resumen semanal y la recuperación de contraseña.",
+  },
+  {
+    key: "EMAIL_FROM",
+    label: "Remitente de los correos",
+    group: "email",
+    secret: false,
+    help: "Ej. Beliapp <avisos@tuempresa.cl>. Tiene que ser de un dominio verificado en Resend (resend.com → Domains).",
   },
 ] as const satisfies readonly CredentialDef[];
 
