@@ -3,7 +3,7 @@ import { db, isDuplicate } from "../db";
 import { currentCompanyId } from "../tenant";
 import { credential } from "../credentials";
 import { randomUUID } from "node:crypto";
-import { ChannelSendError, cloudApi, type TemplateMessage, type WhatsAppApi } from "../channels/whatsapp";
+import { ACCOUNT_ERROR_CODES, ChannelSendError, cloudApi, type TemplateMessage, type WhatsAppApi } from "../channels/whatsapp";
 import { fileKind, type FileKind } from "../media";
 import { estimateCost } from "./broadcast-pricing";
 import { parseLocalDateTime } from "../dates";
@@ -29,8 +29,6 @@ export const RUN_BUDGET_MS = 240_000;
 const STUCK_MS = 15 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Errores de Meta que fallarían con todos: el envío se pausa en vez de seguir. */
-const FATAL_CODES = new Set([190, 131031, 132000, 132001, 132015, 132016]);
 
 // --- Variables y destinatarios -----------------------------------------------------------
 
@@ -558,7 +556,7 @@ async function sendRecipient(b: Broadcast, r: BroadcastRecipient, api: WhatsAppA
     if (!known) console.error(`[envíos] envío ${b.id}, ${r.phone}:`, err);
     const reason = known ? err.message : "No se pudo enviar por WhatsApp.";
     // Sin código de Meta es un problema de la conexión (ej. falta el token), no de esta persona.
-    if (known && (!err.code || FATAL_CODES.has(err.code))) {
+    if (known && (!err.code || ACCOUNT_ERROR_CODES.has(err.code))) {
       // Fallaría con todos: esta persona vuelve a la fila y el envío se pausa hasta corregirlo.
       if (messageId) await db.message.delete({ where: { id: messageId } }).catch(() => {});
       await db.broadcastRecipient.update({ where: { id: r.id }, data: { status: "PENDING", messageId: null } });

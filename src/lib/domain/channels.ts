@@ -7,6 +7,7 @@ import {
   ChannelSendError,
   cloudApi,
   describeMessage,
+  ACCOUNT_ERROR_CODES,
   describeMetaError,
   webhookPhoneIds,
   webhookValues,
@@ -399,6 +400,17 @@ async function applyWhatsAppStatus(s: WaStatus) {
       deliveryError: next === "FAILED" ? describeMetaError(e?.code, e?.error_data?.details || e?.message || e?.title || "WhatsApp no pudo entregar el mensaje.") : null,
     },
   });
+  // Meta lo aceptó pero después lo rechazó por un problema de la cuenta (ej. sin medio de pago):
+  // el envío masivo de este mensaje se pausa en vez de seguir fallando con cada persona.
+  if (next === "FAILED" && e?.code && ACCOUNT_ERROR_CODES.has(e.code)) {
+    const recipient = await db.broadcastRecipient.findUnique({ where: { messageId: message.id }, select: { broadcastId: true } });
+    if (recipient) {
+      await db.broadcast.updateMany({
+        where: { id: recipient.broadcastId, status: "SENDING" },
+        data: { status: "PAUSED", note: describeMetaError(e.code, "Meta rechazó los mensajes por un problema de la cuenta.") },
+      });
+    }
+  }
 }
 
 // --- Salientes ---------------------------------------------------------------------------
