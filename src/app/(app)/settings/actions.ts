@@ -13,7 +13,7 @@ import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, templateError, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
-import { ChannelSendError, subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
+import { ChannelSendError, submitTemplate, subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
@@ -371,11 +371,7 @@ export async function saveFollowUpsAction(_prev: string | null, form: FormData):
   if (sendFrom === sendTo % 24) return "El horario de envío debe terminar a una hora distinta de la que empieza.";
   const current = await getFollowUpSettings();
   const enabled = form.get("enabled") === "on";
-  const template = {
-    name: str(form, "templateName").toLowerCase(),
-    language: str(form, "templateLanguage") || "es",
-    text: str(form, "templateText"),
-  };
+  const template = templateFromForm(form);
   const invalid = templateError(template);
   if (invalid) return invalid;
   await setSetting<FollowUpSettings>("followUps", {
@@ -390,6 +386,31 @@ export async function saveFollowUpsAction(_prev: string | null, form: FormData):
   if (!enabled) await db.lead.updateMany({ where: { followUpAt: { not: null } }, data: { followUpAt: null, followUpReason: null } });
   revalidatePath("/settings/follow-ups");
   return "Guardado.";
+}
+
+function templateFromForm(form: FormData) {
+  return {
+    name: str(form, "templateName").toLowerCase(),
+    language: str(form, "templateLanguage") || "es",
+    text: str(form, "templateText"),
+  };
+}
+
+/** Guarda la plantilla y la manda a revisión de Meta; el resto de los seguimientos no cambia. */
+export async function submitTemplateAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  const template = templateFromForm(form);
+  if (!template.name || !template.text) return "Escribe el nombre y el texto de la plantilla antes de enviarla.";
+  const invalid = templateError(template);
+  if (invalid) return invalid;
+  try {
+    await submitTemplate(template);
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  await setSetting<FollowUpSettings>("followUps", { ...(await getFollowUpSettings()), template });
+  revalidatePath("/settings/follow-ups");
+  return "Enviada a Meta. La revisión suele tardar minutos u horas; el estado aparece aquí.";
 }
 
 export async function runFollowUpsNowAction(_prev: string | null): Promise<string | null> {

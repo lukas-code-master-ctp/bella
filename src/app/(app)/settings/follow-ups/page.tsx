@@ -4,10 +4,15 @@ import { db } from "@/lib/db";
 import { formatChileDateTime, formatDelay, getFollowUpSettings, hasTemplate, REPLY_WINDOW_MS } from "@/lib/domain/follow-ups";
 import { Avatar, Badge, EmptyState, PageHeader } from "@/components/ui";
 import { Callout, Panel, StatusPill } from "@/components/settings-ui";
+import { templateStatus, type TemplateStatus } from "@/lib/channels/whatsapp";
 import { FollowUpsForm, RunNowForm } from "./form";
 
 export default async function FollowUpsPage() {
   const s = await getFollowUpSettings();
+  // Estado en Meta de la plantilla guardada; sin credenciales o si Meta falla, simplemente no se muestra.
+  const status: TemplateStatus | null | undefined = hasTemplate(s)
+    ? await templateStatus(s.template.name, s.template.language).catch(() => undefined)
+    : undefined;
   const upcoming = await db.lead.findMany({
     where: { status: "OPEN", aiEnabled: true, followUpAt: { not: null } },
     include: { contact: true },
@@ -44,6 +49,7 @@ export default async function FollowUpsPage() {
           sendTo={s.sendTo}
           instructions={s.instructions}
           template={s.template}
+          templateStatus={status}
         />
       </Panel>
       <Callout tone="neutral" title="Regla de 24 horas de Meta">

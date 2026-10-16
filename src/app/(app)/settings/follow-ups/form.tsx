@@ -1,13 +1,34 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { Send } from "lucide-react";
-import { Field, FormMessage, inputClass } from "@/components/ui";
+import { useActionState, useRef, useState } from "react";
+import { Send, UserRound } from "lucide-react";
+import { Badge, Field, FormMessage, inputClass } from "@/components/ui";
 import { HourSelect, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
-import { runFollowUpsNowAction, saveFollowUpsAction } from "../actions";
+import { runFollowUpsNowAction, saveFollowUpsAction, submitTemplateAction } from "../actions";
+import type { TemplateStatus } from "@/lib/channels/whatsapp";
 import { isSaved, savedToast, withToast } from "@/components/toast";
+
+/** Idiomas de plantilla que acepta Meta (no existe es_CL). */
+const TEMPLATE_LANGUAGES = [
+  { value: "es", label: "Español" },
+  { value: "es_MX", label: "Español (México)" },
+  { value: "es_AR", label: "Español (Argentina)" },
+  { value: "es_ES", label: "Español (España)" },
+  { value: "en", label: "Inglés" },
+  { value: "en_US", label: "Inglés (EE. UU.)" },
+  { value: "pt_BR", label: "Portugués (Brasil)" },
+];
+
+const STATUS: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
+  APPROVED: { label: "Aprobada por Meta", tone: "success" },
+  PENDING: { label: "En revisión en Meta", tone: "warning" },
+  IN_APPEAL: { label: "En apelación en Meta", tone: "warning" },
+  REJECTED: { label: "Rechazada por Meta", tone: "danger" },
+  PAUSED: { label: "Pausada por Meta", tone: "danger" },
+  DISABLED: { label: "Desactivada por Meta", tone: "danger" },
+};
 
 const UNIT: Record<string, string> = { m: "min", min: "min", h: "h", d: "d" };
 const UNIT_MINUTES: Record<string, number> = { m: 1, min: 1, h: 60, d: 24 * 60 };
@@ -73,12 +94,29 @@ export function FollowUpsForm(props: {
   sendTo: number;
   instructions: string;
   template: { name: string; language: string; text: string };
+  /** null: no existe en Meta; undefined: no se pudo consultar o no hay plantilla. */
+  templateStatus?: TemplateStatus | null;
 }) {
   const [message, action] = useActionState(withToast(saveFollowUpsAction, savedToast), null);
   const [delays, setDelays] = useState(props.delays);
   const [templateName, setTemplateName] = useState(props.template.name);
   const [templateText, setTemplateText] = useState(props.template.text);
+  const [submitMessage, submitAction] = useActionState(submitTemplateAction, null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const template = Boolean(templateName.trim() && templateText.trim());
+  // La plantilla del formulario es la guardada: el estado de Meta corresponde a ella.
+  const unchanged = templateName.trim().toLowerCase() === props.template.name && templateText.trim() === props.template.text;
+  const status = unchanged ? props.templateStatus : undefined;
+  const insertName = () => {
+    const el = textRef.current;
+    const at = el?.selectionStart ?? templateText.length;
+    const end = el?.selectionEnd ?? at;
+    setTemplateText(templateText.slice(0, at) + "{{1}}" + templateText.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(at + 5, at + 5);
+    });
+  };
   return (
     <form action={action}>
       <PanelBody>
@@ -106,19 +144,42 @@ export function FollowUpsForm(props: {
           <fieldset className="space-y-3 rounded-lg border border-slate-200 p-4">
             <legend className="px-1 text-sm font-semibold text-slate-900">Plantilla de WhatsApp para después de 24 horas</legend>
             <p className="text-xs text-slate-600">
-              Opcional. Crea la plantilla en WhatsApp Manager (categoría Marketing) y, cuando Meta la apruebe, copia aquí su
-              nombre y su texto. Se envía tal cual, sin pasar por la IA. Si la dejas vacía, esos seguimientos no se envían.
+              Opcional. Escríbela aquí y envíala a revisión de Meta (categoría Marketing). Cuando la aprueben se usa tal cual,
+              sin pasar por la IA. Si ya la tienes aprobada en WhatsApp Manager, copia su nombre y su texto. Si la dejas vacía,
+              esos seguimientos no se envían.
             </p>
-            <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+            {status !== undefined && (
+              <p className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                {status ? (
+                  <>
+                    <Badge tone={STATUS[status.status]?.tone ?? "neutral"}>{STATUS[status.status]?.label ?? status.status}</Badge>
+                    {status.reason && <span>Motivo: {status.reason}</span>}
+                  </>
+                ) : (
+                  <Badge tone="neutral">Aún no existe en Meta</Badge>
+                )}
+              </p>
+            )}
+            <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
               <Field label="Nombre de la plantilla" hint="Tal como aparece en Meta, ej. seguimiento_1">
                 <input name="templateName" value={templateName} onChange={(e) => setTemplateName(e.target.value)} className={`${inputClass} font-mono`} />
               </Field>
-              <Field label="Idioma" hint="Código, ej. es">
-                <input name="templateLanguage" defaultValue={props.template.language} className={`${inputClass} font-mono`} />
+              <Field label="Idioma" hint="El de la plantilla en Meta">
+                <select name="templateLanguage" defaultValue={props.template.language} className={inputClass}>
+                  {!TEMPLATE_LANGUAGES.some((l) => l.value === props.template.language) && (
+                    <option value={props.template.language}>{props.template.language}</option>
+                  )}
+                  {TEMPLATE_LANGUAGES.map((l) => (
+                    <option key={l.value} value={l.value}>
+                      {l.label}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
             <Field label="Texto de la plantilla" hint="El mismo texto aprobado. Usa {{1}} donde va el nombre del cliente.">
               <textarea
+                ref={textRef}
                 name="templateText"
                 rows={3}
                 value={templateText}
@@ -127,6 +188,21 @@ export function FollowUpsForm(props: {
                 className={inputClass}
               />
             </Field>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={insertName}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 hover:border-slate-400 [&_svg]:size-3.5"
+              >
+                <UserRound aria-hidden />
+                Insertar nombre del cliente
+              </button>
+              <SubmitButton formAction={submitAction} variant="secondary" size="sm" pendingText="Enviando…">
+                <Send aria-hidden />
+                Enviar a Meta para revisión
+              </SubmitButton>
+            </div>
+            {submitMessage && <FormMessage tone={submitMessage.startsWith("Enviada") ? "neutral" : "danger"}>{submitMessage}</FormMessage>}
           </fieldset>
         </ToggleSection>
       </PanelBody>

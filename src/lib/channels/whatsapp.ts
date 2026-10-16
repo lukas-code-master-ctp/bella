@@ -324,3 +324,52 @@ export async function checkWhatsApp(): Promise<WhatsAppCheck> {
 export async function subscribeWhatsAppApp(wabaId: string): Promise<void> {
   await graph(`${wabaId}/subscribed_apps`, { method: "POST" }, "la suscripción");
 }
+
+// --- Plantillas ----------------------------------------------------------------------------
+
+/** Cuenta de WhatsApp Business: la de Credenciales o, si el token ve una sola, esa. */
+async function wabaId(): Promise<string> {
+  const saved = await credential("WHATSAPP_BUSINESS_ACCOUNT_ID");
+  if (saved) return saved;
+  const { wabas } = await tokenInfo();
+  if (wabas.length === 1) return wabas[0];
+  throw new ChannelSendError(
+    "Falta el id de la cuenta de WhatsApp Business en Configuración → Credenciales (el token no permite deducirlo).",
+  );
+}
+
+export type TemplateStatus = { status: string; reason?: string };
+
+/**
+ * Crea una plantilla de marketing con solo cuerpo y la manda a revisión de Meta. {{1}} necesita un
+ * ejemplo para la revisión; va un nombre cualquiera.
+ */
+export async function submitTemplate(t: { name: string; language: string; text: string }): Promise<TemplateStatus> {
+  const usesName = /\{\{\s*1\s*\}\}/.test(t.text);
+  const res = await graph<{ status?: string }>(
+    `${await wabaId()}/message_templates`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: t.name,
+        language: t.language,
+        category: "MARKETING",
+        components: [{ type: "BODY", text: t.text, ...(usesName ? { example: { body_text: [["María"]] } } : {}) }],
+      }),
+    },
+    "la plantilla",
+  );
+  return { status: res.status ?? "PENDING" };
+}
+
+/** Estado en Meta de la plantilla con ese nombre e idioma; null si no existe. */
+export async function templateStatus(name: string, language: string): Promise<TemplateStatus | null> {
+  const res = await graph<{ data?: { name: string; language: string; status: string; rejected_reason?: string }[] }>(
+    `${await wabaId()}/message_templates?name=${encodeURIComponent(name)}&fields=name,language,status,rejected_reason`,
+    {},
+    "la consulta de la plantilla",
+  );
+  const t = (res.data ?? []).find((d) => d.name === name && d.language === language);
+  if (!t) return null;
+  return { status: t.status, reason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : undefined };
+}
