@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { credential } from "@/lib/credentials";
 import { messageTemplates, messagingLimit, missingWhatsAppEnv, type ApprovedTemplate } from "@/lib/channels/whatsapp";
 import { getChannelSettings } from "@/lib/domain/channels";
+import { broadcastStats, EMPTY_STATS } from "@/lib/domain/broadcasts";
+import { fileKind } from "@/lib/media";
 import { listFunnels, stageOptions } from "@/lib/domain/funnels";
 import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
 import { PageHeader } from "@/components/ui";
@@ -19,10 +21,13 @@ async function safely<T>(fn: () => Promise<T>): Promise<{ value: T } | { error: 
   }
 }
 
-export default async function NewBroadcastPage() {
+export default async function NewBroadcastPage({ searchParams }: { searchParams: Promise<{ reenviar?: string }> }) {
   await requireAdmin();
+  const { reenviar } = await searchParams;
+  const resentFrom = reenviar ? await db.broadcast.findUnique({ where: { id: reenviar }, select: { id: true, name: true } }) : null;
+  const resendStats = resentFrom ? ((await broadcastStats([resentFrom.id])).get(resentFrom.id) ?? EMPTY_STATS) : null;
   const missing = await missingWhatsAppEnv();
-  const [templates, limit, funnels, stages, tags, numbers, mainNumber, channels] = await Promise.all([
+  const [templates, limit, funnels, stages, tags, numbers, mainNumber, channels, files] = await Promise.all([
     missing.length ? { error: "Falta conectar WhatsApp en Configuración → Canales." } : safely(messageTemplates),
     missing.length ? null : safely(() => messagingLimit()),
     listFunnels(),
@@ -31,6 +36,7 @@ export default async function NewBroadcastPage() {
     listWhatsAppNumbers(),
     credential("WHATSAPP_PHONE_NUMBER_ID"),
     getChannelSettings(),
+    db.mediaFile.findMany({ orderBy: [{ product: "asc" }, { title: "asc" }], select: { id: true, title: true, product: true, mimeType: true } }),
   ]);
   const dailyLimit = limit && "value" in limit && limit.value ? limit.value : 250;
 
@@ -54,6 +60,8 @@ export default async function NewBroadcastPage() {
         dailyLimit={dailyLimit}
         dailyLimitKnown={Boolean(limit && "value" in limit && limit.value)}
         aiOn={channels.whatsappAi}
+        files={files.map((f) => ({ id: f.id, label: f.product ? `${f.product} · ${f.title}` : f.title, kind: fileKind(f.mimeType) }))}
+        resend={resentFrom && resendStats ? { id: resentFrom.id, name: resentFrom.name, count: resendStats.sent - resendStats.read } : null}
       />
     </>
   );

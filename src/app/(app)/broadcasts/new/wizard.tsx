@@ -2,19 +2,19 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Papa from "papaparse";
-import { CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardList, FileSpreadsheet, FlaskConical, LoaderCircle, Plus, Send, SquareKanban, Zap } from "lucide-react";
+import { CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardList, FileSpreadsheet, FlaskConical, LoaderCircle, Plus, Repeat, Send, Split, SquareKanban, Zap } from "lucide-react";
 import type { ApprovedTemplate } from "@/lib/channels/whatsapp";
-import type { BroadcastInput, VariableMapping } from "@/lib/domain/broadcasts";
+import type { BroadcastInput } from "@/lib/domain/broadcasts";
 import { normalize } from "@/lib/text";
 import { Button, Card, Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { createBroadcastAction, previewBroadcastAction, sendBroadcastTestAction, type PreviewResult } from "../actions";
 import { TemplateForm } from "./template-form";
+import { EMPTY_FILL, FillEditor, fillReady, keyOf, previewBody, toFill, type FillDraft, type LibraryFile } from "./fill-editor";
 
 type Option = { id: string; label: string };
-type Source = "file" | "paste" | "funnel";
+type Source = "file" | "paste" | "funnel" | "resend";
 type Row = Record<string, string>;
-type VarDraft = { source: "name" | "column" | "text"; column: string; text: string; fallback: string };
 
 const PHONE_ALIASES = ["telefono", "phone", "celular", "movil", "whatsapp", "numero", "fono", "numero de telefono"];
 const NAME_ALIASES = ["nombre", "name", "nombre completo", "cliente", "contacto"];
@@ -36,12 +36,10 @@ function parsePasted(text: string): Row[] {
 
 const TEST_PHONE_KEY = "beliapp:prueba-envio";
 
-const TEMPLATE_STATUS: Record<string, string> = { PENDING: "en revisión", IN_APPEAL: "en revisión", REJECTED: "rechazada" };
-
 /** "AAAA-MM-DDTHH:MM" de la hora local del navegador, para el mínimo del campo de fecha. */
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
-const firstName = (name: string) => (/^\+?\d[\d\s]*$/.test(name.trim()) ? "" : (name.trim().split(/\s+/)[0] ?? ""));
+const usd = (n: number) => n.toLocaleString("es-CL", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function BroadcastWizard({
   templates,
@@ -53,6 +51,8 @@ export function BroadcastWizard({
   dailyLimit: initialLimit,
   dailyLimitKnown,
   aiOn,
+  files,
+  resend,
 }: {
   templates: ApprovedTemplate[];
   templatesError: string | null;
@@ -63,13 +63,16 @@ export function BroadcastWizard({
   dailyLimit: number;
   dailyLimitKnown: boolean;
   aiOn: boolean;
+  files: LibraryFile[];
+  /** Reenvío a quienes no leyeron otro envío (viene de su detalle). */
+  resend: { id: string; name: string; count: number } | null;
 }) {
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   // Paso 1
-  const [source, setSource] = useState<Source>("file");
+  const [source, setSource] = useState<Source>(resend ? "resend" : "file");
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileRows, setFileRows] = useState<Row[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -83,12 +86,13 @@ export function BroadcastWizard({
   const [filterTag, setFilterTag] = useState("");
 
   // Paso 2
-  const [templateKey, setTemplateKey] = useState("");
-  const [vars, setVars] = useState<VarDraft[]>([]);
+  const [fillA, setFillA] = useState<FillDraft>(EMPTY_FILL);
+  const [abTest, setAbTest] = useState(false);
+  const [fillB, setFillB] = useState<FillDraft>(EMPTY_FILL);
   const [fromNumber, setFromNumber] = useState(numbers[0]?.id ?? "");
   const [stageId, setStageId] = useState(stages[0]?.id ?? "");
   const [tagId, setTagId] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(resend ? `${resend.name} (reenvío)` : "");
 
   // Paso 3
   const [dailyLimit, setDailyLimit] = useState(String(initialLimit));
@@ -106,26 +110,16 @@ export function BroadcastWizard({
     } catch {}
   }, []);
 
-  const template = templates.find((t) => `${t.name}|${t.language}` === templateKey) ?? null;
+  const templateA = templates.find((t) => keyOf(t) === fillA.templateKey) ?? null;
+  const templateB = templates.find((t) => keyOf(t) === fillB.templateKey) ?? null;
   const rows: Row[] = source === "file" ? fileRows : source === "paste" ? parsePasted(pasted) : [];
-  const columns = source === "file" ? headers.filter((h) => h !== phoneCol) : source === "paste" ? [] : [];
+  const columns = source === "file" ? headers.filter((h) => h !== phoneCol && h !== nameCol) : [];
   const rowName = (r: Row) => (source === "file" ? (nameCol ? r[nameCol] : "") : r.nombre) ?? "";
 
-  function pickTemplate(key: string) {
-    setTemplateKey(key);
-    const t = templates.find((x) => `${x.name}|${x.language}` === key);
-    if (!t) return setVars([]);
-    // Por defecto {{1}} es el nombre (lo más común) y el resto, columnas o texto fijo.
-    const extra = columns.filter((c) => c !== nameCol);
-    setVars(
-      Array.from({ length: t.params }, (_, i) => ({
-        source: i === 0 ? "name" : extra[i - 1] ? "column" : "text",
-        column: extra[i - 1] ?? "",
-        text: "",
-        fallback: "",
-      })),
-    );
-    if (!name) setName(t.name.replaceAll("_", " "));
+  function changeFillA(d: FillDraft) {
+    setFillA(d);
+    const t = templates.find((x) => keyOf(x) === d.templateKey);
+    if (t && !name) setName(t.name.replaceAll("_", " "));
   }
 
   function readFile(file: File | undefined) {
@@ -145,18 +139,17 @@ export function BroadcastWizard({
     });
   }
 
-  const mappings: VariableMapping[] = vars.map((v) =>
-    v.source === "text" ? { source: "text", text: v.text } : v.source === "name" ? { source: "name", fallback: v.fallback } : { source: "column", column: v.column, fallback: v.fallback },
-  );
-
   function buildInput(): BroadcastInput {
-    const used = vars.filter((v) => v.source === "column").map((v) => v.column);
+    const drafts = abTest ? [fillA, fillB] : [fillA];
+    const used = [...new Set(drafts.flatMap((d) => [...d.vars, ...d.buttonVars]).filter((v) => v.source === "column").map((v) => v.column))];
     return {
       name,
-      template: { name: template!.name, language: template!.language, body: template!.body, params: template!.params },
-      variables: mappings,
+      ...toFill(templateA!, fillA),
+      variantB: abTest && templateB ? toFill(templateB, fillB) : null,
       audience:
-        source === "funnel"
+        source === "resend" && resend
+          ? { kind: "resend", broadcastId: resend.id }
+          : source === "funnel"
           ? { kind: "funnel", funnelId, stageId: filterStage || null, status, tagId: filterTag || null }
           : {
               kind: "rows",
@@ -176,18 +169,11 @@ export function BroadcastWizard({
   }
 
   const sampleRow = rows[0];
-  const sampleBody = !template
-    ? ""
-    : template.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (all, n: string) => {
-      const v = vars[Number(n) - 1];
-      if (!v) return all;
-      const raw = v.source === "text" ? v.text : !sampleRow ? "" : v.source === "name" ? firstName(rowName(sampleRow)) : (sampleRow[v.column] ?? "");
-        return raw.trim() || (v.source !== "text" && v.fallback.trim()) || `{{${n}}}`;
-      });
+  const sampleName = sampleRow ? rowName(sampleRow) : "";
 
-  const step1Ready = source === "funnel" ? Boolean(funnelId) : rows.length > 0 && (source === "paste" || Boolean(phoneCol));
-  const varsReady = vars.every((v) => (v.source === "text" ? v.text.trim() : v.source === "column" ? v.column : true));
-  const step2Ready = Boolean(template && !template.unsupported && varsReady && stageId && name.trim());
+  const step1Ready =
+    source === "resend" ? Boolean(resend) : source === "funnel" ? Boolean(funnelId) : rows.length > 0 && (source === "paste" || Boolean(phoneCol));
+  const step2Ready = Boolean(fillReady(templateA, fillA) && (!abTest || fillReady(templateB, fillB)) && stageId && name.trim());
 
   function goReview() {
     setError(null);
@@ -227,7 +213,6 @@ export function BroadcastWizard({
     });
   }
 
-  const setVar = (i: number, patch: Partial<VarDraft>) => setVars((vs) => vs.map((v, j) => (j === i ? { ...v, ...patch } : v)));
   const excluded = preview
     ? ([
         ["Números inválidos o sin código de país", preview.excluded.invalid],
@@ -265,12 +250,28 @@ export function BroadcastWizard({
       <Card className="animate-rise">
         {step === 0 && (
           <PanelBody>
-            <fieldset className="grid gap-3 sm:grid-cols-3">
+            <fieldset className={`grid gap-3 sm:grid-cols-2 ${resend ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
               <legend className="sr-only">De dónde salen los destinatarios</legend>
+              {resend && (
+                <ChoiceCard
+                  name="source"
+                  checked={source === "resend"}
+                  onChange={() => setSource("resend")}
+                  icon={<Repeat />}
+                  title="Quienes no leyeron"
+                  description={`${resend.count.toLocaleString("es-CL")} de “${resend.name}”.`}
+                />
+              )}
               <ChoiceCard name="source" checked={source === "file"} onChange={() => setSource("file")} icon={<FileSpreadsheet />} title="Subir archivo" description="CSV con el teléfono y, si quieres, el nombre y otras columnas." />
               <ChoiceCard name="source" checked={source === "paste"} onChange={() => setSource("paste")} icon={<ClipboardList />} title="Pegar números" description="Uno por línea; opcional, una coma y el nombre." />
               <ChoiceCard name="source" checked={source === "funnel"} onChange={() => setSource("funnel")} icon={<SquareKanban />} title="Desde el funnel" description="Leads de WhatsApp de un embudo, etapa o etiqueta." />
             </fieldset>
+
+            {source === "resend" && resend && (
+              <Callout tone="neutral" title={`Reenvío a ${resend.count.toLocaleString("es-CL")} personas`}>
+                Les llegó “{resend.name}” pero no lo leyeron ni respondieron. Te recomiendo otra plantilla u otro horario. Quienes escribieron en las últimas 24 horas quedan fuera.
+              </Callout>
+            )}
 
             {source === "file" && (
               <div className="space-y-4">
@@ -388,70 +389,31 @@ export function BroadcastWizard({
             {creatingTemplate && <TemplateForm onClose={() => setCreatingTemplate(false)} />}
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
               <div className="space-y-4">
-                <div className="flex items-end gap-2">
-                  <div className="min-w-0 flex-1">
-                    <Field label="Plantilla aprobada por Meta">
-                      <select value={templateKey} onChange={(e) => pickTemplate(e.target.value)} className={inputClass}>
-                        <option value="">Elige una plantilla</option>
-                        {templates.map((t) => (
-                          <option
-                            key={`${t.name}|${t.language}`}
-                            value={`${t.name}|${t.language}`}
-                            disabled={t.status !== "APPROVED" || Boolean(t.unsupported)}
-                          >
-                            {t.name} · {t.language}
-                            {t.status !== "APPROVED" ? ` (${TEMPLATE_STATUS[t.status] ?? "no disponible"})` : t.unsupported ? " (no disponible)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                  </div>
-                  {!templatesError && !creatingTemplate && (
+                <FillEditor label={abTest ? "Plantilla A" : "Plantilla aprobada por Meta"} templates={templates} value={fillA} onChange={changeFillA} columns={columns} files={files} />
+                {!templatesError && !creatingTemplate && (
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="secondary" onClick={() => setCreatingTemplate(true)}>
                       <Plus aria-hidden />
                       Nueva plantilla
                     </Button>
-                  )}
-                </div>
-                {template?.unsupported && <FormMessage>{template.unsupported}</FormMessage>}
-                {templates.some((t) => t.unsupported) && !template && (
-                  <p className="text-xs text-slate-600">Las plantillas con imagen, documento o botones con variable aún no se pueden enviar desde aquí.</p>
+                  </div>
                 )}
 
-                {vars.map((v, i) => (
-                  <fieldset key={i} className="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-2">
-                    <legend className="px-1 text-sm font-semibold text-slate-800">{`Variable {{${i + 1}}}`}</legend>
-                    <select aria-label={`De dónde sale {{${i + 1}}}`} value={v.source === "column" ? `col:${v.column}` : v.source} onChange={(e) => {
-                      const val = e.target.value;
-                      setVar(i, val.startsWith("col:") ? { source: "column", column: val.slice(4) } : { source: val as "name" | "text" });
-                    }} className={inputClass}>
-                      <option value="name">Primer nombre</option>
-                      {columns
-                        .filter((c) => c !== nameCol)
-                        .map((c) => (
-                          <option key={c} value={`col:${c}`}>
-                            Columna “{c}”
-                          </option>
-                        ))}
-                      <option value="text">Texto fijo</option>
-                    </select>
-                    {v.source === "text" ? (
-                      <input aria-label={`Texto de {{${i + 1}}}`} value={v.text} onChange={(e) => setVar(i, { text: e.target.value })} placeholder="Ej. 31 de octubre" className={inputClass} />
-                    ) : (
-                      <input
-                        aria-label={`Si falta {{${i + 1}}}`}
-                        value={v.fallback}
-                        onChange={(e) => setVar(i, { fallback: e.target.value })}
-                        placeholder="Si falta, usar…"
-                        className={inputClass}
-                      />
-                    )}
-                  </fieldset>
-                ))}
-
-                {vars.some((v) => v.source !== "text") && (
+                {fillA.vars.length + fillA.buttonVars.length > 0 && (
                   <p className="text-xs text-slate-600">Si a una persona le falta el dato y no escribiste un reemplazo, no se le envía.</p>
                 )}
+
+                <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+                  <input type="checkbox" checked={abTest} onChange={(e) => setAbTest(e.target.checked)} className="mt-0.5 size-4 accent-brand-600" />
+                  <span>
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                      <Split aria-hidden className="size-4 text-brand-600" />
+                      Probar dos plantillas (A/B)
+                    </span>
+                    <span className="block text-xs text-slate-600">La lista se reparte al azar en dos mitades y ves cuál se lee y responde más.</span>
+                  </span>
+                </label>
+                {abTest && <FillEditor label="Plantilla B" templates={templates} value={fillB} onChange={setFillB} columns={columns} files={files} />}
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="Nombre del envío">
@@ -492,9 +454,22 @@ export function BroadcastWizard({
 
               <div className="space-y-2 self-start rounded-xl bg-slate-100 p-4">
                 <p className="text-xs font-medium text-slate-600">{sampleRow ? "Vista previa con la primera persona" : "Vista previa"}</p>
-                <div className="whitespace-pre-wrap rounded-xl rounded-bl-sm bg-white p-3 text-sm text-slate-900 shadow-xs">
-                  {template ? sampleBody : <span className="text-slate-500">Elige una plantilla para ver el mensaje.</span>}
-                </div>
+                {[{ t: templateA, d: fillA, label: "A" }, ...(abTest ? [{ t: templateB, d: fillB, label: "B" }] : [])].map(({ t, d, label }) => (
+                  <div key={label} className="space-y-1">
+                    {abTest && <p className="text-xs font-semibold text-slate-700">Plantilla {label}</p>}
+                    <div className="whitespace-pre-wrap rounded-xl rounded-bl-sm bg-white p-3 text-sm text-slate-900 shadow-xs">
+                      {t ? (
+                        <>
+                          {t.header && <span className="mb-1.5 block text-xs font-medium text-slate-500">[{files.find((f) => f.id === d.headerFileId)?.label ?? "Archivo"}]</span>}
+                          {previewBody(t, d, sampleRow, sampleName)}
+                          {t.urlButtons.length > 0 && <span className="mt-2 block border-t border-slate-100 pt-2 text-center text-xs font-semibold text-sky-700">{t.urlButtons.map((b) => b.text).join(" · ")}</span>}
+                        </>
+                      ) : (
+                        <span className="text-slate-500">Elige una plantilla para ver el mensaje.</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </PanelBody>
@@ -526,6 +501,21 @@ export function BroadcastWizard({
                   <div className="space-y-1.5 rounded-xl bg-slate-100 p-3">
                     <p className="text-xs font-medium text-slate-600">Así le llega a {preview.sample.name}</p>
                     <p className="whitespace-pre-wrap rounded-xl rounded-bl-sm bg-white p-3 text-sm text-slate-900 shadow-xs">{preview.sample.body}</p>
+                    {preview.sample.bodyB && (
+                      <>
+                        <p className="text-xs font-medium text-slate-600">O, con la plantilla B</p>
+                        <p className="whitespace-pre-wrap rounded-xl rounded-bl-sm bg-white p-3 text-sm text-slate-900 shadow-xs">{preview.sample.bodyB}</p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {preview.count > 0 && (
+                  <div className="flex items-baseline justify-between gap-4 rounded-xl border border-slate-200 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">Costo aproximado en Meta</p>
+                      <p className="text-xs text-slate-600">Según el país de cada número y el tipo de plantilla. Tu factura puede variar.</p>
+                    </div>
+                    <p className="text-lg font-bold tabular-nums text-slate-900">{usd(preview.cost)}</p>
                   </div>
                 )}
               </div>
