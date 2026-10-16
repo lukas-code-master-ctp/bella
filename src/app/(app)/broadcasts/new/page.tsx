@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { credential } from "@/lib/credentials";
-import { approvedTemplates, messagingLimit, missingWhatsAppEnv, type ApprovedTemplate } from "@/lib/channels/whatsapp";
+import { messageTemplates, messagingLimit, missingWhatsAppEnv, type ApprovedTemplate } from "@/lib/channels/whatsapp";
 import { getChannelSettings } from "@/lib/domain/channels";
 import { listFunnels, stageOptions } from "@/lib/domain/funnels";
 import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
@@ -23,7 +23,7 @@ export default async function NewBroadcastPage() {
   await requireAdmin();
   const missing = await missingWhatsAppEnv();
   const [templates, limit, funnels, stages, tags, numbers, mainNumber, channels] = await Promise.all([
-    missing.length ? { error: "Falta conectar WhatsApp en Configuración → Canales." } : safely(approvedTemplates),
+    missing.length ? { error: "Falta conectar WhatsApp en Configuración → Canales." } : safely(messageTemplates),
     missing.length ? null : safely(() => messagingLimit()),
     listFunnels(),
     stageOptions(),

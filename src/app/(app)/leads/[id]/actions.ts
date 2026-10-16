@@ -9,7 +9,7 @@ import { runAgent } from "@/lib/ai/agent";
 import { sendFollowUpNow } from "@/lib/ai/follow-ups";
 import { withLeadClaim } from "@/lib/ai/respond";
 import { deliverOutbound } from "@/lib/domain/channels";
-import { blockContact, unblockContact } from "@/lib/domain/contacts";
+import { blockContact, optBackIn, unblockContact } from "@/lib/domain/contacts";
 import { findDuplicatesOf, mergeContacts } from "@/lib/domain/contact-import";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
@@ -239,6 +239,13 @@ export async function blockContactAction(leadId: string, form: FormData) {
 export async function unblockContactAction(leadId: string) {
   const { by } = await authorize(leadId);
   await unblockContact(leadId, by);
+  done(leadId);
+}
+
+/** Vuelve a incluir en los envíos masivos a quien había pedido la baja. */
+export async function optBackInAction(leadId: string) {
+  const { by } = await authorize(leadId);
+  await optBackIn(leadId, by);
   done(leadId);
 }
 

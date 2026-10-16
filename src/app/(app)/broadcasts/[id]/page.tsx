@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleX, Pause, Play } from "lucide-react";
+import { ArrowLeft, CircleX, Pause, Play, Send } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { credential } from "@/lib/credentials";
@@ -16,7 +16,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Callout, Stat } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
-import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction } from "../actions";
+import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, sendBroadcastNowAction } from "../actions";
 import { BroadcastStatusBadge, dateTime, pct } from "../ui";
 
 const STATE: Record<RecipientState, { label: string; tone: "brand" | "success" | "warning" | "danger" | "neutral" }> = {
@@ -94,7 +94,15 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
               </SubmitButton>
             </form>
           )}
-          {(b.status === "SENDING" || b.status === "PAUSED") && (
+          {b.status === "SCHEDULED" && (
+            <form action={sendBroadcastNowAction.bind(null, b.id)}>
+              <SubmitButton variant="secondary" pendingText="Enviando…" confirm="¿Enviarlo ahora, sin esperar la hora programada?">
+                <Send aria-hidden />
+                Enviar ahora
+              </SubmitButton>
+            </form>
+          )}
+          {(b.status === "SCHEDULED" || b.status === "SENDING" || b.status === "PAUSED") && (
             <form action={cancelBroadcastAction.bind(null, b.id)}>
               <SubmitButton variant="ghost-danger" pendingText="Cancelando…" confirm="¿Cancelar el envío? A quienes faltan ya no les llegará.">
                 <CircleX aria-hidden />
@@ -109,6 +117,11 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
         {b.status === "PAUSED" && b.note && (
           <Callout tone="danger" title="El envío se pausó solo">
             {b.note} Cuando lo corrijas, toca “Seguir enviando”.
+          </Callout>
+        )}
+        {b.status === "SCHEDULED" && b.scheduledAt && (
+          <Callout tone="neutral" title={`Programado para el ${dateTime(b.scheduledAt)}`}>
+            Sale dentro de los 5 minutos siguientes a esa hora. Antes de enviar a cada persona se revisa de nuevo si pidió la baja, se bloqueó o ya está conversando.
           </Callout>
         )}
         {b.status === "SENDING" && s.pending > 0 && (

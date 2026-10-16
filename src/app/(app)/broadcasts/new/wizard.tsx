@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Papa from "papaparse";
-import { Check, ChevronLeft, ChevronRight, ClipboardList, FileSpreadsheet, LoaderCircle, Send, SquareKanban } from "lucide-react";
+import { CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardList, FileSpreadsheet, FlaskConical, LoaderCircle, Plus, Send, SquareKanban, Zap } from "lucide-react";
 import type { ApprovedTemplate } from "@/lib/channels/whatsapp";
 import type { BroadcastInput, VariableMapping } from "@/lib/domain/broadcasts";
 import { normalize } from "@/lib/text";
 import { Button, Card, Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, PanelBody, PanelFooter } from "@/components/settings-ui";
-import { createBroadcastAction, previewBroadcastAction, type PreviewResult } from "../actions";
+import { createBroadcastAction, previewBroadcastAction, sendBroadcastTestAction, type PreviewResult } from "../actions";
+import { TemplateForm } from "./template-form";
 
 type Option = { id: string; label: string };
 type Source = "file" | "paste" | "funnel";
@@ -32,6 +33,13 @@ function parsePasted(text: string): Row[] {
       return { telefono: phone.trim(), nombre: name.join(" ").trim() };
     });
 }
+
+const TEST_PHONE_KEY = "beliapp:prueba-envio";
+
+const TEMPLATE_STATUS: Record<string, string> = { PENDING: "en revisión", IN_APPEAL: "en revisión", REJECTED: "rechazada" };
+
+/** "AAAA-MM-DDTHH:MM" de la hora local del navegador, para el mínimo del campo de fecha. */
+const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
 const firstName = (name: string) => (/^\+?\d[\d\s]*$/.test(name.trim()) ? "" : (name.trim().split(/\s+/)[0] ?? ""));
 
@@ -85,6 +93,18 @@ export function BroadcastWizard({
   // Paso 3
   const [dailyLimit, setDailyLimit] = useState(String(initialLimit));
   const [preview, setPreview] = useState<Exclude<PreviewResult, { error: string }> | null>(null);
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [testMessage, setTestMessage] = useState<{ tone: "danger" | "neutral"; text: string } | null>(null);
+  const [testing, startTest] = useTransition();
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+
+  useEffect(() => {
+    try {
+      setTestPhone(localStorage.getItem(TEST_PHONE_KEY) ?? "");
+    } catch {}
+  }, []);
 
   const template = templates.find((t) => `${t.name}|${t.language}` === templateKey) ?? null;
   const rows: Row[] = source === "file" ? fileRows : source === "paste" ? parsePasted(pasted) : [];
@@ -151,6 +171,7 @@ export function BroadcastWizard({
       stageId,
       tagId: tagId || null,
       dailyLimit: Number(dailyLimit),
+      scheduledAt: when === "later" ? scheduledAt : null,
     };
   }
 
@@ -178,13 +199,31 @@ export function BroadcastWizard({
     });
   }
 
+  const scheduledLabel =
+    when === "later" && scheduledAt
+      ? new Date(scheduledAt).toLocaleString("es-CL", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })
+      : null;
+
   function send() {
     if (!preview) return;
-    if (!window.confirm(`¿Enviar la plantilla a ${preview.count.toLocaleString("es-CL")} personas? Meta cobra cada mensaje.`)) return;
+    const people = `${preview.count.toLocaleString("es-CL")} ${preview.count === 1 ? "persona" : "personas"}`;
+    const question = scheduledLabel ? `¿Programar el envío a ${people} para el ${scheduledLabel}?` : `¿Enviar la plantilla a ${people}?`;
+    if (!window.confirm(`${question} Meta cobra cada mensaje.`)) return;
     setError(null);
     start(async () => {
       const res = await createBroadcastAction(buildInput());
       if (res?.error) setError(res.error);
+    });
+  }
+
+  function sendTest() {
+    setTestMessage(null);
+    try {
+      localStorage.setItem(TEST_PHONE_KEY, testPhone);
+    } catch {}
+    startTest(async () => {
+      const res = await sendBroadcastTestAction(buildInput(), testPhone);
+      setTestMessage("error" in res ? { tone: "danger", text: res.error } : { tone: "neutral", text: res.ok });
     });
   }
 
@@ -194,6 +233,7 @@ export function BroadcastWizard({
         ["Números inválidos o sin código de país", preview.excluded.invalid],
         ["Repetidos en la lista", preview.excluded.duplicate],
         ["Contactos bloqueados", preview.excluded.blocked],
+        ["Pidieron no recibir más envíos", preview.excluded.optedOut],
         ["Escribieron en las últimas 24 horas (ya están conversando)", preview.excluded.active],
         ["Les falta un dato de la plantilla", preview.excluded.missing],
       ] as const)
@@ -340,24 +380,39 @@ export function BroadcastWizard({
               <Callout tone="danger" title="No se pudieron leer las plantillas de Meta">
                 {templatesError}
               </Callout>
-            ) : templates.length === 0 ? (
+            ) : !templates.some((t) => t.status === "APPROVED") && !creatingTemplate ? (
               <Callout tone="warning" title="No hay plantillas aprobadas">
-                Crea una en WhatsApp Manager y espera que Meta la apruebe. Luego vuelve a esta página.
+                Crea una con “Nueva plantilla” y espera que Meta la apruebe. Luego vuelve a esta página.
               </Callout>
             ) : null}
+            {creatingTemplate && <TemplateForm onClose={() => setCreatingTemplate(false)} />}
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
               <div className="space-y-4">
-                <Field label="Plantilla aprobada por Meta">
-                  <select value={templateKey} onChange={(e) => pickTemplate(e.target.value)} className={inputClass}>
-                    <option value="">Elige una plantilla</option>
-                    {templates.map((t) => (
-                      <option key={`${t.name}|${t.language}`} value={`${t.name}|${t.language}`} disabled={Boolean(t.unsupported)}>
-                        {t.name} · {t.language}
-                        {t.unsupported ? " (no disponible)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Field label="Plantilla aprobada por Meta">
+                      <select value={templateKey} onChange={(e) => pickTemplate(e.target.value)} className={inputClass}>
+                        <option value="">Elige una plantilla</option>
+                        {templates.map((t) => (
+                          <option
+                            key={`${t.name}|${t.language}`}
+                            value={`${t.name}|${t.language}`}
+                            disabled={t.status !== "APPROVED" || Boolean(t.unsupported)}
+                          >
+                            {t.name} · {t.language}
+                            {t.status !== "APPROVED" ? ` (${TEMPLATE_STATUS[t.status] ?? "no disponible"})` : t.unsupported ? " (no disponible)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  {!templatesError && !creatingTemplate && (
+                    <Button variant="secondary" onClick={() => setCreatingTemplate(true)}>
+                      <Plus aria-hidden />
+                      Nueva plantilla
+                    </Button>
+                  )}
+                </div>
                 {template?.unsupported && <FormMessage>{template.unsupported}</FormMessage>}
                 {templates.some((t) => t.unsupported) && !template && (
                   <p className="text-xs text-slate-600">Las plantillas con imagen, documento o botones con variable aún no se pueden enviar desde aquí.</p>
@@ -475,12 +530,49 @@ export function BroadcastWizard({
                 )}
               </div>
               <div className="space-y-4">
+                <fieldset className="space-y-3">
+                  <legend className="mb-1.5 text-sm font-medium text-slate-800">Cuándo sale</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ChoiceCard name="when" checked={when === "now"} onChange={() => setWhen("now")} icon={<Zap />} title="Ahora" description="Parte apenas confirmes." />
+                    <ChoiceCard name="when" checked={when === "later"} onChange={() => setWhen("later")} icon={<CalendarClock />} title="Programar" description="Elige el día y la hora." />
+                  </div>
+                  {when === "later" && (
+                    <Field label="Día y hora" hint="Hora de Chile. Sale dentro de los 5 minutos siguientes a esa hora.">
+                      <input
+                        type="datetime-local"
+                        value={scheduledAt}
+                        min={localInput(new Date())}
+                        onChange={(e) => setScheduledAt(e.target.value)}
+                        className={inputClass}
+                      />
+                    </Field>
+                  )}
+                </fieldset>
                 <Field
                   label="Máximo de personas por día"
                   hint={dailyLimitKnown ? "Es el límite que Meta le da hoy a tu número. Si hay más, el resto sale al día siguiente." : "Meta parte con 250 por día para números nuevos. Si hay más, el resto sale al día siguiente."}
                 >
                   <input type="number" min={1} value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} className={inputClass} />
                 </Field>
+                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                  <p className="text-sm font-medium text-slate-800">Enviarme una prueba</p>
+                  <p className="text-xs text-slate-600">Te llega la plantilla con los datos de la primera persona. No crea un lead ni cuenta en el envío.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      value={testPhone}
+                      onChange={(e) => setTestPhone(e.target.value)}
+                      inputMode="tel"
+                      aria-label="Tu número de WhatsApp"
+                      placeholder="+56 9 1234 5678"
+                      className={`${inputClass} min-w-0 flex-1`}
+                    />
+                    <Button variant="secondary" disabled={testing || !testPhone.trim()} onClick={sendTest}>
+                      {testing ? <LoaderCircle aria-hidden className="animate-spin" /> : <FlaskConical aria-hidden />}
+                      {testing ? "Enviando…" : "Enviar prueba"}
+                    </Button>
+                  </div>
+                  {testMessage && <FormMessage tone={testMessage.tone}>{testMessage.text}</FormMessage>}
+                </div>
                 <Callout tone="neutral" title="Cuando respondan">
                   {aiOn
                     ? "La conversación entra a Chats y la IA contesta, igual que con cualquier mensaje de WhatsApp."
@@ -513,9 +605,11 @@ export function BroadcastWizard({
             </Button>
           )}
           {step === 2 && preview && (
-            <Button disabled={pending || preview.count === 0 || !(Number(dailyLimit) > 0)} onClick={send}>
-              {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
-              {pending ? "Creando…" : `Enviar a ${preview.count.toLocaleString("es-CL")} ${preview.count === 1 ? "persona" : "personas"}`}
+            <Button disabled={pending || preview.count === 0 || !(Number(dailyLimit) > 0) || (when === "later" && !scheduledAt)} onClick={send}>
+              {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : when === "later" ? <CalendarClock aria-hidden /> : <Send aria-hidden />}
+              {pending
+                ? "Creando…"
+                : `${when === "later" ? "Programar" : "Enviar"} a ${preview.count.toLocaleString("es-CL")} ${preview.count === 1 ? "persona" : "personas"}`}
             </Button>
           )}
         </PanelFooter>
