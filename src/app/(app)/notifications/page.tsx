@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Bell, CheckCheck, ClockAlert, Hand, Mail, MessageCircle, UserPlus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { vapidPublicKey } from "@/lib/push";
 import { emailConfigured } from "@/lib/email";
 import { EMAIL_NOTIFICATION_TYPES } from "@/lib/domain/email-notifications";
+import { latestNotificationPerLead } from "@/lib/domain/notifications";
 import { Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { markAllReadAction, saveEmailPrefsAction } from "./actions";
@@ -23,11 +23,7 @@ const time = (d: Date) =>
 
 export default async function NotificationsPage() {
   const user = await requireUser();
-  const notifications = await db.notification.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const notifications = await latestNotificationPerLead(user.id);
   const unread = notifications.filter((n) => !n.readAt).length;
   const isAdmin = user.role === "ADMIN";
   const emailReady = emailConfigured();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createLead, handoffToHumanTx, moveStage, setAiEnabled, setAssignee } from "@/lib/domain/leads";
-import { markLeadNotificationsRead, notifyContactMessage } from "@/lib/domain/notifications";
+import { latestNotificationPerLead, markLeadNotificationsRead, notifyContactMessage } from "@/lib/domain/notifications";
 import { executive, seedFunnel } from "./factories";
 
 const notificationsOf = (userId: string) => db.notification.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
@@ -86,5 +86,21 @@ describe("avisos al ejecutivo", () => {
     await moveStage(lead.id, stages[3].id, { actor: "AI" });
     await markLeadNotificationsRead(ana.id, lead.id);
     expect(await db.notification.count({ where: { userId: ana.id, readAt: null } })).toBe(0);
+  });
+
+  it("la página muestra solo el último aviso de cada lead", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const maria = await createLead({ name: "María", channel: "SIMULATOR" });
+    const pedro = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    const at = (min: number) => new Date(Date.now() - min * 60_000);
+    await db.notification.createMany({
+      data: [
+        { userId: ana.id, leadId: maria.id, type: "ASSIGNED", title: "María", body: "viejo", readAt: at(50), createdAt: at(60) },
+        { userId: ana.id, leadId: pedro.id, type: "ASSIGNED", title: "Pedro", body: "pedro", createdAt: at(30) },
+        { userId: ana.id, leadId: maria.id, type: "CONTACT_MESSAGE", title: "María", body: "nuevo", createdAt: at(10) },
+      ],
+    });
+    expect((await latestNotificationPerLead(ana.id)).map((n) => n.body)).toEqual(["nuevo", "pedro"]);
   });
 });
