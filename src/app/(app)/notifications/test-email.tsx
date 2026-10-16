@@ -7,7 +7,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
 import { sendTestEmailAction } from "./actions";
 
-/** Botón para revisar que la clave de Resend y el remitente funcionan. */
+/** Botón para revisar que los correos salen (solo dueños de Beliapp). */
 export function TestEmailButton() {
   const [state, action] = useActionState(async () => {
     const result = await sendTestEmailAction();

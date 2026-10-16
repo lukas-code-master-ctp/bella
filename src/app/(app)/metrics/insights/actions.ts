@@ -24,7 +24,6 @@ export async function saveWeeklyEmailAction(form: FormData) {
   await requireAdmin();
   await saveWeeklyEmailSettings({
     enabled: form.get("enabled") === "on",
-    from: String(form.get("from") ?? "").trim(),
     toAdmins: form.get("toAdmins") === "on",
     extra: String(form.get("extra") ?? ""),
   });

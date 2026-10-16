@@ -18,8 +18,7 @@ const hashToken = (token: string) => createHash("sha256").update(token).digest("
 
 /** Si el servidor puede mandar el correo de recuperación. */
 export async function passwordResetAvailable(sender: EmailSender = resendSender) {
-  if (sender === resendSender && !(await emailConfigured())) return false;
-  return (await emailFrom()) != null;
+  return sender !== resendSender || emailConfigured();
 }
 
 export function renderPasswordResetEmail({ name, link }: { name: string; link: string }) {
@@ -62,8 +61,7 @@ async function sendResetLink(user: User, baseUrl: string, sender: EmailSender, n
     where: { userId: user.id, createdAt: { gt: new Date(now.getTime() - RESEND_COOLDOWN_MS) } },
   });
   if (recent) return;
-  const from = await emailFrom();
-  if (!from) throw new Error("Falta el remitente de correos en Configuración → Credenciales.");
+  const from = emailFrom();
 
   const token = randomBytes(32).toString("base64url");
   // Un enlace nuevo deja sin efecto los anteriores.

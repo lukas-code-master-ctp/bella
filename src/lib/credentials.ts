@@ -3,7 +3,7 @@ import { getSetting, setSetting } from "./settings";
 import { currentCompanyId, DEFAULT_COMPANY_ID } from "./tenant";
 
 /**
- * Credenciales de cada empresa (Meta, WhatsApp, IA, correo). Se cargan en Configuración →
+ * Credenciales de cada empresa (Meta, WhatsApp, IA). Se cargan en Configuración →
  * Credenciales y se guardan cifradas en la configuración de la empresa ("credentials"). Solo la
  * empresa por defecto usa, si falta una, la variable de entorno del mismo nombre: así las
  * instalaciones que ya las tienen en Vercel siguen funcionando, y una empresa nueva nunca usa
@@ -11,7 +11,7 @@ import { currentCompanyId, DEFAULT_COMPANY_ID } from "./tenant";
  * a cargar las credenciales.
  */
 
-export type CredentialGroup = "whatsapp" | "meta" | "ai" | "email";
+export type CredentialGroup = "whatsapp" | "meta" | "ai";
 
 type CredentialDef = {
   key: string;
@@ -113,20 +113,6 @@ export const CREDENTIALS = [
     group: "ai",
     secret: true,
     help: "Opcional: solo si eliges Anthropic como proveedor en Asistente.",
-  },
-  {
-    key: "RESEND_API_KEY",
-    label: "Clave de Resend",
-    group: "email",
-    secret: true,
-    help: "resend.com → API Keys. Con ella salen los avisos por correo, el resumen semanal y la recuperación de contraseña.",
-  },
-  {
-    key: "EMAIL_FROM",
-    label: "Remitente de los correos",
-    group: "email",
-    secret: false,
-    help: "Ej. Beliapp <avisos@tuempresa.cl>. Tiene que ser de un dominio verificado en Resend (resend.com → Domains).",
   },
 ] as const satisfies readonly CredentialDef[];
 

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { markAllNotificationsRead, unreadNotificationCount } from "@/lib/domain/notifications";
-import { saveEmailNotificationPrefs } from "@/lib/domain/email-notifications";
+import { saveEmailNotificationPrefs, sendTestEmail } from "@/lib/domain/email-notifications";
 
 /** Contador de la campana (la barra lateral lo consulta cada cierto tiempo). */
 export async function unreadCountAction() {
@@ -45,4 +45,16 @@ export async function saveEmailPrefsAction(form: FormData) {
   const user = await requireUser();
   await saveEmailNotificationPrefs(user.id, form.getAll("type").map(String), user.role === "ADMIN");
   revalidatePath("/notifications");
+}
+
+/** Correo de prueba a quien aprieta el botón (dueños de Beliapp). Devuelve el resultado para mostrarlo. */
+export async function sendTestEmailAction(): Promise<{ ok: boolean; message: string }> {
+  const user = await requireUser();
+  if (!user.superadmin) return { ok: false, message: "Solo los dueños de Beliapp pueden mandar el correo de prueba." };
+  try {
+    await sendTestEmail(user.email);
+    return { ok: true, message: `Correo de prueba enviado a ${user.email}.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }

@@ -25,7 +25,7 @@ export default async function WeeklyInsightsPage({ searchParams }: { searchParam
   if (insight && !insight.seenBy.includes(user.id)) {
     await db.weeklyInsight.update({ where: { id: insight.id }, data: { seenBy: { push: user.id } } });
   }
-  const [emailSettings, emailLog, hasEmail] = await Promise.all([getWeeklyEmailSettings(), getWeeklyEmailLog(), emailConfigured()]);
+  const [emailSettings, emailLog, hasEmail] = await Promise.all([getWeeklyEmailSettings(), getWeeklyEmailLog(), Promise.resolve(emailConfigured())]);
   const recipients = await weeklyEmailRecipients(emailSettings);
   const report = insight?.report as WeeklyReport | undefined;
   const stats = insight?.stats as WeeklyStats | undefined;
@@ -97,9 +97,9 @@ export default async function WeeklyInsightsPage({ searchParams }: { searchParam
         <CardHeader
           icon={<Mail />}
           title="Envío por correo"
-          description="Cada lunes, apenas está listo, el resumen llega por correo. Los correos salen por Resend: agrega la clave de Resend en Configuración → Credenciales y verifica en Resend el dominio del remitente."
+          description="Cada lunes, apenas está listo, el resumen llega por correo."
         >
-          {hasEmail ? <Badge tone="success">Resend conectado</Badge> : <Badge>Falta la clave de Resend</Badge>}
+          {!hasEmail && <Badge>Correos aún no activados</Badge>}
         </CardHeader>
         <form action={saveWeeklyEmailAction} className="space-y-4">
           <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-800">
@@ -107,9 +107,6 @@ export default async function WeeklyInsightsPage({ searchParams }: { searchParam
             Enviar el resumen por correo cada lunes
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Remitente" hint="De un dominio verificado en Resend. Ej. Reportes <reportes@miempresa.cl>">
-              <input name="from" defaultValue={emailSettings.from} placeholder="Reportes <reportes@miempresa.cl>" className={inputClass} />
-            </Field>
             <Field label="Otros destinatarios" hint="Separados por comas, por ejemplo la gerencia">
               <input name="extra" defaultValue={emailSettings.extra} placeholder="gerencia@miempresa.cl" className={inputClass} />
             </Field>

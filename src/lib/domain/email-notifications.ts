@@ -46,10 +46,7 @@ export function renderNotificationEmail({ title, body, url }: { title: string; b
   return { subject, html, text };
 }
 
-async function ready(sender: EmailSender) {
-  if (sender === resendSender && !(await emailConfigured())) return null;
-  return emailFrom();
-}
+const ready = (sender: EmailSender) => (sender !== resendSender || emailConfigured() ? emailFrom() : null);
 
 /**
  * Manda por correo los avisos de leads recientes, sin leer y aún no mandados, a quienes pidieron
@@ -69,7 +66,7 @@ export async function deliverPendingEmails({ sender = resendSender, now = new Da
     });
     const wanted = candidates.filter((n) => n.user.emailNotifications.includes(n.type));
     if (!wanted.length) return;
-    const from = await ready(sender);
+    const from = ready(sender);
     if (!from) return;
 
     for (const n of wanted) {
@@ -101,7 +98,7 @@ export async function emailUsers(
       select: { email: true },
     });
     if (!users.length) return;
-    const from = await ready(sender);
+    const from = ready(sender);
     if (!from) return;
     const email = renderNotificationEmail(content);
     for (const u of users) {
@@ -114,11 +111,9 @@ export async function emailUsers(
 
 /** Correo de prueba para revisar la clave y el remitente. Lanza con el motivo si no se puede. */
 export async function sendTestEmail(to: string, { sender = resendSender }: { sender?: EmailSender } = {}) {
-  if (sender === resendSender && !(await emailConfigured())) throw new Error("Falta la clave de Resend.");
-  const from = await emailFrom();
-  if (!from) throw new Error("Falta el remitente de los correos.");
+  if (!ready(sender)) throw new Error("Falta RESEND_API_KEY en el servidor.");
   await sender.send({
-    from,
+    from: emailFrom(),
     to: [to],
     ...renderNotificationEmail({ title: "Correo de prueba", body: "Si te llegó este correo, Beliapp ya puede mandar avisos por correo.", url: "/notifications" }),
   });

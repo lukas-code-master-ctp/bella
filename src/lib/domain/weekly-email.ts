@@ -6,19 +6,17 @@ import { REPORT_SECTIONS, type WeeklyReport, type WeeklyStats } from "../ai/week
 
 /**
  * Envío del resumen semanal por correo. Viene apagado: se enciende en Métricas → Resumen semanal
- * con el remitente (de un dominio verificado en Resend) y a quién mandarlo.
+ * con a quién mandarlo. El remitente es el de la plataforma (ver src/lib/email.ts).
  */
 export type WeeklyEmailSettings = {
   enabled: boolean;
-  /** Ej. "Beliapp <reportes@miempresa.cl>". */
-  from: string;
   /** Mandarlo a todos los admins activos. */
   toAdmins: boolean;
   /** Otras direcciones (gerencia), separadas por comas. */
   extra: string;
 };
 
-export const DEFAULT_WEEKLY_EMAIL: WeeklyEmailSettings = { enabled: false, from: "", toAdmins: true, extra: "" };
+export const DEFAULT_WEEKLY_EMAIL: WeeklyEmailSettings = { enabled: false, toAdmins: true, extra: "" };
 
 /** Resultado del último envío, para mostrarlo en la página. */
 export type WeeklyEmailLog = { at: string; ok: boolean; detail: string };
@@ -101,9 +99,8 @@ export async function sendWeeklyInsightEmail(
     await setSetting("weeklyEmailLog", entry);
     return entry;
   };
-  if (sender === resendSender && !(await emailConfigured())) return log(false, "Falta la clave de Resend en Configuración → Credenciales.");
-  const from = s.from.includes("@") ? s.from : await emailFrom();
-  if (!from) return log(false, "Falta el remitente.");
+  if (sender === resendSender && !emailConfigured()) return log(false, "Los correos aún no están activados en Beliapp.");
+  const from = emailFrom();
   const to = await weeklyEmailRecipients(s);
   if (!to.length) return log(false, "No hay destinatarios.");
   const insight = await db.weeklyInsight.findUniqueOrThrow({ where: { id: insightId } });

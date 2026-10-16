@@ -46,7 +46,7 @@ describe("Credenciales", () => {
     expect(status.get("OPENROUTER_API_KEY")).toEqual({ key: "OPENROUTER_API_KEY", source: null, preview: null });
     const defaults = await withCompany(DEFAULT_COMPANY_ID, credentialStatus);
     expect(defaults.find((s) => s.key === "OPENROUTER_API_KEY")).toEqual({ key: "OPENROUTER_API_KEY", source: "env", preview: "••••5678" });
-    expect(status.get("RESEND_API_KEY")).toEqual({ key: "RESEND_API_KEY", source: null, preview: null });
+    expect(status.get("ANTHROPIC_API_KEY")).toEqual({ key: "ANTHROPIC_API_KEY", source: null, preview: null });
   });
 
   it("la IA y los canales ven las guardadas en la app", async () => {
