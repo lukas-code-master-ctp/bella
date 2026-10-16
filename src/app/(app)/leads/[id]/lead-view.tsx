@@ -28,7 +28,7 @@ import {
   toggleAiAction,
 } from "./actions";
 import { FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
-import { LeadMenu } from "./lead-menu";
+import { AiPausedChip, LeadMenu } from "./lead-menu";
 import { LeadTabs } from "./lead-tabs";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
@@ -203,10 +203,7 @@ export async function LeadView({
                 IA respondiendo
               </Badge>
             ) : (
-              <Badge>
-                <BotOff aria-hidden />
-                IA pausada
-              </Badge>
+              <AiPausedChip leadId={lead.id} canResume={isOpen && !lead.contact.blockedAt} />
             )}
             <LeadMenu
               leadId={lead.id}
@@ -214,6 +211,7 @@ export async function LeadView({
               canReopen={!isOpen && !otherOpenLead}
               blocked={Boolean(lead.contact.blockedAt)}
               canMerge={user.role === "ADMIN" && lead.contact.channel !== "SIMULATOR"}
+              aiEnabled={lead.aiEnabled}
             />
           </div>
         </div>

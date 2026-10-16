@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Ban, CircleX, Ellipsis, LockOpen, Merge, RotateCcw, Trophy, X } from "lucide-react";
+import { Ban, Bot, BotOff, CircleX, Ellipsis, LoaderCircle, LockOpen, Merge, RotateCcw, Trophy, X } from "lucide-react";
 import { Button, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
@@ -11,6 +11,7 @@ import {
   leadDuplicatesAction,
   mergeIntoLeadAction,
   reopenLeadAction,
+  toggleAiAction,
   unblockContactAction,
 } from "./actions";
 
@@ -28,9 +29,11 @@ export function LeadMenu({
   canReopen,
   blocked,
   canMerge,
+  aiEnabled,
 }: {
   leadId: string;
   isOpen: boolean;
+  aiEnabled: boolean;
   /** Cerrado y sin otro lead abierto del mismo contacto. */
   canReopen: boolean;
   blocked: boolean;
@@ -120,6 +123,19 @@ export function LeadMenu({
               </MenuItem>
             )
           )}
+          {isOpen && !blocked && (
+            <MenuItem
+              icon={aiEnabled ? <BotOff /> : <Bot className="text-emerald-600" />}
+              onClick={() =>
+                choose(async () => {
+                  await toggleAiAction(leadId, !aiEnabled);
+                  toast(aiEnabled ? "IA pausada" : "IA reactivada");
+                })
+              }
+            >
+              {aiEnabled ? "Pausar IA" : "Reactivar IA"}
+            </MenuItem>
+          )}
           {canMerge && (
             <MenuItem icon={<Merge />} onClick={() => choose("merge")}>
               Fusionar duplicados…
@@ -167,6 +183,40 @@ export function LeadMenu({
         )}
       </dialog>
     </div>
+  );
+}
+
+/**
+ * Chip "IA pausada" de la cabecera. En un lead abierto es un botón: al tocarlo la IA vuelve a
+ * atender y, si el cliente quedó esperando, le responde de inmediato.
+ */
+export function AiPausedChip({ leadId, canResume }: { leadId: string; canResume: boolean }) {
+  const [pending, start] = useTransition();
+  const content = (
+    <>
+      {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : <BotOff aria-hidden />}
+      {pending ? "Reactivando…" : "IA pausada"}
+    </>
+  );
+  const chip = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-slate-100 text-slate-700 ring-slate-200 [&_svg]:size-3.5";
+  if (!canResume) return <span className={chip}>{content}</span>;
+  return (
+    <button
+      type="button"
+      title="Reactivar la IA en este chat"
+      disabled={pending}
+      aria-busy={pending}
+      onClick={() => {
+        if (!window.confirm("¿Reactivar la IA? Volverá a responder sola en este chat.")) return;
+        start(async () => {
+          await toggleAiAction(leadId, true);
+          toast("IA reactivada");
+        });
+      }}
+      className={`${chip} cursor-pointer transition-colors duration-150 hover:bg-emerald-50 hover:text-emerald-800 hover:ring-emerald-200 focus-visible:outline-2 focus-visible:outline-brand-600 disabled:cursor-wait`}
+    >
+      {content}
+    </button>
   );
 }
 
