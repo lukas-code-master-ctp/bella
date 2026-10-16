@@ -70,21 +70,23 @@ model Company {
 }
 
 model User {
-  id                String    @id @default(cuid())
+  id                 String    @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
-  companyId         String    @default("default")
-  name              String
-  email             String    @unique
-  passwordHash      String
-  role              Role      @default(EXECUTIVE)
-  active            Boolean   @default(true)
+  companyId          String    @default("default")
+  name               String
+  email              String    @unique
+  passwordHash       String
+  role               Role      @default(EXECUTIVE)
+  active             Boolean   @default(true)
   /// Dueño de Beliapp: crea empresas y puede entrar a cualquiera (Configuración → Empresas).
-  superadmin        Boolean   @default(false)
-  createdAt         DateTime  @default(now())
+  superadmin         Boolean   @default(false)
+  createdAt          DateTime  @default(now())
   /// Último cambio de contraseña: invalida las sesiones abiertas antes de esa fecha.
-  passwordChangedAt DateTime?
+  passwordChangedAt  DateTime?
   /// Al cerrar sesión: los tokens emitidos antes dejan de valer.
-  sessionsRevokedAt DateTime?
+  sessionsRevokedAt  DateTime?
+  /// Avisos que la persona quiere recibir también por correo (ver src/lib/domain/email-notifications.ts).
+  emailNotifications String[]  @default([])
 
   leads        Lead[]           @relation("Assignee")
   messages     Message[]
@@ -595,6 +597,8 @@ model Notification {
   readAt    DateTime?
   /// Cuándo se envió (o descartó) el push al navegador; null = pendiente.
   pushedAt  DateTime?
+  /// Cuándo se mandó por correo; null = no se ha mandado.
+  emailedAt DateTime?
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

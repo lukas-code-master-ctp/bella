@@ -5,12 +5,13 @@ import { Badge, inputClass, PageHeader } from "@/components/ui";
 import { Panel, PanelBody, SaveBar } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveCredentialsAction } from "./actions";
+import { TestEmailButton } from "./test-email";
 
 const GROUPS: { id: CredentialGroup; title: string; description: string; icon: ReactNode }[] = [
   { id: "whatsapp", title: "WhatsApp", description: "API oficial de WhatsApp Cloud, con la app de Meta de la empresa.", icon: <MessageCircle /> },
   { id: "meta", title: "Meta", description: "App de Meta, página de Facebook, Instagram, anuncios y píxel.", icon: <Share2 /> },
   { id: "ai", title: "Inteligencia artificial", description: "La clave del proveedor que se elige en Asistente IA.", icon: <Bot /> },
-  { id: "email", title: "Correo", description: "Para mandar el resumen semanal.", icon: <Mail /> },
+  { id: "email", title: "Correo", description: "Resend: avisos por correo, resumen semanal y recuperación de contraseña.", icon: <Mail /> },
 ];
 
 export default async function CredentialsPage() {
@@ -67,6 +68,11 @@ export default async function CredentialsPage() {
           <SubmitButton toast="Credenciales guardadas">Guardar credenciales</SubmitButton>
         </SaveBar>
       </form>
+      <Panel icon={<Mail />} title="Probar el correo" description="Guarda primero la clave y el remitente. Te llegará un correo a tu dirección.">
+        <PanelBody>
+          <TestEmailButton />
+        </PanelBody>
+      </Panel>
     </div>
   );
 }

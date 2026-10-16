@@ -2,6 +2,7 @@ import { Prisma, type CampaignAlert } from "@prisma/client";
 import { db } from "../db";
 import { getSetting, setSetting } from "../settings";
 import { pushToUsers } from "../push";
+import { emailUsers } from "./email-notifications";
 import { pauseMetaCampaign } from "../channels/ads";
 import { generateCampaignAdvice } from "../ai/campaign-advice";
 import type { ProviderClients } from "../ai/providers";
@@ -155,15 +156,14 @@ export async function runCampaignAlerts(now = new Date(), clients: ProviderClien
     }
     const admins = await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } });
     const first = opened[0].stat;
-    await pushToUsers(
-      admins.map((a) => a.id),
-      {
-        title: opened.length > 1 ? `${opened.length} campañas pierden casi todos sus leads` : "Campaña con muchos leads perdidos",
-        body: `${first.campaign}: ${first.lost} de ${first.leads} leads perdidos en ${cfg.days} días. Revisa las recomendaciones.`,
-        url: "/metrics/campaigns",
-        tag: "campaign-alert",
-      },
-    );
+    const notice = {
+      title: opened.length > 1 ? `${opened.length} campañas pierden casi todos sus leads` : "Campaña con muchos leads perdidos",
+      body: `${first.campaign}: ${first.lost} de ${first.leads} leads perdidos en ${cfg.days} días. Revisa las recomendaciones.`,
+      url: "/metrics/campaigns",
+    };
+    const adminIds = admins.map((a) => a.id);
+    await pushToUsers(adminIds, { ...notice, tag: "campaign-alert" });
+    await emailUsers(adminIds, "CAMPAIGN_ALERT", notice);
   }
   return { enabled: true, opened: opened.length, resolved: toResolve.length };
 }

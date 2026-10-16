@@ -1,10 +1,16 @@
 import { credential } from "./credentials";
+import { getSetting } from "./settings";
 
 /**
- * Envío de correos con Resend (https://resend.com), por su API HTTP. Credencial RESEND_API_KEY en
- * Configuración → Credenciales; el remitente (de un dominio verificado en Resend) se configura en la
- * app, porque es propio de cada empresa.
+ * Envío de correos con Resend (https://resend.com), por su API HTTP. La clave (RESEND_API_KEY) y el
+ * remitente (EMAIL_FROM, de un dominio verificado en Resend) son de cada empresa y se cargan en
+ * Configuración → Credenciales.
  */
+
+/** Dirección pública de la app, para los enlaces de los correos. Vacía si no se conoce. */
+export const APP_URL =
+  process.env.APP_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "");
 
 export type Email = { from: string; to: string[]; subject: string; html: string; text: string };
 
@@ -15,6 +21,16 @@ export class EmailError extends Error {}
 
 export async function emailConfigured() {
   return Boolean(await credential("RESEND_API_KEY"));
+}
+
+/**
+ * Remitente de los correos de la empresa: el de Credenciales o, si falta, el que se configuró antes
+ * para el resumen semanal. Null si no hay ninguno.
+ */
+export async function emailFrom(): Promise<string | null> {
+  const weekly = await getSetting<{ from?: string }>("weeklyEmail", {});
+  const from = (await credential("EMAIL_FROM"))?.trim() || weekly.from?.trim();
+  return from && from.includes("@") ? from : null;
 }
 
 export const resendSender: EmailSender = {

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { markAllNotificationsRead, unreadNotificationCount } from "@/lib/domain/notifications";
+import { saveEmailNotificationPrefs } from "@/lib/domain/email-notifications";
 
 /** Contador de la campana (la barra lateral lo consulta cada cierto tiempo). */
 export async function unreadCountAction() {
@@ -37,4 +38,11 @@ export async function savePushSubscriptionAction(raw: unknown) {
 export async function deletePushSubscriptionAction(endpoint: string) {
   const user = await requireUser();
   await db.pushSubscription.deleteMany({ where: { endpoint, userId: user.id } });
+}
+
+/** Qué avisos le llegan por correo a la persona. */
+export async function saveEmailPrefsAction(form: FormData) {
+  const user = await requireUser();
+  await saveEmailNotificationPrefs(user.id, form.getAll("type").map(String), user.role === "ADMIN");
+  revalidatePath("/notifications");
 }
