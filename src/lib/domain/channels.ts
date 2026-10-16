@@ -417,7 +417,23 @@ async function applyWhatsAppStatus(s: WaStatus) {
 
 const BLOCKED_SEND_ERROR = "El contacto está bloqueado: no se le envían mensajes.";
 
-export type OutboundApis = { whatsapp?: WhatsAppApi; messenger?: MessengerApi };
+export type OutboundApis = { whatsapp?: WhatsAppApi; messenger?: MessengerApi; mediaWaitMs?: number };
+
+/**
+ * WhatsApp acepta un archivo al tiro, pero lo descarga desde el enlace después: si el texto que
+ * sigue sale enseguida, al cliente le llega antes que la foto. Por eso se espera el aviso "sent"
+ * de Meta (llega por webhook) antes de mandar lo siguiente, con un tope para no quedar colgados.
+ */
+const MEDIA_WAIT_MS = 15_000;
+
+async function waitUntilSent(messageId: string, timeoutMs: number) {
+  const until = Date.now() + timeoutMs;
+  while (Date.now() < until) {
+    const m = await db.message.findUnique({ where: { id: messageId }, select: { deliveryStatus: true } });
+    if (m?.deliveryStatus !== "SENDING") return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
 
 /**
  * Envía por el canal del lead los mensajes de la IA y del equipo que aún no salen. En el
@@ -465,7 +481,7 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
     orderBy: { createdAt: "asc" },
   });
   let lastError: string | null = null;
-  for (const m of pending) {
+  for (const [i, m] of pending.entries()) {
     const claimed = await db.message.updateMany({ where: { id: m.id, deliveryStatus: null }, data: { deliveryStatus: "SENDING" } });
     if (!claimed.count) continue;
     try {
@@ -487,8 +503,16 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
         externalId = sent.id;
         textSent = sent.captioned;
       }
+      const moreToSend = Boolean(m.body && !textSent) || i < pending.length - 1;
+      if (channel === "WHATSAPP" && externalId && moreToSend) {
+        // El archivo queda "enviando" con su id de Meta hasta que el webhook confirme que salió.
+        await db.message.update({ where: { id: m.id }, data: { externalId } });
+        await waitUntilSent(m.id, apis.mediaWaitMs ?? MEDIA_WAIT_MS);
+      }
       if (m.body && !textSent) externalId = await sender.text(m.body);
-      await db.message.update({ where: { id: m.id }, data: { deliveryStatus: "SENT", externalId, deliveryError: null } });
+      // Si el webhook ya lo marcó entregado o leído durante la espera, no se retrocede.
+      await db.message.update({ where: { id: m.id }, data: { externalId } });
+      await db.message.updateMany({ where: { id: m.id, deliveryStatus: "SENDING" }, data: { deliveryStatus: "SENT", deliveryError: null } });
     } catch (err) {
       lastError = err instanceof ChannelSendError ? err.message : `No se pudo enviar por ${sender.name}.`;
       if (!(err instanceof ChannelSendError)) console.error(`[canales] envío del mensaje ${m.id}:`, err);
