@@ -1,11 +1,12 @@
 import { ArrowRight, BookOpen, History, Plus, RotateCcw, Trash2, Webhook } from "lucide-react";
 import { stageOptions } from "@/lib/domain/funnels";
+import { authHeaderName } from "@/lib/domain/webhooks";
 import { db } from "@/lib/db";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { Disclosure, EventList, Panel, PanelBody, SwitchSubmit } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { deleteWebhookAction, retryWebhooksAction, toggleWebhookAction } from "./actions";
-import { CopySecret, NewWebhookForm, TestWebhookButton } from "./forms";
+import { AuthHeaderEditor, CopySecret, NewWebhookForm, TestWebhookButton } from "./forms";
 
 const STATUS: Record<string, { label: string; tone: "success" | "danger" | "neutral" }> = {
   SENT: { label: "Enviado", tone: "success" },
@@ -74,9 +75,12 @@ export default async function WebhooksPage() {
                   </SubmitButton>
                 </form>
               </div>
-              <div className="flex min-w-0 items-center gap-2 rounded-b-xl border-t border-slate-100 bg-slate-50/70 px-4 py-2 text-xs text-slate-600">
-                <span className="shrink-0 font-medium">Clave de firma</span>
-                <CopySecret secret={w.secret} />
+              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-b-xl border-t border-slate-100 bg-slate-50/70 px-4 py-2 text-xs text-slate-600">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 font-medium">Clave de firma</span>
+                  <CopySecret secret={w.secret} />
+                </span>
+                <AuthHeaderEditor id={w.id} current={authHeaderName(w.authHeader)} />
               </div>
             </li>
           ))}
@@ -102,7 +106,8 @@ export default async function WebhooksPage() {
           </p>
           <p>
             Cada envío lleva la cabecera <code className={code}>X-Beliapp-Signature</code> con <code className={code}>sha256=</code> y el
-            HMAC-SHA256 del cuerpo con la clave de firma, para que el otro sistema verifique que viene de Beliapp. Si la URL no
+            HMAC-SHA256 del cuerpo con la clave de firma, para que el otro sistema verifique que viene de Beliapp. Si el otro
+            sistema pide una API key, agrégala como cabecera de autenticación y Beliapp la enviará en cada envío. Si la URL no
             responde con un código 2xx, se reintenta cada 15 minutos hasta 5 veces. Los leads del simulador no disparan
             webhooks.
           </p>

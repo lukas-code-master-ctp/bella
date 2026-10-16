@@ -4,14 +4,31 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { DomainError } from "@/lib/domain/leads";
-import { createWebhook, deliverPendingWebhooks, sendTestWebhook } from "@/lib/domain/webhooks";
+import { createWebhook, deliverPendingWebhooks, sendTestWebhook, setWebhookAuthHeader } from "@/lib/domain/webhooks";
 
 const str = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export async function createWebhookAction(_prev: string | null, form: FormData): Promise<string | null> {
   await requireAdmin();
   try {
-    await createWebhook({ name: str(form, "name"), url: str(form, "url"), stageId: str(form, "stageId") });
+    await createWebhook({
+      name: str(form, "name"),
+      url: str(form, "url"),
+      stageId: str(form, "stageId"),
+      authHeader: str(form, "authHeader"),
+    });
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/webhooks");
+  return null;
+}
+
+export async function setWebhookAuthHeaderAction(id: string, _prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  try {
+    await setWebhookAuthHeader(id, str(form, "authHeader"));
   } catch (e) {
     if (e instanceof DomainError) return e.message;
     throw e;

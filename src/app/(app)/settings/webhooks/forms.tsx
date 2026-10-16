@@ -1,11 +1,11 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Check, Copy, Eye, EyeOff, Plus, Send } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, KeyRound, Plus, Send } from "lucide-react";
 import { Button, Field, FormMessage, inputClass } from "@/components/ui";
 import { PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
-import { createWebhookAction, testWebhookAction } from "./actions";
+import { createWebhookAction, setWebhookAuthHeaderAction, testWebhookAction } from "./actions";
 import { withToast } from "@/components/toast";
 
 export function NewWebhookForm({ stages }: { stages: { id: string; name: string }[] }) {
@@ -29,6 +29,12 @@ export function NewWebhookForm({ stages }: { stages: { id: string; name: string 
         </div>
         <Field label="URL" hint="Beliapp le enviará un POST con los datos del lead en JSON. Debe empezar con https://">
           <input name="url" type="url" required placeholder="https://hooks.zapier.com/hooks/catch/…" className={`${inputClass} font-mono`} />
+        </Field>
+        <Field
+          label="Cabecera de autenticación (opcional)"
+          hint='Si el otro sistema pide una API key, escríbela como "Nombre: valor". Se guarda cifrada.'
+        >
+          <input name="authHeader" autoComplete="off" placeholder="X-API-Key: tu-clave" className={`${inputClass} font-mono`} />
         </Field>
       </PanelBody>
       <PanelFooter note={message && <FormMessage>{message}</FormMessage>}>
@@ -85,5 +91,46 @@ export function CopySecret({ secret }: { secret: string }) {
         {copied ? "Copiada" : "Copiar"}
       </Button>
     </span>
+  );
+}
+
+/** Cabecera de autenticación de un webhook ya creado: muestra solo el nombre y permite cambiarla o quitarla. */
+export function AuthHeaderEditor({ id, current }: { id: string; current: string | null }) {
+  const [editing, setEditing] = useState(false);
+  const [message, action] = useActionState(
+    withToast(async (prev: string | null, form: FormData) => {
+      const error = await setWebhookAuthHeaderAction(id, prev, form);
+      if (!error) setEditing(false);
+      return error;
+    }, (e) => (e ? null : "Cabecera guardada")),
+    null,
+  );
+  if (!editing) {
+    return (
+      <span className="flex min-w-0 items-center gap-1">
+        <KeyRound aria-hidden className="size-3.5 shrink-0 text-slate-400" />
+        <span className="truncate">{current ? <code className="font-mono">{current}: ••••</code> : "Sin cabecera de autenticación"}</span>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(true)}>
+          {current ? "Cambiar" : "Agregar"}
+        </Button>
+      </span>
+    );
+  }
+  return (
+    <form action={action} className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <input
+        name="authHeader"
+        autoComplete="off"
+        autoFocus
+        placeholder="X-API-Key: tu-clave (vacío para quitarla)"
+        aria-label="Cabecera de autenticación"
+        className={`${inputClass} min-w-0 flex-1 py-1 font-mono text-xs`}
+      />
+      <SubmitButton size="sm">Guardar</SubmitButton>
+      <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
+        Cancelar
+      </Button>
+      {message && <FormMessage>{message}</FormMessage>}
+    </form>
   );
 }

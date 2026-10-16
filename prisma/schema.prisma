@@ -820,6 +820,9 @@ model Webhook {
   stageId   String
   /// Clave con que se firma el cuerpo (HMAC SHA-256 en la cabecera X-Beliapp-Signature).
   secret    String
+  /// Cabecera extra opcional para que el otro sistema autentique el envío (ej. "X-API-Key: …"),
+  /// cifrada como "Nombre: valor" con encryptValue (src/lib/credentials.ts).
+  authHeader String?
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
