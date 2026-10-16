@@ -91,6 +91,13 @@ export async function notifyTaskDueTx(
   await upsertNotifications(tx, task.leadId, userIds, { type: "TASK_DUE", body });
 }
 
+/** Avisos de la página Avisos: solo el más reciente de cada lead. */
+export async function latestNotificationPerLead(userId: string, limit = 100) {
+  const all = await db.notification.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: limit * 5 });
+  const seen = new Set<string>();
+  return all.filter((n) => !seen.has(n.leadId) && seen.add(n.leadId)).slice(0, limit);
+}
+
 /** Abrir un lead marca como leídos sus avisos. */
 export async function markLeadNotificationsRead(userId: string, leadId: string) {
   await db.notification.updateMany({ where: { userId, leadId, readAt: null }, data: { readAt: new Date() } });
