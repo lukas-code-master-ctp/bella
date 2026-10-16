@@ -62,6 +62,12 @@ export function templateComponents({ params, header, buttons = [] }: TemplateMes
   ];
 }
 
+/**
+ * Errores de la cuenta, no de la persona: fallarían con todos los mensajes (token vencido, cuenta
+ * bloqueada, sin medio de pago, plantilla inexistente o con otras variables).
+ */
+export const ACCOUNT_ERROR_CODES = new Set([190, 131031, 131042, 132000, 132001, 132015, 132016]);
+
 /** Motivo legible de los errores de Meta más comunes al enviar. */
 export function describeMetaError(code: number | undefined, fallback: string): string {
   switch (code) {
@@ -81,6 +87,8 @@ export function describeMetaError(code: number | undefined, fallback: string): s
       return "El token de WhatsApp venció o no es válido (Configuración → Credenciales).";
     case 131031:
       return "La cuenta de WhatsApp Business está bloqueada o restringida por Meta.";
+    case 131042:
+      return "Meta no pudo cobrar el mensaje: falta configurar la moneda o el medio de pago de la cuenta de WhatsApp (Meta Business → Facturación).";
     default:
       return fallback;
   }

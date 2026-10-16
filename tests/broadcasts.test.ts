@@ -429,3 +429,19 @@ describe("envíos masivos: archivo, botones, A/B, reenvío y costo", () => {
     expect(preview.cost).toBeCloseTo(0.1778);
   });
 });
+
+describe("envíos masivos: Meta rechaza después de aceptar", () => {
+  it("si falla por la cuenta (sin medio de pago), se pausa con el motivo en español", async () => {
+    await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: "PHONE" });
+    const rows = Array.from({ length: 30 }, (_, i) => ({ phone: `+5691111${String(i).padStart(4, "0")}`, name: "Persona" }));
+    const b = await createBroadcast(input({ kind: "rows", rows }, { variables: [{ source: "name" }, { source: "text", text: "algo" }], dailyLimit: 5 }), userId);
+    await runBroadcasts({ api: fakeWa().api });
+    const first = await db.message.findFirstOrThrow({ where: { externalId: { not: null } } });
+    await receiveWhatsApp({
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PHONE" }, statuses: [{ id: first.externalId!, status: "failed", errors: [{ code: 131042, title: "Business eligibility payment issue", error_data: { details: "Message failed to send because your WhatsApp Business account currency is not configured." } }] }] } }] }],
+    });
+    expect((await db.message.findUniqueOrThrow({ where: { id: first.id } })).deliveryError).toMatch(/medio de pago/);
+    expect(await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "PAUSED", note: expect.stringMatching(/Facturación/) });
+  });
+});
