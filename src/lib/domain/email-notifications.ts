@@ -31,8 +31,9 @@ export async function saveEmailNotificationPrefs(userId: string, types: string[]
 /** Asunto, HTML y texto de un aviso. */
 export function renderNotificationEmail({ title, body, url }: { title: string; body: string; url: string }) {
   const link = APP_URL ? `${APP_URL}${url}` : null;
+  const prefs = APP_URL ? `${APP_URL}/notifications#correo` : null;
   const subject = `${title}: ${body}`.slice(0, 140);
-  const text = [title, body, ...(link ? ["", `Abrir en Beliapp: ${link}`] : []), "", "Elige qué avisos te llegan por correo en Beliapp → Avisos."].join("\n");
+  const text = [title, body, ...(link ? ["", `Abrir en Beliapp: ${link}`] : []), "", `Elige qué avisos te llegan por correo: ${prefs ?? "Beliapp → Avisos"}`].join("\n");
   const html = [
     `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1c1530;line-height:1.5">`,
     `<h1 style="font-size:18px;margin:0 0 6px">${escapeHtml(title)}</h1>`,
@@ -40,7 +41,9 @@ export function renderNotificationEmail({ title, body, url }: { title: string; b
     link
       ? `<p style="margin-top:20px"><a href="${escapeHtml(link)}" style="background:#2c8040;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none">Abrir en Beliapp</a></p>`
       : "",
-    `<p style="color:#6b6380;font-size:12px;margin-top:24px">Elige qué avisos te llegan por correo en Beliapp → Avisos.</p>`,
+    `<p style="color:#6b6380;font-size:12px;margin-top:24px">${
+      prefs ? `<a href="${escapeHtml(prefs)}" style="color:#6b6380">Elige qué avisos te llegan por correo</a>` : "Elige qué avisos te llegan por correo en Beliapp → Avisos."
+    }</p>`,
     `</div>`,
   ].join("");
   return { subject, html, text };
