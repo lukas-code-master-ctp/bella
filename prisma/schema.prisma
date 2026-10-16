@@ -322,6 +322,7 @@ model Lead {
   conversions   ConversionEvent[]
   webhookCalls  WebhookDelivery[]
   variant       AssistantVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  broadcasts    BroadcastRecipient[]
 
   @@index([contactId, status])
   @@index([stageId])
@@ -382,6 +383,7 @@ model Message {
   lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user     User?     @relation(fields: [userId], references: [id])
   agentRun AgentRun?
+  broadcast BroadcastRecipient?
 
   @@unique([companyId, externalId])
   @@index([leadId, createdAt])
@@ -919,4 +921,81 @@ model CampaignAlert {
 
   @@unique([companyId, campaign])
   @@index([companyId, resolvedAt])
+}
+
+enum BroadcastStatus {
+  SENDING
+  PAUSED
+  DONE
+  CANCELED
+}
+
+enum BroadcastRecipientStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Envío masivo de una plantilla de WhatsApp aprobada en Meta (Envíos masivos). Sale por tandas
+/// desde el cron, respetando el máximo diario del número (ver src/lib/domain/broadcasts.ts).
+model Broadcast {
+  id                String          @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId         String          @default("default")
+  name              String
+  status            BroadcastStatus @default(SENDING)
+  /// Por qué se pausó solo (ej. el token venció); null si lo pausó un admin o no está pausado.
+  note              String?
+  templateName      String
+  templateLanguage  String
+  /// Cuerpo de la plantilla con {{1}}, {{2}}…: así se guarda cada mensaje en el chat.
+  templateText      String
+  /// phone_number_id que envía; null usa WHATSAPP_PHONE_NUMBER_ID.
+  fromPhoneNumberId String?
+  /// Etapa donde quedan quienes no tenían un lead abierto.
+  stageId           String
+  /// Etiqueta que se agrega a cada persona, opcional.
+  tagId             String?
+  /// Máximo de personas a las que Beliapp escribe en 24 horas sumando todos los envíos.
+  dailyLimit        Int
+  createdById       String?
+  createdAt         DateTime        @default(now())
+  finishedAt        DateTime?
+
+  recipients BroadcastRecipient[]
+
+  @@index([companyId, createdAt])
+  @@index([companyId, status])
+}
+
+/// Una persona de un envío masivo. Al enviarle queda con contacto y lead (el abierto que ya
+/// tenía, o uno nuevo en la etapa del envío), y el mensaje queda en su chat.
+model BroadcastRecipient {
+  id          String                   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId   String                   @default("default")
+  broadcastId String
+  /// WhatsApp de la persona: solo dígitos, con código de país.
+  phone       String
+  name        String
+  /// Valores de las variables {{1}}, {{2}}… para esta persona.
+  params      String[]
+  status      BroadcastRecipientStatus @default(PENDING)
+  /// Motivo cuando falló o se saltó.
+  error       String?
+  leadId      String?
+  messageId   String?                  @unique
+  sentAt      DateTime?
+  updatedAt   DateTime                 @updatedAt
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  lead      Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  message   Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@unique([broadcastId, phone])
+  @@index([broadcastId, status])
+  @@index([companyId, sentAt])
+  @@index([leadId])
 }

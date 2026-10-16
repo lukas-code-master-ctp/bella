@@ -373,3 +373,77 @@ export async function templateStatus(name: string, language: string): Promise<Te
   if (!t) return null;
   return { status: t.status, reason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : undefined };
 }
+
+/** Plantilla aprobada en Meta, como la usa Envíos masivos. */
+export type ApprovedTemplate = {
+  name: string;
+  language: string;
+  category: string;
+  /** Cuerpo con {{1}}, {{2}}…; el mensaje se guarda en el chat con este texto. */
+  body: string;
+  /** Cuántas variables tiene el cuerpo. */
+  params: number;
+  /** Por qué Beliapp todavía no puede enviarla; null si se puede. */
+  unsupported: string | null;
+};
+
+type MetaTemplate = {
+  name: string;
+  language: string;
+  status: string;
+  category?: string;
+  parameter_format?: string;
+  components?: { type: string; format?: string; text?: string; buttons?: { type: string; url?: string }[] }[];
+};
+
+const VAR = /\{\{\s*([^}\s]+)\s*\}\}/g;
+
+/** Lee una plantilla de Meta y dice si Beliapp puede enviarla (por ahora, solo variables en el cuerpo). */
+export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
+  const parts = t.components ?? [];
+  const body = parts.find((c) => c.type === "BODY")?.text ?? "";
+  const header = parts.find((c) => c.type === "HEADER");
+  const buttons = parts.find((c) => c.type === "BUTTONS")?.buttons ?? [];
+  const vars = [...body.matchAll(VAR)].map((m) => m[1]);
+  let unsupported: string | null = null;
+  if (t.parameter_format === "NAMED" || vars.some((v) => !/^\d+$/.test(v))) {
+    unsupported = "Usa variables con nombre; por ahora se pueden enviar solo las que usan {{1}}, {{2}}…";
+  } else if (header && header.format !== "TEXT") {
+    unsupported = "Tiene imagen, video o documento en el encabezado; por ahora solo se envían plantillas de texto.";
+  } else if (header?.text && /\{\{/.test(header.text)) {
+    unsupported = "Tiene una variable en el encabezado; por ahora solo se llenan las del cuerpo.";
+  } else if (buttons.some((b) => !["QUICK_REPLY", "PHONE_NUMBER", "URL"].includes(b.type) || (b.type === "URL" && b.url && /\{\{/.test(b.url)))) {
+    unsupported = "Tiene un botón con variable o de código; por ahora solo se envían botones fijos.";
+  }
+  return {
+    name: t.name,
+    language: t.language,
+    category: t.category ?? "",
+    body,
+    params: vars.length ? Math.max(...vars.map(Number).filter(Number.isFinite)) : 0,
+    unsupported,
+  };
+}
+
+/** Plantillas aprobadas de la cuenta de WhatsApp Business, por nombre. */
+export async function approvedTemplates(): Promise<ApprovedTemplate[]> {
+  const res = await graph<{ data?: MetaTemplate[] }>(
+    `${await wabaId()}/message_templates?status=APPROVED&limit=200&fields=name,language,status,category,parameter_format,components`,
+    {},
+    "la consulta de las plantillas",
+  );
+  return (res.data ?? [])
+    .filter((t) => t.status === "APPROVED")
+    .map(toApprovedTemplate)
+    .sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language));
+}
+
+/** Personas nuevas por día que Meta deja contactar a ese número (TIER_1K → 1000); null si no se sabe. */
+export async function messagingLimit(phoneNumberId?: string): Promise<number | null> {
+  const id = phoneNumberId || (await credential("WHATSAPP_PHONE_NUMBER_ID"));
+  if (!id) return null;
+  const res = await graph<{ messaging_limit_tier?: string }>(`${encodeURIComponent(id)}?fields=messaging_limit_tier`, {}, "la consulta del número");
+  const m = /^TIER_(\d+)(K?)$/.exec(res.messaging_limit_tier ?? "");
+  if (!m) return res.messaging_limit_tier === "TIER_UNLIMITED" ? 100_000 : null;
+  return Number(m[1]) * (m[2] ? 1000 : 1);
+}

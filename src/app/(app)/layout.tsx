@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { Bell, Building2, ChartNoAxesColumn, Check, ChevronDown, ListTodo, LogOut, MessagesSquare, Settings, SquareKanban, UserRoundCog } from "lucide-react";
+import { Bell, Building2, ChartNoAxesColumn, Check, ChevronDown, ListTodo, LogOut, Megaphone, MessagesSquare, Settings, SquareKanban, UserRoundCog } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { afterInCompany } from "@/lib/company-request";
 import { runDueFollowUpsIfStale } from "@/lib/ai/follow-ups";
@@ -115,6 +115,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               label="Chats"
               badge={pendingComments > 0 && countBadge(pendingComments, "bg-brand-600", "pendientes")}
             />
+            {user.role === "ADMIN" && <NavLink compactable href="/broadcasts" icon={<Megaphone />} label="Envíos masivos" />}
             <NavLink compactable
               href="/tasks"
               icon={<ListTodo />}
@@ -187,7 +188,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <BottomNav
-        moreActive={["/metrics", "/settings", "/profile"]}
+        moreActive={["/broadcasts", "/metrics", "/settings", "/profile"]}
         badges={{
           chats: pendingComments > 0 && countBadge(pendingComments, "bg-brand-600", "pendientes"),
           tasks: urgentTasks > 0 && countBadge(urgentTasks, "bg-rose-600", "vencidas o para hoy"),
@@ -207,6 +208,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   company
                 )}
               </p>
+            )}
+            {user.role === "ADMIN" && (
+              <Link href="/broadcasts" className={dropdownItemClass()}>
+                <Megaphone aria-hidden />
+                Envíos masivos
+              </Link>
             )}
             <Link href="/metrics" className={dropdownItemClass()}>
               <ChartNoAxesColumn aria-hidden />

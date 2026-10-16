@@ -1,0 +1,240 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { db } from "@/lib/db";
+import { saveCredentials } from "@/lib/credentials";
+import { ChannelSendError, toApprovedTemplate, type WaWebhook, type WhatsAppApi } from "@/lib/channels/whatsapp";
+import { receiveWhatsApp, saveChannelSettings } from "@/lib/domain/channels";
+import { createLead } from "@/lib/domain/leads";
+import {
+  broadcastRecipients,
+  broadcastStats,
+  cancelBroadcast,
+  createBroadcast,
+  previewBroadcast,
+  resumeBroadcast,
+  runBroadcasts,
+  type BroadcastInput,
+} from "@/lib/domain/broadcasts";
+import { executive, seedFunnel } from "./factories";
+
+const TEMPLATE = { name: "preventa", language: "es", body: "Hola {{1}}, tenemos {{2}} para ti.", params: 2 };
+
+let fakes = 0;
+
+function fakeWa(fail: Record<string, ChannelSendError> = {}) {
+  const sent: { to: string; params: string[]; from?: string }[] = [];
+  const prefix = `wamid.f${++fakes}`;
+  const api = {
+    sendTemplate: async (to: string, t: { params: string[] }, from?: string) => {
+      if (fail[to]) throw fail[to];
+      sent.push({ to, params: t.params, from });
+      return `${prefix}.${to}`;
+    },
+  } as unknown as WhatsAppApi;
+  return { api, sent };
+}
+
+let stages: Awaited<ReturnType<typeof seedFunnel>>;
+let userId: string;
+
+beforeEach(async () => {
+  stages = await seedFunnel();
+  userId = (await executive("Admin")).id;
+  await saveChannelSettings({ whatsappAi: true });
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+const input = (rows: BroadcastInput["audience"], extra: Partial<BroadcastInput> = {}): BroadcastInput => ({
+  name: "Preventa octubre",
+  template: TEMPLATE,
+  variables: [{ source: "name", fallback: "hola" }, { source: "column", column: "proyecto", fallback: "parcelas" }],
+  audience: rows,
+  stageId: stages[1].id,
+  dailyLimit: 1000,
+  ...extra,
+});
+
+describe("envíos masivos", () => {
+  it("deja fuera inválidos, repetidos, bloqueados y quienes escribieron hoy", async () => {
+    const blocked = await createLead({ name: "Spam", channel: "WHATSAPP", externalId: "56900000001" });
+    await db.contact.update({ where: { id: blocked.contactId }, data: { blockedAt: new Date() } });
+    const talking = await createLead({ name: "Ana", channel: "WHATSAPP", externalId: "56900000002" });
+    await db.message.create({ data: { leadId: talking.id, author: "CONTACT", body: "Hola" } });
+
+    const preview = await previewBroadcast(
+      input({
+        kind: "rows",
+        countryCode: "56",
+        rows: [
+          { phone: "+56 9 1111 2222", name: "Camila Rojas", values: { proyecto: "Los Robles" } },
+          { phone: "911112222", name: "Camila otra vez" },
+          { phone: "123" },
+          { phone: "56900000001" },
+          { phone: "56900000002" },
+          { phone: "56933334444" },
+        ],
+      }),
+    );
+    expect(preview.total).toBe(6);
+    expect(preview.excluded).toEqual({ invalid: 1, duplicate: 1, blocked: 1, active: 1, missing: 0 });
+    expect(preview.count).toBe(2);
+    expect(preview.sample?.body).toBe("Hola Camila, tenemos Los Robles para ti.");
+  });
+
+  it("sin texto de reemplazo, deja fuera a quien no tiene el dato", async () => {
+    const preview = await previewBroadcast(
+      input(
+        { kind: "rows", rows: [{ phone: "+56911112222" }, { phone: "+56933334444", name: "Jorge" }] },
+        { variables: [{ source: "name" }, { source: "text", text: "una oferta" }] },
+      ),
+    );
+    expect(preview.excluded.missing).toBe(1);
+    expect(preview.count).toBe(1);
+  });
+
+  it("envía la plantilla, crea leads en la etapa elegida y respeta los leads abiertos", async () => {
+    const existing = await createLead({ name: "Jorge", channel: "WHATSAPP", externalId: "56933334444" });
+    const b = await createBroadcast(
+      input({
+        kind: "rows",
+        rows: [
+          { phone: "+56911112222", name: "Camila Rojas", values: { proyecto: "Los Robles" } },
+          { phone: "+56933334444", values: { proyecto: "" } },
+        ],
+      }),
+      userId,
+    );
+    const { api, sent } = fakeWa();
+    expect(await runBroadcasts({ api })).toMatchObject({ sent: 2, failed: 0 });
+    expect(sent.map((s) => s.params).sort()).toEqual([["Camila", "Los Robles"], ["Jorge", "parcelas"]]);
+
+    const camila = await db.lead.findFirstOrThrow({ where: { contact: { externalId: "56911112222" } }, include: { messages: true } });
+    expect(camila.stageId).toBe(stages[1].id);
+    expect(camila.aiEnabled).toBe(true);
+    expect(camila.messages[0]).toMatchObject({ author: "USER", userId, body: "Hola Camila, tenemos Los Robles para ti.", deliveryStatus: "SENT" });
+    // Jorge ya tenía un lead abierto: sigue en su etapa, sin lead nuevo.
+    expect(await db.lead.count({ where: { contactId: existing.contactId } })).toBe(1);
+    expect((await db.lead.findUniqueOrThrow({ where: { id: existing.id } })).stageId).toBe(stages[0].id);
+    expect((await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).status).toBe("DONE");
+
+    // Una segunda corrida no vuelve a escribirles.
+    expect(await runBroadcasts({ api })).toMatchObject({ sent: 0 });
+    expect(sent).toHaveLength(2);
+  });
+
+  it("cuenta entregados, leídos y respuestas con los avisos de WhatsApp", async () => {
+    await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: "PHONE" });
+    const b = await createBroadcast(
+      input({ kind: "rows", rows: ["+56911110001", "+56911110002", "+56911110003"].map((phone) => ({ phone, name: "Persona" })) }),
+      userId,
+    );
+    const { api } = fakeWa({ "56911110003": new ChannelSendError("WhatsApp no pudo entregarlo.", 131026) });
+    await runBroadcasts({ api });
+    const wamid = async (phone: string) =>
+      (await db.message.findFirstOrThrow({ where: { lead: { contact: { externalId: phone } } } })).externalId!;
+    const value = (v: object): WaWebhook => ({
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PHONE" }, ...v } }] }],
+    });
+    await receiveWhatsApp(value({ statuses: [{ id: await wamid("56911110001"), status: "read" }, { id: await wamid("56911110002"), status: "delivered" }] }));
+    await receiveWhatsApp(value({ messages: [{ from: "56911110002", id: "wamid.in1", type: "text", text: { body: "Me interesa" } }] }));
+
+    expect((await broadcastStats([b.id])).get(b.id)).toEqual({
+      total: 3, pending: 0, sent: 2, delivered: 2, read: 2, replied: 1, failed: 1, skipped: 0,
+    });
+    const replied = await broadcastRecipients(b.id, "respondieron");
+    expect(replied.map((r) => r.phone)).toEqual(["56911110002"]);
+    expect(replied[0].stageName).toBe(stages[1].name);
+    expect((await broadcastRecipients(b.id, "fallaron"))[0].error).toBe("WhatsApp no pudo entregarlo.");
+  });
+
+  it("no pasa el máximo diario y sigue cuando hay cupo", async () => {
+    await createBroadcast(
+      input({ kind: "rows", rows: ["+56911110001", "+56911110002", "+56911110003"].map((phone) => ({ phone })) }, { dailyLimit: 2 }),
+      userId,
+    );
+    const { api, sent } = fakeWa();
+    const run = await runBroadcasts({ api });
+    expect(run.sent).toBe(2);
+    expect(run.reason).toMatch(/máximo/);
+    await db.broadcastRecipient.updateMany({ where: { status: "SENT" }, data: { sentAt: new Date(Date.now() - 25 * 3600_000) } });
+    expect((await runBroadcasts({ api })).sent).toBe(1);
+    expect(sent).toHaveLength(3);
+  });
+
+  it("se pausa si la plantilla o el token no sirven, y sigue al reanudar", async () => {
+    const b = await createBroadcast(input({ kind: "rows", rows: [{ phone: "+56911110001" }, { phone: "+56911110002" }] }), userId);
+    const broken = fakeWa({ "56911110001": new ChannelSendError("La plantilla no existe.", 132001) });
+    const run = await runBroadcasts({ api: broken.api });
+    // El otro de la misma tanda salió en paralelo; al que falló no le queda un mensaje fallido en el chat.
+    expect(run).toMatchObject({ sent: 1, reason: "La plantilla no existe." });
+    expect(await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "PAUSED", note: "La plantilla no existe." });
+    expect(await db.message.count({ where: { lead: { contact: { externalId: "56911110001" } } } })).toBe(0);
+
+    await resumeBroadcast(b.id);
+    const { api, sent } = fakeWa();
+    expect((await runBroadcasts({ api })).sent).toBe(1);
+    expect(sent.map((s) => s.to)).toEqual(["56911110001"]);
+  });
+
+  it("al cancelar, quienes faltan quedan sin enviar", async () => {
+    const b = await createBroadcast(input({ kind: "rows", rows: [{ phone: "+56911110001" }] }), userId);
+    await cancelBroadcast(b.id);
+    const { api, sent } = fakeWa();
+    await runBroadcasts({ api });
+    expect(sent).toHaveLength(0);
+    expect((await broadcastStats([b.id])).get(b.id)?.skipped).toBe(1);
+  });
+
+  it("toma los destinatarios del funnel por etapa y salta a quien se bloqueó después", async () => {
+    const a = await createLead({ name: "Ana Pérez", channel: "WHATSAPP", externalId: "56911110001" });
+    const c = await createLead({ name: "Carlos", channel: "WHATSAPP", externalId: "56911110002" });
+    await createLead({ name: "Otra etapa", channel: "WHATSAPP", externalId: "56911110003" }, { stageId: stages[2].id });
+    const preview = await previewBroadcast(
+      input({ kind: "funnel", funnelId: stages[0].funnelId, stageId: stages[0].id, status: "OPEN" }, { variables: [{ source: "name" }, { source: "text", text: "una oferta" }] }),
+    );
+    expect(preview.count).toBe(2);
+    const b = await createBroadcast(
+      input({ kind: "funnel", funnelId: stages[0].funnelId, stageId: stages[0].id }, { variables: [{ source: "name" }, { source: "text", text: "una oferta" }] }),
+      userId,
+    );
+    await db.contact.update({ where: { id: c.contactId }, data: { blockedAt: new Date() } });
+    const { api, sent } = fakeWa();
+    await runBroadcasts({ api });
+    expect(sent).toEqual([{ to: "56911110001", params: ["Ana", "una oferta"], from: undefined }]);
+    expect((await broadcastStats([b.id])).get(b.id)).toMatchObject({ sent: 1, skipped: 1 });
+    expect(a.id).toBeTruthy();
+  });
+});
+
+describe("plantillas aprobadas", () => {
+  it("cuenta las variables y marca las que todavía no se pueden enviar", () => {
+    const body = { type: "BODY", text: "Hola {{1}}, mira {{2}}" };
+    expect(toApprovedTemplate({ name: "a", language: "es", status: "APPROVED", components: [body, { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY" }] }] })).toMatchObject({
+      params: 2,
+      unsupported: null,
+    });
+    expect(toApprovedTemplate({ name: "b", language: "es", status: "APPROVED", components: [{ type: "HEADER", format: "IMAGE" }, body] }).unsupported).toMatch(/imagen/);
+    expect(toApprovedTemplate({ name: "c", language: "es", status: "APPROVED", parameter_format: "NAMED", components: [{ type: "BODY", text: "Hola {{nombre}}" }] }).unsupported).toMatch(/nombre/);
+    expect(toApprovedTemplate({ name: "d", language: "es", status: "APPROVED", components: [body, { type: "BUTTONS", buttons: [{ type: "URL", url: "https://x.cl/{{1}}" }] }] }).unsupported).toMatch(/botón/);
+  });
+});
+
+describe("envíos masivos sin WhatsApp conectado", () => {
+  it("se pausa antes de crear leads", async () => {
+    const b = await createBroadcast(
+      {
+        name: "Prueba",
+        template: TEMPLATE,
+        variables: [{ source: "text", text: "Ana" }, { source: "text", text: "algo" }],
+        audience: { kind: "rows", rows: [{ phone: "+56911110001" }] },
+        stageId: stages[0].id,
+        dailyLimit: 10,
+      },
+      userId,
+    );
+    expect(await runBroadcasts()).toMatchObject({ sent: 0, reason: expect.stringMatching(/token/) });
+    expect(await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "PAUSED" });
+    expect(await db.lead.count()).toBe(0);
+  });
+});
