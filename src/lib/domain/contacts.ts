@@ -1,4 +1,5 @@
 import type { Channel } from "@prisma/client";
+import { normalize } from "../text";
 import { db } from "../db";
 import { currentCompanyId } from "../tenant";
 import type { ActorRef } from "./leads";
@@ -51,4 +52,57 @@ export async function isBlocked(channel: Channel, externalId: string) {
     select: { blockedAt: true },
   });
   return Boolean(contact?.blockedAt);
+}
+
+/**
+ * Frases con las que alguien pide no recibir más envíos masivos. Tiene que ser el mensaje entero
+ * (sin saludo ni "gracias"): "no me interesa ese lote, ¿tienen otro?" no es una baja.
+ */
+const OPT_OUT_PHRASES = new Set([
+  "baja",
+  "dar de baja",
+  "darme de baja",
+  "de baja",
+  "stop",
+  "parar",
+  "unsubscribe",
+  "desuscribir",
+  "desuscribirme",
+  "cancelar suscripcion",
+  "no me interesa",
+  "no me interesan",
+  "ya no me interesa",
+  "no estoy interesado",
+  "no estoy interesada",
+  "no quiero recibir mas mensajes",
+  "no quiero recibir mensajes",
+  "no quiero mas mensajes",
+  "no me envien mas mensajes",
+  "no me manden mas mensajes",
+  "no me escriban mas",
+  "no me escriban",
+]);
+
+const COURTESY = /^(hola|buenas|buenos dias|buenas tardes|buenas noches)\s+|\s+(gracias|muchas gracias|por favor|porfa|saludos)$|^(gracias|muchas gracias|por favor)\s+/;
+
+export function isOptOutMessage(text: string): boolean {
+  let t = normalize(text);
+  for (let i = 0; i < 3; i++) t = t.replace(COURTESY, "").trim();
+  return OPT_OUT_PHRASES.has(t);
+}
+
+/** Si el mensaje del cliente pide la baja, su contacto queda fuera de los envíos masivos. */
+export async function optOutIfAsked(leadId: string, text: string): Promise<boolean> {
+  if (!isOptOutMessage(text)) return false;
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const { count } = await db.contact.updateMany({ where: { id: lead.contactId, optedOutAt: null }, data: { optedOutAt: new Date() } });
+  if (count) await db.leadEvent.create({ data: { leadId, type: "OPTED_OUT", actor: "SYSTEM", reason: text.trim().slice(0, 200) } });
+  return count > 0;
+}
+
+/** Vuelve a incluir al contacto en los envíos masivos (ej. pidió la baja por error). */
+export async function optBackIn(leadId: string, by: ActorRef) {
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const { count } = await db.contact.updateMany({ where: { id: lead.contactId, optedOutAt: { not: null } }, data: { optedOutAt: null } });
+  if (count) await db.leadEvent.create({ data: { leadId, type: "OPTED_IN", actor: by.actor, userId: by.userId ?? null } });
 }

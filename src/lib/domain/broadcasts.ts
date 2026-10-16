@@ -3,6 +3,7 @@ import { db, isDuplicate } from "../db";
 import { currentCompanyId } from "../tenant";
 import { credential } from "../credentials";
 import { ChannelSendError, cloudApi, type WhatsAppApi } from "../channels/whatsapp";
+import { parseLocalDateTime } from "../dates";
 import { getChannelSettings } from "./channels";
 import { normalizePhone } from "./contact-import";
 import { whatsappPhoneIds } from "./whatsapp-numbers";
@@ -50,6 +51,8 @@ export type Exclusions = {
   invalid: number;
   duplicate: number;
   blocked: number;
+  /** Pidieron no recibir más envíos (respondieron "BAJA", "no me interesa"…). */
+  optedOut: number;
   /** Escribieron en las últimas 24 horas: ya están conversando con el equipo o la IA. */
   active: number;
   /** Les falta un dato que la plantilla necesita y no hay texto de reemplazo. */
@@ -119,7 +122,7 @@ async function audienceRows(audience: Audience): Promise<{ rows: { phone: string
  */
 export async function auditAudience(audience: Audience, variables: VariableMapping[], now = new Date()): Promise<Audit> {
   const { rows } = await audienceRows(audience);
-  const excluded: Exclusions = { invalid: 0, duplicate: 0, blocked: 0, active: 0, missing: 0 };
+  const excluded: Exclusions = { invalid: 0, duplicate: 0, blocked: 0, optedOut: 0, active: 0, missing: 0 };
   const seen = new Set<string>();
   const valid: { phone: string; name: string; values?: Record<string, string> }[] = [];
   for (const r of rows) {
@@ -132,7 +135,7 @@ export async function auditAudience(audience: Audience, variables: VariableMappi
   }
   const contacts = await db.contact.findMany({
     where: { channel: "WHATSAPP", externalId: { in: valid.map((r) => r.phone) } },
-    select: { id: true, externalId: true, name: true, blockedAt: true },
+    select: { id: true, externalId: true, name: true, blockedAt: true, optedOutAt: true },
   });
   const byPhone = new Map(contacts.map((c) => [c.externalId!, c]));
   const recentlyActive = new Set(
@@ -150,6 +153,10 @@ export async function auditAudience(audience: Audience, variables: VariableMappi
     const contact = byPhone.get(r.phone);
     if (contact?.blockedAt) {
       excluded.blocked++;
+      continue;
+    }
+    if (contact?.optedOutAt) {
+      excluded.optedOut++;
       continue;
     }
     if (contact && recentlyActive.has(contact.id)) {
@@ -178,7 +185,21 @@ export type BroadcastInput = {
   stageId: string;
   tagId?: string | null;
   dailyLimit: number;
+  /** Fecha y hora de Chile ("AAAA-MM-DDTHH:MM") en que parte; vacío parte al confirmar. */
+  scheduledAt?: string | null;
 };
+
+const MAX_SCHEDULE_MS = 60 * DAY_MS;
+
+/** Cuándo parte el envío programado; null si parte ahora. */
+function scheduleOf(input: BroadcastInput, now = new Date()): Date | null {
+  if (!input.scheduledAt?.trim()) return null;
+  const at = parseLocalDateTime(input.scheduledAt);
+  if (!at) throw new DomainError("Revisa la fecha y hora del envío.");
+  if (at.getTime() < now.getTime() + 60_000) throw new DomainError("La fecha y hora del envío ya pasó: elige una más adelante.");
+  if (at.getTime() > now.getTime() + MAX_SCHEDULE_MS) throw new DomainError("Se puede programar hasta 60 días hacia adelante.");
+  return at;
+}
 
 async function validate(input: BroadcastInput) {
   if (!input.name.trim()) throw new DomainError("Ponle un nombre al envío.");
@@ -192,6 +213,7 @@ async function validate(input: BroadcastInput) {
   if (input.fromPhoneNumberId && !(await whatsappPhoneIds()).includes(input.fromPhoneNumberId)) {
     throw new DomainError("Ese número de WhatsApp no está conectado.");
   }
+  return { scheduledAt: scheduleOf(input) };
 }
 
 /** Revisión del paso 3: sin guardar nada. */
@@ -207,9 +229,9 @@ export async function previewBroadcast(input: BroadcastInput) {
   };
 }
 
-/** Crea el envío con sus destinatarios; queda enviándose (ver runBroadcasts). */
+/** Crea el envío con sus destinatarios; queda enviándose o, si tiene fecha, programado (ver runBroadcasts). */
 export async function createBroadcast(input: BroadcastInput, userId: string): Promise<Broadcast> {
-  await validate(input);
+  const { scheduledAt } = await validate(input);
   const { recipients } = await auditAudience(input.audience, input.variables);
   if (!recipients.length) throw new DomainError("No queda nadie a quien enviarle: revisa los números y las exclusiones.");
   if (recipients.length > MAX_RECIPIENTS) {
@@ -228,6 +250,7 @@ export async function createBroadcast(input: BroadcastInput, userId: string): Pr
           tagId: input.tagId || null,
           dailyLimit: input.dailyLimit,
           createdById: userId,
+          ...(scheduledAt ? { status: "SCHEDULED" as const, scheduledAt } : {}),
         },
       });
       for (let i = 0; i < recipients.length; i += 1000) {
@@ -251,11 +274,16 @@ export async function resumeBroadcast(id: string) {
   await db.broadcast.updateMany({ where: { id, status: "PAUSED" }, data: { status: "SENDING", note: null } });
 }
 
+/** Un envío programado parte ya, sin esperar su hora. */
+export async function sendBroadcastNow(id: string) {
+  await db.broadcast.updateMany({ where: { id, status: "SCHEDULED" }, data: { status: "SENDING", scheduledAt: new Date() } });
+}
+
 /** Cancela lo que falta por enviar; lo ya enviado queda. */
 export async function cancelBroadcast(id: string) {
   await db.$transaction(async (tx) => {
     const { count } = await tx.broadcast.updateMany({
-      where: { id, status: { in: ["SENDING", "PAUSED"] } },
+      where: { id, status: { in: ["SCHEDULED", "SENDING", "PAUSED"] } },
       data: { status: "CANCELED", finishedAt: new Date() },
     });
     if (count) {
@@ -283,12 +311,14 @@ export async function runBroadcasts(
 ): Promise<BroadcastRun> {
   const result: BroadcastRun = { sent: 0, failed: 0, skipped: 0 };
   await failStuck();
+  // Los programados cuya hora llegó parten en esta corrida.
+  await db.broadcast.updateMany({ where: { status: "SCHEDULED", scheduledAt: { lte: new Date() } }, data: { status: "SENDING" } });
   const active = await db.broadcast.findMany({ where: { status: "SENDING" }, orderBy: { createdAt: "asc" } });
   if (!active.length) return result;
   const { whatsappAi } = await getChannelSettings();
 
   for (const b of active) {
-    const missing = api === cloudApi ? await missingSendCredentials(b) : null;
+    const missing = api === cloudApi ? await missingSendCredentials(b.fromPhoneNumberId) : null;
     if (missing) {
       await db.broadcast.updateMany({ where: { id: b.id, status: "SENDING" }, data: { status: "PAUSED", note: missing } });
       result.reason = missing;
@@ -331,9 +361,9 @@ export async function runBroadcasts(
 }
 
 /** Sin token o sin número no sale nada: se pausa antes de crear leads. */
-async function missingSendCredentials(b: Broadcast): Promise<string | null> {
+async function missingSendCredentials(fromPhoneNumberId: string | null): Promise<string | null> {
   if (!(await credential("WHATSAPP_TOKEN"))) return "Falta el token de WhatsApp en Configuración → Credenciales.";
-  if (!b.fromPhoneNumberId && !(await credential("WHATSAPP_PHONE_NUMBER_ID"))) {
+  if (!fromPhoneNumberId && !(await credential("WHATSAPP_PHONE_NUMBER_ID"))) {
     return "Falta el id del número de WhatsApp en Configuración → Credenciales.";
   }
   return null;
@@ -352,14 +382,25 @@ async function failStuck() {
   });
 }
 
-async function leadFor(b: Broadcast, r: BroadcastRecipient, aiEnabled: boolean): Promise<{ leadId: string } | { blocked: true }> {
+/**
+ * Lead al que va el mensaje, o por qué ya no se le envía: desde que se armó la lista (el envío
+ * pudo estar programado o esperando cupo) pudo bloquearse, pedir la baja o ponerse a conversar.
+ */
+async function leadFor(b: Broadcast, r: BroadcastRecipient, aiEnabled: boolean): Promise<{ leadId: string } | { skip: string }> {
   const find = () =>
     db.contact.findFirst({
       where: { channel: "WHATSAPP", externalId: r.phone },
       include: { leads: { where: { status: "OPEN" }, orderBy: { createdAt: "desc" }, take: 1 } },
     });
   const contact = await find();
-  if (contact?.blockedAt) return { blocked: true };
+  if (contact?.blockedAt) return { skip: "El contacto está bloqueado." };
+  if (contact?.optedOutAt) return { skip: "Pidió no recibir más envíos." };
+  if (contact) {
+    const talking = await db.message.count({
+      where: { author: "CONTACT", lead: { contactId: contact.id }, createdAt: { gte: new Date(Date.now() - DAY_MS) } },
+    });
+    if (talking) return { skip: "Escribió en las últimas 24 horas: ya está conversando." };
+  }
   // Quien ya tiene un lead abierto sigue en su etapa: el envío no lo hace retroceder.
   if (contact?.leads[0]) return { leadId: contact.leads[0].id };
   const options = { aiEnabled, stageId: b.stageId };
@@ -382,8 +423,8 @@ async function sendRecipient(b: Broadcast, r: BroadcastRecipient, api: WhatsAppA
   let messageId: string | null = null;
   try {
     const lead = await leadFor(b, r, aiEnabled);
-    if ("blocked" in lead) {
-      await db.broadcastRecipient.update({ where: { id: r.id }, data: { status: "SKIPPED", error: "El contacto está bloqueado." } });
+    if ("skip" in lead) {
+      await db.broadcastRecipient.update({ where: { id: r.id }, data: { status: "SKIPPED", error: lead.skip } });
       return "skipped";
     }
     const by = { actor: "USER" as const, userId: b.createdById };
@@ -526,4 +567,31 @@ export async function broadcastRecipients(broadcastId: string, filter: Recipient
   });
   const byId = new Map(leads.map((l) => [l.id, l]));
   return rows.map((r) => ({ ...r, stageName: byId.get(r.leadId ?? "")?.stage.name ?? null, leadStatus: byId.get(r.leadId ?? "")?.status ?? null }));
+}
+
+// --- Prueba y plantillas nuevas -----------------------------------------------------------
+
+/**
+ * Envía la plantilla, con los datos de la primera persona de la lista, a un número del equipo
+ * para ver cómo llega. No crea contacto, lead ni mensaje en el chat.
+ */
+export async function sendBroadcastTest(input: BroadcastInput, to: string, { api = cloudApi }: { api?: WhatsAppApi } = {}) {
+  await validate(input);
+  const phone = normalizePhone(to, input.audience.kind === "rows" ? (input.audience.countryCode ?? "") : "");
+  if (!phone) throw new DomainError("Escribe tu número de WhatsApp con código de país, ej. +56 9 1234 5678.");
+  const { recipients } = await auditAudience(input.audience, input.variables);
+  const params = recipients[0]?.params ?? resolveParams(input.variables, { name: "María" });
+  if (!params) throw new DomainError("Para la prueba hace falta al menos una persona en la lista con todos los datos.");
+  if (api === cloudApi) {
+    const missing = await missingSendCredentials(input.fromPhoneNumberId || null);
+    if (missing) throw new DomainError(missing);
+  }
+  if (!api.sendTemplate) throw new DomainError("WhatsApp no permite enviar plantillas con esta conexión.");
+  try {
+    await api.sendTemplate(phone, { name: input.template.name, language: input.template.language, params }, input.fromPhoneNumberId || undefined);
+  } catch (err) {
+    if (err instanceof ChannelSendError) throw new DomainError(err.message);
+    throw err;
+  }
+  return { phone: `+${phone}`, body: renderBody(input.template.body, params) };
 }

@@ -341,11 +341,17 @@ async function wabaId(): Promise<string> {
 export type TemplateStatus = { status: string; reason?: string };
 
 /**
- * Crea una plantilla de marketing con solo cuerpo y la manda a revisión de Meta. {{1}} necesita un
- * ejemplo para la revisión; va un nombre cualquiera.
+ * Crea una plantilla con solo cuerpo y la manda a revisión de Meta. Cada variable necesita un
+ * ejemplo para la revisión; sin `examples`, {{1}} lleva un nombre cualquiera.
  */
-export async function submitTemplate(t: { name: string; language: string; text: string }): Promise<TemplateStatus> {
-  const usesName = /\{\{\s*1\s*\}\}/.test(t.text);
+export async function submitTemplate(t: {
+  name: string;
+  language: string;
+  text: string;
+  category?: "MARKETING" | "UTILITY";
+  examples?: string[];
+}): Promise<TemplateStatus> {
+  const examples = t.examples ?? (/\{\{\s*1\s*\}\}/.test(t.text) ? ["María"] : []);
   const res = await graph<{ status?: string }>(
     `${await wabaId()}/message_templates`,
     {
@@ -353,8 +359,8 @@ export async function submitTemplate(t: { name: string; language: string; text: 
       body: JSON.stringify({
         name: t.name,
         language: t.language,
-        category: "MARKETING",
-        components: [{ type: "BODY", text: t.text, ...(usesName ? { example: { body_text: [["María"]] } } : {}) }],
+        category: t.category ?? "MARKETING",
+        components: [{ type: "BODY", text: t.text, ...(examples.length ? { example: { body_text: [examples] } } : {}) }],
       }),
     },
     "la plantilla",
@@ -374,10 +380,12 @@ export async function templateStatus(name: string, language: string): Promise<Te
   return { status: t.status, reason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : undefined };
 }
 
-/** Plantilla aprobada en Meta, como la usa Envíos masivos. */
+/** Plantilla de Meta, como la usa Envíos masivos. */
 export type ApprovedTemplate = {
   name: string;
   language: string;
+  /** APPROVED, PENDING (en revisión), REJECTED… Solo las aprobadas se pueden enviar. */
+  status: string;
   category: string;
   /** Cuerpo con {{1}}, {{2}}…; el mensaje se guarda en el chat con este texto. */
   body: string;
@@ -418,6 +426,7 @@ export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
   return {
     name: t.name,
     language: t.language,
+    status: t.status,
     category: t.category ?? "",
     body,
     params: vars.length ? Math.max(...vars.map(Number).filter(Number.isFinite)) : 0,
@@ -425,17 +434,22 @@ export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
   };
 }
 
-/** Plantillas aprobadas de la cuenta de WhatsApp Business, por nombre. */
-export async function approvedTemplates(): Promise<ApprovedTemplate[]> {
+/** Plantillas aprobadas, en revisión o rechazadas de la cuenta de WhatsApp Business, por nombre. */
+export async function messageTemplates(): Promise<ApprovedTemplate[]> {
   const res = await graph<{ data?: MetaTemplate[] }>(
-    `${await wabaId()}/message_templates?status=APPROVED&limit=200&fields=name,language,status,category,parameter_format,components`,
+    `${await wabaId()}/message_templates?limit=200&fields=name,language,status,category,parameter_format,components`,
     {},
     "la consulta de las plantillas",
   );
   return (res.data ?? [])
-    .filter((t) => t.status === "APPROVED")
+    .filter((t) => ["APPROVED", "PENDING", "IN_APPEAL", "REJECTED"].includes(t.status))
     .map(toApprovedTemplate)
     .sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language));
+}
+
+/** Solo las aprobadas: las que se pueden enviar. */
+export async function approvedTemplates(): Promise<ApprovedTemplate[]> {
+  return (await messageTemplates()).filter((t) => t.status === "APPROVED");
 }
 
 /** Personas nuevas por día que Meta deja contactar a ese número (TIER_1K → 1000); null si no se sabe. */

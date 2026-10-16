@@ -213,6 +213,9 @@ model Contact {
   /// Número de WhatsApp (phone_number_id) al que escribió por última vez; las respuestas salen
   /// por ese número. Vacío usa WHATSAPP_PHONE_NUMBER_ID.
   waPhoneNumberId String?
+  /// Pidió no recibir más envíos masivos (respondió "BAJA", "no me interesa"…). Se le sigue
+  /// respondiendo si escribe; solo queda fuera de los envíos (ver src/lib/domain/broadcasts.ts).
+  optedOutAt      DateTime?
 
   tags   ContactTag[]
   leads  Lead[]
@@ -924,6 +927,8 @@ model CampaignAlert {
 }
 
 enum BroadcastStatus {
+  /// Espera su fecha y hora (scheduledAt); el cron lo pasa a SENDING.
+  SCHEDULED
   SENDING
   PAUSED
   DONE
@@ -962,6 +967,8 @@ model Broadcast {
   dailyLimit        Int
   createdById       String?
   createdAt         DateTime        @default(now())
+  /// Cuándo parte un envío programado; null si partió al crearlo.
+  scheduledAt       DateTime?
   finishedAt        DateTime?
 
   recipients BroadcastRecipient[]

@@ -3,6 +3,7 @@ import type { BroadcastStats } from "@/lib/domain/broadcasts";
 import { Badge } from "@/components/ui";
 
 const STATUS: Record<BroadcastStatus, { label: string; tone: "brand" | "success" | "warning" | "neutral" }> = {
+  SCHEDULED: { label: "Programado", tone: "neutral" },
   SENDING: { label: "Enviando", tone: "brand" },
   PAUSED: { label: "Pausado", tone: "warning" },
   DONE: { label: "Enviado", tone: "success" },

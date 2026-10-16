@@ -29,7 +29,7 @@ import {
 import type { AdsApi } from "../channels/ads";
 import { attachAdSource, attachLinkSource, takeRefCode } from "./attribution";
 import { applyTemplateReply } from "./assignment";
-import { isBlocked } from "./contacts";
+import { isBlocked, optOutIfAsked } from "./contacts";
 import { fileKind, type FileKind } from "../media";
 import { createLead } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
@@ -283,6 +283,8 @@ async function receiveWhatsAppMessage(
   // El código de una landing (/wa) une sus UTM al lead y no se guarda en el mensaje.
   const text = m.type === "text" ? await takeRefCode(leadId, body) : body;
   if (!(await receiveText(leadId, m.id, text))) return null;
+  // "BAJA", "no me interesa" (escrito o con el botón de la plantilla): no más envíos masivos.
+  await optOutIfAsked(leadId, text);
   // Tocó un botón de una plantilla: las reglas de asignación pueden pasarlo a un ejecutivo.
   if (m.type === "button" && m.button?.text) await applyTemplateReply(leadId, m.button.text);
   return leadId;

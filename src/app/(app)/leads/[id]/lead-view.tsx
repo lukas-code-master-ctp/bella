@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Ban, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
+import { ArrowLeft, Ban, BellOff, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
@@ -22,6 +22,7 @@ import {
   addTagAction,
   moveStageAction,
   cancelFollowUpAction,
+  optBackInAction,
   removeTagAction,
   setAssigneeAction,
   toggleAiAction,
@@ -51,6 +52,8 @@ const EVENT_LABEL: Record<string, string> = {
   REOPENED: "Reabierto",
   BLOCKED: "Contacto bloqueado",
   UNBLOCKED: "Contacto desbloqueado",
+  OPTED_OUT: "Pidió no recibir más envíos masivos:",
+  OPTED_IN: "Vuelve a recibir envíos masivos",
   CONTACT_MERGED: "Contactos fusionados:",
   FOLLOW_UP_SENT: "Seguimiento enviado",
   FOLLOW_UP_SKIPPED: "Seguimiento omitido",
@@ -275,6 +278,17 @@ export async function LeadView({
                         </p>
                       )}
                       <p className="text-xs text-slate-600">Para reabrir o desbloquear, usa el menú ⋯ de arriba.</p>
+                    </section>
+                  )}
+                  {lead.contact.optedOutAt && (
+                    <section className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4 text-sm text-slate-800">
+                      <BellOff aria-hidden className="size-4 shrink-0 text-amber-600" />
+                      <span>Pidió no recibir envíos masivos el {formatChileDateTime(lead.contact.optedOutAt)}.</span>
+                      <form action={optBackInAction.bind(null, lead.id)}>
+                        <button type="submit" className="font-medium text-brand-700 underline hover:text-brand-800">
+                          Volver a incluir
+                        </button>
+                      </form>
                     </section>
                   )}
                   <section className="p-4">

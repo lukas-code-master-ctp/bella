@@ -12,8 +12,13 @@ import {
   previewBroadcast,
   resumeBroadcast,
   runBroadcasts,
+  sendBroadcastNow,
+  sendBroadcastTest,
   type BroadcastInput,
 } from "@/lib/domain/broadcasts";
+import { templateDraftError } from "@/lib/domain/broadcast-templates";
+import { isOptOutMessage, optBackIn } from "@/lib/domain/contacts";
+import { toLocalInput } from "@/lib/dates";
 import { executive, seedFunnel } from "./factories";
 
 const TEMPLATE = { name: "preventa", language: "es", body: "Hola {{1}}, tenemos {{2}} para ti.", params: 2 };
@@ -76,7 +81,7 @@ describe("envíos masivos", () => {
       }),
     );
     expect(preview.total).toBe(6);
-    expect(preview.excluded).toEqual({ invalid: 1, duplicate: 1, blocked: 1, active: 1, missing: 0 });
+    expect(preview.excluded).toEqual({ invalid: 1, duplicate: 1, blocked: 1, optedOut: 0, active: 1, missing: 0 });
     expect(preview.count).toBe(2);
     expect(preview.sample?.body).toBe("Hola Camila, tenemos Los Robles para ti.");
   });
@@ -236,5 +241,103 @@ describe("envíos masivos sin WhatsApp conectado", () => {
     expect(await runBroadcasts()).toMatchObject({ sent: 0, reason: expect.stringMatching(/token/) });
     expect(await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "PAUSED" });
     expect(await db.lead.count()).toBe(0);
+  });
+});
+
+describe("envíos masivos: programar, baja y prueba", () => {
+  const wa = (from: string, body: string, id: string): WaWebhook => ({
+    object: "whatsapp_business_account",
+    entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PHONE" }, messages: [{ from, id, type: "text", text: { body } }] } }] }],
+  });
+
+  it("reconoce cuando alguien pide la baja, pero no cualquier \"no me interesa\"", () => {
+    for (const t of ["BAJA", "baja.", "No me interesa, gracias", "Hola, no me interesa", "STOP", "no quiero recibir más mensajes", "Darme de baja por favor"]) {
+      expect(isOptOutMessage(t), t).toBe(true);
+    }
+    for (const t of ["No me interesa ese lote, ¿tienen otro?", "bajaron el precio?", "me interesa", "stop motion"]) {
+      expect(isOptOutMessage(t), t).toBe(false);
+    }
+  });
+
+  it("quien responde BAJA queda fuera de los envíos siguientes, y se le puede volver a incluir", async () => {
+    await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: "PHONE" });
+    await receiveWhatsApp(wa("56911110001", "BAJA", "wamid.baja"));
+    const lead = await db.lead.findFirstOrThrow({ where: { contact: { externalId: "56911110001" } }, include: { contact: true, events: true } });
+    expect(lead.contact.optedOutAt).not.toBeNull();
+    expect(lead.events.map((e) => e.type)).toContain("OPTED_OUT");
+
+    // Escribió hoy, así que también cuenta como "conversando"; pasado un día, solo la baja lo deja fuera.
+    await db.message.updateMany({ data: { createdAt: new Date(Date.now() - 2 * 86_400_000) } });
+    const rows = { kind: "rows" as const, rows: [{ phone: "+56911110001", name: "Ana" }, { phone: "+56911110002", name: "Luis" }] };
+    const vars = { variables: [{ source: "name" as const }, { source: "text" as const, text: "algo" }] };
+    expect((await previewBroadcast(input(rows, vars))).excluded).toMatchObject({ optedOut: 1, active: 0 });
+
+    await optBackIn(lead.id, { actor: "USER", userId });
+    expect((await previewBroadcast(input(rows, vars))).excluded.optedOut).toBe(0);
+  });
+
+  it("si pide la baja después de armar la lista, no se le envía", async () => {
+    const b = await createBroadcast(
+      input({ kind: "rows", rows: [{ phone: "+56911110001", name: "Ana" }, { phone: "+56911110002", name: "Luis" }] }, { variables: [{ source: "name" }, { source: "text", text: "algo" }] }),
+      userId,
+    );
+    const ana = await createLead({ name: "Ana", channel: "WHATSAPP", externalId: "56911110001" });
+    await db.contact.update({ where: { id: ana.contactId }, data: { optedOutAt: new Date() } });
+    const { api, sent } = fakeWa();
+    await runBroadcasts({ api });
+    expect(sent.map((s) => s.to)).toEqual(["56911110002"]);
+    expect((await broadcastRecipients(b.id, "fallaron"))[0].error).toMatch(/baja|no recibir/);
+  });
+
+  it("un envío programado espera su hora, o sale al tocar enviar ahora", async () => {
+    const rows = { kind: "rows" as const, rows: [{ phone: "+56911110001", name: "Ana" }] };
+    const vars = { variables: [{ source: "name" as const }, { source: "text" as const, text: "algo" }] };
+    await expect(createBroadcast(input(rows, { ...vars, scheduledAt: toLocalInput(new Date(Date.now() - 3600_000)) }), userId)).rejects.toThrow(/ya pasó/);
+
+    const b = await createBroadcast(input(rows, { ...vars, scheduledAt: toLocalInput(new Date(Date.now() + 3 * 3600_000)) }), userId);
+    expect(b.status).toBe("SCHEDULED");
+    expect(Math.abs(b.scheduledAt!.getTime() - (Date.now() + 3 * 3600_000))).toBeLessThan(61_000);
+    const { api, sent } = fakeWa();
+    await runBroadcasts({ api });
+    expect(sent).toHaveLength(0);
+
+    // Llegó la hora.
+    await db.broadcast.update({ where: { id: b.id }, data: { scheduledAt: new Date(Date.now() - 1000) } });
+    await runBroadcasts({ api });
+    expect(sent).toHaveLength(1);
+    expect((await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).status).toBe("DONE");
+
+    const later = await createBroadcast(
+      input({ kind: "rows", rows: [{ phone: "+56911110002", name: "Luis" }] }, { ...vars, scheduledAt: toLocalInput(new Date(Date.now() + 86_400_000)) }),
+      userId,
+    );
+    await sendBroadcastNow(later.id);
+    await runBroadcasts({ api });
+    expect(sent.map((s) => s.to)).toEqual(["56911110001", "56911110002"]);
+    await cancelBroadcast(later.id);
+    expect((await db.broadcast.findUniqueOrThrow({ where: { id: later.id } })).status).toBe("DONE");
+  });
+
+  it("la prueba llega al número del equipo con los datos de la primera persona, sin crear leads", async () => {
+    const { api, sent } = fakeWa();
+    const res = await sendBroadcastTest(
+      input({ kind: "rows", countryCode: "56", rows: [{ phone: "911112222", name: "Camila Rojas", values: { proyecto: "Los Robles" } }] }),
+      "+56 9 8765 4321",
+      { api },
+    );
+    expect(res).toEqual({ phone: "+56987654321", body: "Hola Camila, tenemos Los Robles para ti." });
+    expect(sent).toEqual([{ to: "56987654321", params: ["Camila", "Los Robles"], from: undefined }]);
+    expect(await db.lead.count()).toBe(0);
+    await expect(sendBroadcastTest(input({ kind: "rows", rows: [] }), "123", { api })).rejects.toThrow(/código de país/);
+  });
+
+  it("revisa las plantillas nuevas antes de mandarlas a Meta", () => {
+    const ok = { name: "preventa_octubre", language: "es", category: "MARKETING" as const, text: "Hola {{1}}, mira {{2}} hoy.", examples: ["María", "Los Robles"] };
+    expect(templateDraftError(ok)).toBeNull();
+    expect(templateDraftError({ ...ok, name: "Preventa Octubre" })).toMatch(/minúsculas/);
+    expect(templateDraftError({ ...ok, text: "Hola {{1}}, mira {{3}} hoy." })).toMatch(/Falta \{\{2\}\}/);
+    expect(templateDraftError({ ...ok, text: "{{1}}, hola" })).toMatch(/empiece o termine/);
+    expect(templateDraftError({ ...ok, examples: ["María", " "] })).toMatch(/ejemplo/);
+    expect(templateDraftError({ ...ok, text: "Hola {{nombre}}." })).toMatch(/números/);
   });
 });

@@ -56,7 +56,7 @@ export default async function BroadcastsPage() {
                           {b.name}
                         </Link>
                         <p className="text-xs text-slate-600">
-                          {b.templateName} · {dateTime(b.createdAt)}
+                          {b.templateName} · {b.status === "SCHEDULED" && b.scheduledAt ? `programado para el ${dateTime(b.scheduledAt)}` : dateTime(b.createdAt)}
                         </p>
                       </td>
                       <td className="px-4 py-3">
