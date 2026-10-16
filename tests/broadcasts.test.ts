@@ -9,10 +9,12 @@ import {
   broadcastRecipients,
   broadcastStats,
   cancelBroadcast,
+  countRetriable,
   createBroadcast,
   pauseBroadcast,
   previewBroadcast,
   resumeBroadcast,
+  retryFailed,
   runBroadcasts,
   sendBroadcastNow,
   sendBroadcastTest,
@@ -443,5 +445,30 @@ describe("envíos masivos: Meta rechaza después de aceptar", () => {
     });
     expect((await db.message.findUniqueOrThrow({ where: { id: first.id } })).deliveryError).toMatch(/medio de pago/);
     expect(await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "PAUSED", note: expect.stringMatching(/Facturación/) });
+  });
+
+  it("reintentar vuelve a enviar a quienes fallaron, sin duplicar el mensaje en el chat", async () => {
+    await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: "PHONE" });
+    const rows = [
+      { phone: "+56911110001", name: "Ana" },
+      { phone: "+56911110002", name: "Bea" },
+    ];
+    const b = await createBroadcast(input({ kind: "rows", rows }, { variables: [{ source: "name" }, { source: "text", text: "algo" }] }), userId);
+    await runBroadcasts({ api: fakeWa({ "56911110002": new ChannelSendError("Número no válido.", 131026) }).api });
+    const ana = await db.message.findFirstOrThrow({ where: { externalId: { not: null } } });
+    await receiveWhatsApp({
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PHONE" }, statuses: [{ id: ana.externalId!, status: "failed", errors: [{ code: 131042, title: "payment" }] }] } }] }],
+    });
+    expect(await countRetriable(b.id)).toBe(2);
+
+    expect(await retryFailed(b.id)).toBe(2);
+    expect(await db.message.findUnique({ where: { id: ana.id } })).toBeNull();
+    const wa = fakeWa();
+    await runBroadcasts({ api: wa.api });
+    expect(wa.sent.map((x) => x.to).sort()).toEqual(["56911110001", "56911110002"]);
+    expect(await countRetriable(b.id)).toBe(0);
+    expect(await db.broadcast.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ status: "DONE", note: null });
+    expect(await db.message.count({ where: { lead: { contact: { externalId: "56911110001" } } } })).toBe(1);
   });
 });

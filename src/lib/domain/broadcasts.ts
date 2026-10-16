@@ -397,6 +397,40 @@ export async function cancelBroadcast(id: string) {
   });
 }
 
+/**
+ * Fallaron y se pueden reintentar: WhatsApp lo rechazó al enviarlo o después (ej. faltaba el medio
+ * de pago). Quien quedó a medias por un corte no: puede que el mensaje sí le haya llegado.
+ */
+const retriable = (broadcastId: string): Prisma.BroadcastRecipientWhereInput => ({
+  broadcastId,
+  OR: [
+    { status: "FAILED", OR: [{ messageId: null }, { message: { deliveryStatus: "FAILED" } }] },
+    { status: "SENT", message: { deliveryStatus: "FAILED" } },
+  ],
+});
+
+export function countRetriable(broadcastId: string) {
+  return db.broadcastRecipient.count({ where: retriable(broadcastId) });
+}
+
+/** Vuelve a la fila a quienes fallaron y el envío sigue; el mensaje fallido sale del chat. */
+export async function retryFailed(id: string): Promise<number> {
+  return db.$transaction(async (tx) => {
+    const b = await tx.broadcast.findUnique({ where: { id }, select: { status: true } });
+    if (!b || b.status === "CANCELED" || b.status === "SCHEDULED") return 0;
+    const failed = await tx.broadcastRecipient.findMany({ where: retriable(id), select: { id: true, messageId: true } });
+    if (!failed.length) return 0;
+    const messageIds = failed.flatMap((r) => (r.messageId ? [r.messageId] : []));
+    await tx.broadcastRecipient.updateMany({
+      where: { id: { in: failed.map((r) => r.id) } },
+      data: { status: "PENDING", error: null, messageId: null, sentAt: null },
+    });
+    if (messageIds.length) await tx.message.deleteMany({ where: { id: { in: messageIds } } });
+    await tx.broadcast.update({ where: { id }, data: { status: "SENDING", note: null, finishedAt: null } });
+    return failed.length;
+  });
+}
+
 // --- Enviar ---------------------------------------------------------------------------------
 
 export type BroadcastRun = { sent: number; failed: number; skipped: number; reason?: string };

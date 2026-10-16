@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleX, Pause, Play, Repeat, Send, Split, Trophy } from "lucide-react";
+import { ArrowLeft, CircleX, Pause, Play, Repeat, RotateCcw, Send, Split, Trophy } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { credential } from "@/lib/credentials";
 import {
   broadcastRecipients,
   broadcastStats,
+  countRetriable,
   EMPTY_STATS,
   RECIPIENT_FILTERS,
   type RecipientFilter,
@@ -16,7 +17,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { Badge, buttonClass, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Callout, Stat } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
-import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, sendBroadcastNowAction } from "../actions";
+import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, retryFailedAction, sendBroadcastNowAction } from "../actions";
 import { BroadcastStatusBadge, dateTime, pct } from "../ui";
 
 const STATE: Record<RecipientState, { label: string; tone: "brand" | "success" | "warning" | "danger" | "neutral" }> = {
@@ -48,13 +49,14 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
 
   const group = b.abGroup ? await db.broadcast.findMany({ where: { abGroup: b.abGroup }, orderBy: { name: "asc" } }) : [];
   const resentFrom = b.resentFromId ? await db.broadcast.findUnique({ where: { id: b.resentFromId }, select: { id: true, name: true } }) : null;
-  const [statsMap, recipients, stage, creator, number, mainNumber] = await Promise.all([
+  const [statsMap, recipients, stage, creator, number, mainNumber, retriable] = await Promise.all([
     broadcastStats(group.length ? group.map((g) => g.id) : [b.id]),
     broadcastRecipients(b.id, filter),
     db.stage.findUnique({ where: { id: b.stageId }, include: { funnel: true } }),
     b.createdById ? db.user.findUnique({ where: { id: b.createdById }, select: { name: true } }) : null,
     b.fromPhoneNumberId ? db.whatsAppNumber.findUnique({ where: { phoneNumberId: b.fromPhoneNumberId } }) : null,
     credential("WHATSAPP_PHONE_NUMBER_ID"),
+    countRetriable(b.id),
   ]);
   const s = statsMap.get(b.id) ?? EMPTY_STATS;
   const unread = s.sent - s.read;
@@ -119,6 +121,14 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
               <SubmitButton variant="secondary" pendingText="Enviando…" confirm="¿Enviarlo ahora, sin esperar la hora programada?">
                 <Send aria-hidden />
                 Enviar ahora
+              </SubmitButton>
+            </form>
+          )}
+          {b.status !== "CANCELED" && b.status !== "SCHEDULED" && retriable > 0 && (
+            <form action={retryFailedAction.bind(null, b.id)}>
+              <SubmitButton variant="secondary" pendingText="Reintentando…" toast="Reintentando los que fallaron">
+                <RotateCcw aria-hidden />
+                Reintentar los que fallaron ({retriable.toLocaleString("es-CL")})
               </SubmitButton>
             </form>
           )}
