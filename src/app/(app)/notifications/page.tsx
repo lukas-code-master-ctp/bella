@@ -90,7 +90,7 @@ export default async function NotificationsPage() {
 
         <div className="space-y-6">
           <PushToggle publicKey={vapidPublicKey()} isAdmin={isAdmin} />
-          <Card className="h-fit p-5">
+          <Card id="correo" className="h-fit scroll-mt-20 p-5">
             <CardHeader
               title="Avisos por correo"
               icon={<Mail />}
