@@ -22,7 +22,7 @@ import {
 import { seedFunnel } from "./factories";
 
 function fakeOpenRouter(replies: string[]) {
-  const requests: { messages: { role: string; content: string }[] }[] = [];
+  const requests: { messages: { role: string; content: string }[]; max_tokens?: number; reasoning?: unknown }[] = [];
   const client: ChatClient = {
     async complete(body) {
       requests.push(structuredClone(body) as (typeof requests)[number]);
@@ -220,6 +220,18 @@ describe("aprendizajes de la asistente", () => {
     await setSetting("assistant", { ...DEFAULT_ASSISTANT, instructions: "Otra cosa" });
     await expect(applyIntegration(draft)).rejects.toThrow("cambiaron");
     expect((await db.aiLesson.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("ACTIVE");
+  });
+
+  it("acepta la propuesta aunque falte el cierre de <instrucciones> y deja margen para razonar", async () => {
+    const { ai } = await chat();
+    const a = await createLesson({ messageId: ai.id, rule: "R", goodExample: "", badExample: "", feedback: "", conflict: "", createdBy: "L" });
+    await setLessonStatus(a.id, "ACTIVE");
+    const { clients, requests } = fakeOpenRouter([`<instrucciones>${DEFAULT_ASSISTANT.instructions} R\n<cambios>\n- Agregué R.\n</cambios>`]);
+    const draft = await draftIntegration(clients);
+    expect(draft.instructions).toBe(`${DEFAULT_ASSISTANT.instructions} R`);
+    expect(draft.changes).toEqual(["Agregué R."]);
+    expect(requests[0]).toMatchObject({ reasoning: { effort: "low" } });
+    expect(requests[0].max_tokens).toBeGreaterThanOrEqual(12_000);
   });
 
   it("rechaza una propuesta incompleta", async () => {

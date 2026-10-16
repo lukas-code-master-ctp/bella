@@ -7,7 +7,20 @@ import { defaultAnthropic, openRouterClient, type ProviderClients } from "./prov
  * Devuelve el texto y el modelo usado.
  */
 export async function completeOnce(
-  { system, input, maxTokens = 3000, clients = {} }: { system: string; input: string; maxTokens?: number; clients?: ProviderClients },
+  {
+    system,
+    input,
+    maxTokens = 3000,
+    effort,
+    clients = {},
+  }: {
+    system: string;
+    input: string;
+    maxTokens?: number;
+    /** Razonamiento en OpenRouter (cuenta dentro de maxTokens); sin valor, el del modelo. */
+    effort?: "low" | "medium" | "high";
+    clients?: ProviderClients;
+  },
 ): Promise<{ text: string; model: string }> {
   const config = await getAiConfig();
   if (config.provider === "anthropic") {
@@ -23,6 +36,7 @@ export async function completeOnce(
   const response = await (clients.openrouter ?? openRouterClient).complete({
     model: config.model,
     max_tokens: maxTokens,
+    ...(effort ? { reasoning: { effort } } : {}),
     messages: [
       { role: "system", content: system },
       { role: "user", content: input },

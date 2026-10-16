@@ -284,10 +284,11 @@ export async function draftIntegration(clients: ProviderClients = {}): Promise<I
     lessonsPrompt(lessons).slice(2).join("\n"),
     "</aprendizajes>",
   ].join("\n");
-  // Un poco más que el texto actual más las reglas, en tokens (~4 caracteres cada uno).
-  const maxTokens = Math.min(32_000, Math.ceil((input.length / 4) * 1.5) + 2_000);
-  const { text } = await completeOnce({ system: INTEGRATE_PROMPT, input, maxTokens, clients });
-  const instructions = between(text, "instrucciones");
+  // La respuesta reescribe todo el texto (~3 caracteres por token en español) y, en modelos que
+  // razonan, el razonamiento también cuenta en el límite: con poco margen la respuesta queda cortada.
+  const maxTokens = Math.min(32_000, Math.ceil((input.length / 3) * 1.2) + 12_000);
+  const { text } = await completeOnce({ system: INTEGRATE_PROMPT, input, maxTokens, effort: "low", clients });
+  const instructions = between(text, "instrucciones", "<cambios>");
   if (!instructions || instructions.length < settings.instructions.length * 0.5) {
     throw new DomainError("La IA no devolvió unas instrucciones completas. Intenta de nuevo.");
   }
@@ -304,9 +305,11 @@ export async function draftIntegration(clients: ProviderClients = {}): Promise<I
   };
 }
 
-function between(text: string, tag: string) {
+/** El texto entre <tag> y </tag>; si falta el cierre, hasta `fallbackEnd` (la etiqueta que sigue). */
+function between(text: string, tag: string, fallbackEnd?: string) {
   const start = text.indexOf(`<${tag}>`);
-  const end = text.lastIndexOf(`</${tag}>`);
+  let end = text.lastIndexOf(`</${tag}>`);
+  if (end < start && fallbackEnd) end = text.indexOf(fallbackEnd, start);
   if (start < 0 || end < start) return null;
   return text.slice(start + tag.length + 2, end).trim();
 }
