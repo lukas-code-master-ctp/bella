@@ -3,11 +3,12 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, FileText, FlaskConical, MessageCircle, Mic, RefreshCw, Send } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, FileText, FlaskConical, MessageCircle, Mic, PencilLine, RefreshCw, Send } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
+import { CorrectionDialog } from "./correction-dialog";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 
 export type ChatMessage = {
@@ -44,6 +45,7 @@ export function LeadChat({
   userName,
   simulator,
   blocked = false,
+  isAdmin = false,
 }: {
   leadId: string;
   messages: ChatMessage[];
@@ -52,9 +54,12 @@ export function LeadChat({
   simulator: boolean;
   /** Contacto bloqueado: no se le escribe ni se simula que escribe. */
   blocked?: boolean;
+  isAdmin?: boolean;
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
+  const [correcting, setCorrecting] = useState<ChatMessage | null>(null);
+  const closeCorrection = useCallback(() => setCorrecting(null), []);
   // Optimista: se ve mientras dura el envío y se apaga solo cuando la acción termina.
   const [typing, setTyping] = useOptimistic(false);
   const entersAnimated = useEntranceTracker(messages);
@@ -83,6 +88,7 @@ export function LeadChat({
             message={m}
             animate={entersAnimated(m)}
             onInspect={m.author === "AI" && !m.pending ? () => setInspected(m) : undefined}
+            onCorrect={m.author === "AI" && !m.pending && m.body ? () => setCorrecting(m) : undefined}
           />
         ))}
         {typing && <TypingBubble />}
@@ -118,6 +124,7 @@ export function LeadChat({
       )}
 
       <ActivityPanel leadId={leadId} message={inspected} onClose={closeInspector} />
+      <CorrectionDialog leadId={leadId} message={correcting} isAdmin={isAdmin} onClose={closeCorrection} />
     </>
   );
 }
@@ -144,13 +151,26 @@ function useEntranceTracker(initial: ChatMessage[]) {
   };
 }
 
-/** Burbuja del chat. Las de la IA se pueden abrir en el monitor de actividad. */
-function Bubble({ message: m, animate, onInspect }: { message: ChatMessage; animate?: boolean; onInspect?: () => void }) {
+/**
+ * Burbuja del chat. Las de la IA se pueden abrir en el monitor de actividad y corregir (la
+ * corrección se vuelve un aprendizaje que aprueba un admin).
+ */
+function Bubble({
+  message: m,
+  animate,
+  onInspect,
+  onCorrect,
+}: {
+  message: ChatMessage;
+  animate?: boolean;
+  onInspect?: () => void;
+  onCorrect?: () => void;
+}) {
   const fromContact = m.author === "CONTACT";
   const Wrapper = onInspect ? "button" : "div";
   return (
     <div
-      className={`flex ${fromContact ? "justify-start" : "justify-end"} ${
+      className={`group flex flex-col ${fromContact ? "items-start" : "items-end"} ${
         animate ? `animate-message-in ${fromContact ? "origin-bottom-left" : "origin-bottom-right"}` : ""
       }`}
     >
@@ -192,6 +212,16 @@ function Bubble({ message: m, animate, onInspect }: { message: ChatMessage; anim
           </span>
         )}
       </Wrapper>
+      {onCorrect && (
+        <button
+          type="button"
+          onClick={onCorrect}
+          className="mt-0.5 inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-slate-500 transition-[opacity,color] hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
+        >
+          <PencilLine aria-hidden className="size-3.5" />
+          Corregir
+        </button>
+      )}
     </div>
   );
 }

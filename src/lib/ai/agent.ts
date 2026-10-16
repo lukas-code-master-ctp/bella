@@ -23,6 +23,7 @@ import { deliverPendingConversions } from "../domain/conversions";
 import { deliverPendingWebhooks } from "../domain/webhooks";
 import { deliverPendingPush } from "../push";
 import { applyVariant } from "../domain/ab-tests";
+import { activeLessons, lessonsPrompt, type LessonForPrompt } from "../domain/ai-lessons";
 import { getAiConfig } from "./config";
 import { providerFor, TransientAiError, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
@@ -54,6 +55,7 @@ export function buildSystemPrompt(
   knowledge: KnowledgeDoc[] | null = null,
   files: FileForPrompt[] = [],
   blockCriteria: string | null = null,
+  lessons: LessonForPrompt[] = [],
 ): string {
   const lines = [
     `Eres ${s.assistantName}, asistente de ventas de ${s.companyName}. Conversas por chat con ` +
@@ -102,6 +104,7 @@ export function buildSystemPrompt(
     "",
     "Instrucciones de la empresa:",
     s.instructions,
+    ...lessonsPrompt(lessons),
   ];
   if (files.length) {
     const grouped = files.some((f) => f.product);
@@ -338,8 +341,8 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   }
   const context = blocks.join("\n\n");
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
-  const [knowledge, files] = await Promise.all([knowledgeForPrompt(), filesForPrompt()]);
-  const system = buildSystemPrompt(settings, knowledge, files, autoBlockCriteria(operation));
+  const [knowledge, files, lessons] = await Promise.all([knowledgeForPrompt(), filesForPrompt(), activeLessons()]);
+  const system = buildSystemPrompt(settings, knowledge, files, autoBlockCriteria(operation), lessons);
 
   // Línea de tiempo del turno para el monitor de actividad.
   const trace: TraceStep[] = [];

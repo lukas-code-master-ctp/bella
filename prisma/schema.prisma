@@ -312,9 +312,9 @@ model Lead {
   /// Variante de la asistente que le tocó en una prueba A/B (ver src/lib/domain/ab-tests.ts).
   variantId String?
 
-  contact       Contact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  stage         Stage             @relation(fields: [stageId], references: [id])
-  assignee      User?             @relation("Assignee", fields: [assigneeId], references: [id])
+  contact       Contact              @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  stage         Stage                @relation(fields: [stageId], references: [id])
+  assignee      User?                @relation("Assignee", fields: [assigneeId], references: [id])
   messages      Message[]
   events        LeadEvent[]
   transcript    AgentTranscript?
@@ -324,7 +324,7 @@ model Lead {
   source        LeadSource?
   conversions   ConversionEvent[]
   webhookCalls  WebhookDelivery[]
-  variant       AssistantVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  variant       AssistantVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
   broadcasts    BroadcastRecipient[]
 
   @@index([contactId, status])
@@ -383,9 +383,9 @@ model Message {
   /// Motivo cuando el canal no pudo entregar el mensaje.
   deliveryError  String?
 
-  lead     Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  user     User?     @relation(fields: [userId], references: [id])
-  agentRun AgentRun?
+  lead      Lead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user      User?               @relation(fields: [userId], references: [id])
+  agentRun  AgentRun?
   broadcast BroadcastRecipient?
 
   @@unique([companyId, externalId])
@@ -817,19 +817,19 @@ model AiUsage {
 /// Webhook saliente (ver src/lib/domain/webhooks.ts): cuando un lead entra a la etapa, Beliapp envía un
 /// POST con los datos del lead a la URL (ej. Zapier, Make, n8n o el sistema del cliente).
 model Webhook {
-  id        String   @id @default(cuid())
+  id         String   @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
-  companyId String   @default("default")
-  name      String
-  url       String
-  stageId   String
+  companyId  String   @default("default")
+  name       String
+  url        String
+  stageId    String
   /// Clave con que se firma el cuerpo (HMAC SHA-256 en la cabecera X-Beliapp-Signature).
-  secret    String
+  secret     String
   /// Cabecera extra opcional para que el otro sistema autentique el envío (ej. "X-API-Key: …"),
   /// cifrada como "Nombre: valor" con encryptValue (src/lib/credentials.ts).
   authHeader String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
 
   stage      Stage             @relation(fields: [stageId], references: [id], onDelete: Cascade)
   deliveries WebhookDelivery[]
@@ -993,24 +993,24 @@ model Broadcast {
 /// Una persona de un envío masivo. Al enviarle queda con contacto y lead (el abierto que ya
 /// tenía, o uno nuevo en la etapa del envío), y el mensaje queda en su chat.
 model BroadcastRecipient {
-  id          String                   @id @default(cuid())
+  id           String                   @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
-  companyId   String                   @default("default")
-  broadcastId String
+  companyId    String                   @default("default")
+  broadcastId  String
   /// WhatsApp de la persona: solo dígitos, con código de país.
-  phone       String
-  name        String
+  phone        String
+  name         String
   /// Valores de las variables {{1}}, {{2}}… para esta persona.
-  params      String[]
+  params       String[]
   /// Parte variable de cada botón de enlace, en el orden de Broadcast.buttonIndexes.
-  buttonParams String[]                @default([])
-  status      BroadcastRecipientStatus @default(PENDING)
+  buttonParams String[]                 @default([])
+  status       BroadcastRecipientStatus @default(PENDING)
   /// Motivo cuando falló o se saltó.
-  error       String?
-  leadId      String?
-  messageId   String?                  @unique
-  sentAt      DateTime?
-  updatedAt   DateTime                 @updatedAt
+  error        String?
+  leadId       String?
+  messageId    String?                  @unique
+  sentAt       DateTime?
+  updatedAt    DateTime                 @updatedAt
 
   broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
   lead      Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -1020,4 +1020,45 @@ model BroadcastRecipient {
   @@index([broadcastId, status])
   @@index([companyId, sentAt])
   @@index([leadId])
+}
+
+enum AiLessonStatus {
+  /// Propuesto desde el chat; espera que un admin lo apruebe.
+  PENDING
+  /// Aprobado: la asistente lo recibe en sus instrucciones.
+  ACTIVE
+  /// Aprobado pero apagado por un admin.
+  PAUSED
+}
+
+/// Aprendizaje de la asistente: una corrección a una respuesta suya que se convierte en regla.
+/// Solo los ACTIVE llegan a la asistente (ver src/lib/domain/ai-lessons.ts).
+model AiLesson {
+  id           String         @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId    String         @default("default")
+  status       AiLessonStatus @default(PENDING)
+  /// Regla general para la asistente.
+  rule         String
+  /// Respuesta de la asistente que se corrigió (lo que no debe hacer).
+  badExample   String         @default("")
+  /// Cómo debió responder.
+  goodExample  String         @default("")
+  /// Lo que escribió quien corrigió.
+  feedback     String         @default("")
+  /// Choque con las instrucciones o aprendizajes vigentes que detectó la IA al redactar la regla.
+  conflict     String         @default("")
+  /// Conversación visible hasta la respuesta corregida, para probar la regla aunque el lead cambie.
+  conversation String         @default("")
+  /// Respuesta que dio la asistente con la regla en la última prueba.
+  testReply    String?
+  testedAt     DateTime?
+  leadId       String?
+  messageId    String?
+  createdBy    String         @default("")
+  approvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([companyId, status])
 }
