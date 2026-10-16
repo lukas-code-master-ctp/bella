@@ -21,7 +21,7 @@ export class DomainError extends Error {}
  */
 export async function createLead(
   input: { name: string; channel: Channel; phone?: string; externalId?: string } | { contactId: string },
-  options: { aiEnabled?: boolean; funnelId?: string | null } = {},
+  options: { aiEnabled?: boolean; funnelId?: string | null; stageId?: string | null } = {},
 ) {
   const created = await db.$transaction(async (tx) => {
     const contact =
@@ -30,8 +30,11 @@ export async function createLead(
         : await tx.contact.create({
             data: { name: input.name, channel: input.channel, phone: input.phone, externalId: input.externalId },
           });
-    // Entra al embudo de su canal (o al indicado, ej. desde el simulador).
-    const firstStage = await entryStage(tx, contact.channel, options.funnelId);
+    // Entra al embudo de su canal (o al indicado, ej. desde el simulador), o a la etapa pedida
+    // (ej. la de un envío masivo).
+    const firstStage =
+      (options.stageId ? await tx.stage.findUnique({ where: { id: options.stageId } }) : null) ??
+      (await entryStage(tx, contact.channel, options.funnelId));
     // Si el canal tiene una prueba A/B activa, el lead recibe una variante de la asistente.
     const variantId = await pickVariant(tx, contact.channel);
     const lead = await tx.lead.create({
