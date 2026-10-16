@@ -10,6 +10,7 @@ import {
   pauseBroadcast,
   previewBroadcast,
   resumeBroadcast,
+  retryFailed,
   runBroadcasts,
   sendBroadcastNow,
   sendBroadcastTest,
@@ -69,6 +70,13 @@ export async function sendBroadcastNowAction(id: string) {
   await requireAdmin();
   await sendBroadcastNow(id);
   await afterInCompany(() => runBroadcasts());
+  revalidatePath(`/broadcasts/${id}`);
+  revalidatePath("/broadcasts");
+}
+
+export async function retryFailedAction(id: string) {
+  await requireAdmin();
+  if (await retryFailed(id)) await afterInCompany(() => runBroadcasts());
   revalidatePath(`/broadcasts/${id}`);
   revalidatePath("/broadcasts");
 }
