@@ -7,7 +7,10 @@ import { Button } from "./ui";
 
 // Errores típicos de una pestaña abierta con una versión anterior de la app: tras un deploy,
 // los archivos JS y los ids de las server actions cambian y la pestaña vieja ya no los encuentra.
-const STALE_DEPLOY = /ChunkLoadError|Loading (CSS )?chunk|dynamically imported module|Server Action .* was not found|older or newer deployment/i;
+// Si la respuesta nueva pide un componente que el JS viejo no tiene, webpack falla con
+// "e[o] is not a function" o "Cannot read properties of undefined (reading 'call')".
+const STALE_DEPLOY =
+  /ChunkLoadError|Loading (CSS )?chunk|dynamically imported module|Server Action .* was not found|older or newer deployment|^TypeError \w+\[\w+\] is not a function|reading 'call'/i;
 const RELOADED_KEY = "bella:reloaded-after-deploy";
 
 export function isStaleDeployError(error: Error) {
