@@ -5,9 +5,14 @@ import { DEFAULT_ASSISTANT, setSetting } from "@/lib/settings";
 import { buildSystemPrompt, runAgent } from "@/lib/ai/agent";
 import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient } from "@/lib/ai/providers";
+import { applyPreset } from "@/lib/domain/presets";
+import { getAssistantSettings } from "@/lib/settings";
+import { diffHunks, lineDiff } from "@/lib/line-diff";
 import {
   activeLessons,
+  applyIntegration,
   createLesson,
+  draftIntegration,
   draftLesson,
   listLessons,
   setLessonStatus,
@@ -168,5 +173,76 @@ describe("aprendizajes de la asistente", () => {
     await setLessonStatus(a.id, "ACTIVE");
     await createLesson({ ...base, rule: "B" });
     expect((await listLessons()).map((l) => l.rule)).toEqual(["B", "A"]);
+  });
+
+  it("integra los activos en las instrucciones y dejan de enviarse aparte", async () => {
+    const { ai } = await chat();
+    await setSetting("assistant", { ...DEFAULT_ASSISTANT, instructions: "Saluda.\nMenciona siempre la promoción." });
+    const base = { messageId: ai.id, goodExample: "", badExample: "", feedback: "", conflict: "", createdBy: "Lukas" };
+    const a = await createLesson({ ...base, rule: "No repitas datos que ya diste." });
+    await setLessonStatus(a.id, "ACTIVE");
+    const pending = await createLesson({ ...base, rule: "Pendiente" });
+    const { clients, requests } = fakeOpenRouter([
+      "<instrucciones>\nSaluda.\nMenciona la promoción una sola vez; no repitas datos que ya diste.\n</instrucciones>\n" +
+        "<cambios>\n- Junté la regla con la de la promoción.\n</cambios>",
+    ]);
+
+    const draft = await draftIntegration(clients);
+
+    expect(requests[0].messages[1].content).toContain("- No repitas datos que ya diste.");
+    expect(requests[0].messages[1].content).not.toContain("Pendiente");
+    expect(draft).toMatchObject({
+      current: "Saluda.\nMenciona siempre la promoción.",
+      instructions: "Saluda.\nMenciona la promoción una sola vez; no repitas datos que ya diste.",
+      changes: ["Junté la regla con la de la promoción."],
+      lessonIds: [a.id],
+    });
+    // Proponer no guarda nada.
+    expect((await getAssistantSettings()).instructions).toBe("Saluda.\nMenciona siempre la promoción.");
+
+    await applyIntegration(draft);
+    expect((await getAssistantSettings()).instructions).toBe(draft.instructions);
+    expect(await db.aiLesson.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ status: "INTEGRATED" });
+    expect((await db.aiLesson.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe("PENDING");
+    expect(await activeLessons()).toEqual([]);
+
+    // Si un preset vuelve a escribir las instrucciones, los integrados se reactivan para no perderlos.
+    await applyPreset(db, { id: "prueba", version: 1, assistant: DEFAULT_ASSISTANT, knowledge: [] });
+    expect((await activeLessons()).map((l) => l.rule)).toEqual(["No repitas datos que ya diste."]);
+  });
+
+  it("no integra si las instrucciones cambiaron desde la propuesta", async () => {
+    const { ai } = await chat();
+    const a = await createLesson({ messageId: ai.id, rule: "R", goodExample: "", badExample: "", feedback: "", conflict: "", createdBy: "L" });
+    await setLessonStatus(a.id, "ACTIVE");
+    const { clients } = fakeOpenRouter([`<instrucciones>${DEFAULT_ASSISTANT.instructions} R</instrucciones><cambios></cambios>`]);
+    const draft = await draftIntegration(clients);
+    await setSetting("assistant", { ...DEFAULT_ASSISTANT, instructions: "Otra cosa" });
+    await expect(applyIntegration(draft)).rejects.toThrow("cambiaron");
+    expect((await db.aiLesson.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("ACTIVE");
+  });
+
+  it("rechaza una propuesta incompleta", async () => {
+    const { ai } = await chat();
+    const a = await createLesson({ messageId: ai.id, rule: "R", goodExample: "", badExample: "", feedback: "", conflict: "", createdBy: "L" });
+    await setLessonStatus(a.id, "ACTIVE");
+    const { clients } = fakeOpenRouter(["<instrucciones>Hola</instrucciones>"]);
+    await expect(draftIntegration(clients)).rejects.toThrow("completas");
+  });
+});
+
+describe("diferencia de líneas", () => {
+  it("marca lo agregado y lo quitado, y resume lo igual", () => {
+    const before = ["a", "b", "c", "d", "e", "f", "g"].join("\n");
+    const after = ["a", "b", "c", "X", "e", "f", "g"].join("\n");
+    const lines = lineDiff(before, after);
+    expect(lines.filter((l) => l.kind !== "same")).toEqual([
+      { kind: "removed", text: "d" },
+      { kind: "added", text: "X" },
+    ]);
+    const hunks = diffHunks(lines, 1);
+    expect(hunks).toHaveLength(1);
+    expect(hunks[0].skippedBefore).toBe(2);
+    expect(hunks[0].lines.map((l) => l.text)).toEqual(["c", "d", "X", "e"]);
   });
 });

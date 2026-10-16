@@ -1,10 +1,11 @@
+import { createHash } from "node:crypto";
 import type { AiLesson, AiLessonStatus } from "@prisma/client";
 import { db } from "../db";
 import { buildSystemPrompt } from "../ai/agent";
 import { completeOnce, jsonIn } from "../ai/complete";
 import type { ProviderClients } from "../ai/providers";
 import { knowledgeForPrompt } from "../knowledge";
-import { getAssistantSettings, type AssistantSettings } from "../settings";
+import { getAssistantSettings, setSetting, type AssistantSettings } from "../settings";
 import { applyVariant } from "./ab-tests";
 import { filesForPrompt } from "./files";
 import { assistantFor } from "./funnels";
@@ -192,7 +193,7 @@ export async function updateLesson(id: string, input: LessonInput) {
 }
 
 /** Aprobar (ACTIVE), pausar (PAUSED). Al aprobar por primera vez queda la fecha. */
-export async function setLessonStatus(id: string, status: Exclude<AiLessonStatus, "PENDING">) {
+export async function setLessonStatus(id: string, status: "ACTIVE" | "PAUSED") {
   const current = await db.aiLesson.findUniqueOrThrow({ where: { id } });
   return db.aiLesson.update({
     where: { id },
@@ -207,7 +208,7 @@ export async function deleteLesson(id: string) {
 /** Para la pantalla de Aprendizajes: pendientes primero, luego activos y pausados. */
 export async function listLessons() {
   const lessons = await db.aiLesson.findMany({ orderBy: { createdAt: "desc" } });
-  const order: Record<AiLessonStatus, number> = { PENDING: 0, ACTIVE: 1, PAUSED: 2 };
+  const order: Record<AiLessonStatus, number> = { PENDING: 0, ACTIVE: 1, PAUSED: 2, INTEGRATED: 3 };
   return lessons.sort((a, b) => order[a.status] - order[b.status]);
 }
 
@@ -237,4 +238,93 @@ export async function testLesson(id: string, clients: ProviderClients = {}) {
   const testReply = text.trim();
   if (!testReply) throw new DomainError("La IA no devolvió una respuesta. Intenta de nuevo.");
   return db.aiLesson.update({ where: { id }, data: { testReply, testedAt: new Date() } });
+}
+
+/** Huella de las instrucciones, para saber si cambiaron entre la propuesta y el guardado. */
+export const instructionsHash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 16);
+
+const INTEGRATE_PROMPT = [
+  "Mantienes las instrucciones de la asistente de ventas por chat de una empresa. La empresa aprobó " +
+    "aprendizajes (reglas sacadas de corregir respuestas de la asistente) y quiere incorporarlos al " +
+    "texto de las instrucciones, para no enviarlos aparte.",
+  "",
+  "Reescribe las instrucciones así:",
+  "- Incorpora cada aprendizaje donde corresponda dentro de la estructura existente (secciones, " +
+    "etiquetas, listas), con la redacción y el tono del resto. Si un aprendizaje choca con una " +
+    "instrucción, manda el aprendizaje: corrige o quita la instrucción vieja.",
+  "- Si dos reglas dicen lo mismo, déjalas en una. Incluye un ejemplo solo si aclara algo que la regla sola no dice.",
+  "- No cambies nada más: conserva todo lo que no tiene que ver con los aprendizajes, palabra por palabra.",
+  "",
+  "Responde exactamente en este formato:",
+  "<instrucciones>",
+  "(el texto completo de las instrucciones nuevas)",
+  "</instrucciones>",
+  "<cambios>",
+  "(de 1 a 6 líneas que empiezan con \"- \", en lenguaje simple, con lo que cambiaste y por qué)",
+  "</cambios>",
+].join("\n");
+
+export type IntegrationDraft = { current: string; instructions: string; changes: string[]; base: string; lessonIds: string[] };
+
+/**
+ * La IA propone las instrucciones generales con los aprendizajes activos incorporados. No guarda:
+ * un admin revisa el antes y después y lo confirma con applyIntegration.
+ */
+export async function draftIntegration(clients: ProviderClients = {}): Promise<IntegrationDraft> {
+  const [settings, lessons] = await Promise.all([
+    getAssistantSettings(),
+    db.aiLesson.findMany({ where: { status: "ACTIVE" }, orderBy: [{ approvedAt: "asc" }, { createdAt: "asc" }] }),
+  ]);
+  if (!lessons.length) throw new DomainError("No hay aprendizajes activos para integrar.");
+  const input = [
+    "<instrucciones_actuales>",
+    settings.instructions,
+    "</instrucciones_actuales>",
+    "<aprendizajes>",
+    lessonsPrompt(lessons).slice(2).join("\n"),
+    "</aprendizajes>",
+  ].join("\n");
+  // Un poco más que el texto actual más las reglas, en tokens (~4 caracteres cada uno).
+  const maxTokens = Math.min(32_000, Math.ceil((input.length / 4) * 1.5) + 2_000);
+  const { text } = await completeOnce({ system: INTEGRATE_PROMPT, input, maxTokens, clients });
+  const instructions = between(text, "instrucciones");
+  if (!instructions || instructions.length < settings.instructions.length * 0.5) {
+    throw new DomainError("La IA no devolvió unas instrucciones completas. Intenta de nuevo.");
+  }
+  const changes = (between(text, "cambios") ?? "")
+    .split("\n")
+    .map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
+    .filter(Boolean);
+  return {
+    current: settings.instructions,
+    instructions,
+    changes,
+    base: instructionsHash(settings.instructions),
+    lessonIds: lessons.map((l) => l.id),
+  };
+}
+
+function between(text: string, tag: string) {
+  const start = text.indexOf(`<${tag}>`);
+  const end = text.lastIndexOf(`</${tag}>`);
+  if (start < 0 || end < start) return null;
+  return text.slice(start + tag.length + 2, end).trim();
+}
+
+/**
+ * Guarda las instrucciones nuevas y marca esos aprendizajes como integrados (dejan de enviarse
+ * aparte). Si las instrucciones cambiaron desde la propuesta, no guarda.
+ */
+export async function applyIntegration({ instructions, base, lessonIds }: { instructions: string; base: string; lessonIds: string[] }) {
+  const text = instructions.trim();
+  if (!text) throw new DomainError("Las instrucciones no pueden quedar vacías.");
+  const settings = await getAssistantSettings();
+  if (instructionsHash(settings.instructions) !== base) {
+    throw new DomainError("Las instrucciones cambiaron desde la propuesta. Vuelve a proponer la versión integrada.");
+  }
+  await setSetting<AssistantSettings>("assistant", { ...settings, instructions: text });
+  await db.aiLesson.updateMany({
+    where: { id: { in: lessonIds }, status: "ACTIVE" },
+    data: { status: "INTEGRATED", integratedAt: new Date() },
+  });
 }

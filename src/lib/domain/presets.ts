@@ -59,6 +59,12 @@ export async function applyPreset(db: PrismaClient, preset: Preset): Promise<boo
     if (applied && applied.version >= preset.version) return false;
 
     await writeSetting<AssistantSettings>(tx, "assistant", preset.assistant);
+    // Las instrucciones del preset reemplazan a las que tenían aprendizajes integrados: vuelven a
+    // enviarse aparte para no perderlos.
+    await tx.aiLesson.updateMany({
+      where: { companyId: await currentCompanyId(), status: "INTEGRATED" },
+      data: { status: "ACTIVE", integratedAt: null },
+    });
 
     for (const doc of preset.knowledge) {
       const existing = await tx.knowledgeDoc.findFirst({ where: { title: doc.title } });
