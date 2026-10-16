@@ -30,6 +30,16 @@ const STATUS: Record<string, { label: string; tone: "success" | "warning" | "dan
   DISABLED: { label: "Desactivada por Meta", tone: "danger" },
 };
 
+/** Nombre de plantilla como lo exige Meta: minúsculas, sin tildes, con _ en vez de espacios. */
+function templateNameOf(raw: string) {
+  return raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
 const UNIT: Record<string, string> = { m: "min", min: "min", h: "h", d: "d" };
 const UNIT_MINUTES: Record<string, number> = { m: 1, min: 1, h: 60, d: 24 * 60 };
 /** Ventana de Meta para escribirle al cliente desde su último mensaje (ver REPLY_WINDOW_MS). */
@@ -162,7 +172,7 @@ export function FollowUpsForm(props: {
             )}
             <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
               <Field label="Nombre de la plantilla" hint="Tal como aparece en Meta, ej. seguimiento_1">
-                <input name="templateName" value={templateName} onChange={(e) => setTemplateName(e.target.value)} className={`${inputClass} font-mono`} />
+                <input name="templateName" value={templateName} onChange={(e) => setTemplateName(templateNameOf(e.target.value))} className={`${inputClass} font-mono`} />
               </Field>
               <Field label="Idioma" hint="El de la plantilla en Meta">
                 <select name="templateLanguage" defaultValue={props.template.language} className={inputClass}>
