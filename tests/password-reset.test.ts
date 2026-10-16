@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import type { Email, EmailSender } from "@/lib/email";
-import { setSetting } from "@/lib/settings";
+import { DEFAULT_EMAIL_FROM, type Email, type EmailSender } from "@/lib/email";
 import { passwordResetTokenValid, requestPasswordReset, resetPassword, RESET_TTL_MS } from "@/lib/domain/password-reset";
 import { sessionStale } from "@/lib/session-token";
 
@@ -20,7 +19,6 @@ function fakeSender() {
 const tokenOf = (email: Email) => new URL(/https?:\/\/\S+/.exec(email.text)![0]).searchParams.get("token")!;
 
 async function setup() {
-  await setSetting("weeklyEmail", { from: "Bella <hola@empresa.cl>" });
   return db.user.create({ data: { name: "Eva", email: "eva@test.cl", passwordHash: await bcrypt.hash("vieja-clave", 4) } });
 }
 
@@ -31,7 +29,7 @@ describe("recuperar contraseña", () => {
     await requestPasswordReset(" EVA@test.cl ", "https://app.test/", { sender });
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toEqual(["eva@test.cl"]);
-    expect(sent[0].from).toBe("Bella <hola@empresa.cl>");
+    expect(sent[0].from).toBe(DEFAULT_EMAIL_FROM);
     expect(sent[0].text).toContain("https://app.test/login/restablecer?token=");
     const token = tokenOf(sent[0]);
     // Solo se guarda el hash.
@@ -81,10 +79,6 @@ describe("recuperar contraseña", () => {
     expect(await passwordResetTokenValid(tokenOf(sent[1]), new Date(now.getTime() + 130_000))).toBe(true);
   });
 
-  it("falla claro si no hay remitente", async () => {
-    await db.user.create({ data: { name: "Eva", email: "eva@test.cl", passwordHash: "x" } });
-    await expect(requestPasswordReset("eva@test.cl", "https://app.test", { sender: fakeSender().sender })).rejects.toThrow(/remitente/);
-  });
 });
 
 describe("sesiones", () => {

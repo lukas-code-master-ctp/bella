@@ -1,16 +1,15 @@
-import { credential } from "./credentials";
-import { getSetting } from "./settings";
-
 /**
- * Envío de correos con Resend (https://resend.com), por su API HTTP. La clave (RESEND_API_KEY) y el
- * remitente (EMAIL_FROM, de un dominio verificado en Resend) son de cada empresa y se cargan en
- * Configuración → Credenciales.
+ * Envío de correos con Resend (https://resend.com), por su API HTTP. Es de la plataforma, no de cada
+ * empresa: todos los correos salen con la clave RESEND_API_KEY y el remitente EMAIL_FROM del servidor
+ * (por defecto no-reply@avisos.beliapp.cl, un dominio verificado en Resend).
  */
 
 /** Dirección pública de la app, para los enlaces de los correos. Vacía si no se conoce. */
 export const APP_URL =
   process.env.APP_URL ??
   (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "");
+
+export const DEFAULT_EMAIL_FROM = "Beliapp <no-reply@avisos.beliapp.cl>";
 
 export type Email = { from: string; to: string[]; subject: string; html: string; text: string };
 
@@ -19,24 +18,19 @@ export type EmailSender = { send(email: Email): Promise<string> };
 
 export class EmailError extends Error {}
 
-export async function emailConfigured() {
-  return Boolean(await credential("RESEND_API_KEY"));
+export function emailConfigured() {
+  return Boolean(process.env.RESEND_API_KEY);
 }
 
-/**
- * Remitente de los correos de la empresa: el de Credenciales o, si falta, el que se configuró antes
- * para el resumen semanal. Null si no hay ninguno.
- */
-export async function emailFrom(): Promise<string | null> {
-  const weekly = await getSetting<{ from?: string }>("weeklyEmail", {});
-  const from = (await credential("EMAIL_FROM"))?.trim() || weekly.from?.trim();
-  return from && from.includes("@") ? from : null;
+/** Remitente de todos los correos. */
+export function emailFrom(): string {
+  return process.env.EMAIL_FROM?.trim() || DEFAULT_EMAIL_FROM;
 }
 
 export const resendSender: EmailSender = {
   async send(email) {
-    const key = await credential("RESEND_API_KEY");
-    if (!key) throw new EmailError("Falta la clave de Resend en Configuración → Credenciales.");
+    const key = process.env.RESEND_API_KEY;
+    if (!key) throw new EmailError("Falta RESEND_API_KEY en el servidor.");
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },

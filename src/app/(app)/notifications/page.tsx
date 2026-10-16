@@ -3,12 +3,13 @@ import { Bell, CheckCheck, ClockAlert, Hand, Mail, MessageCircle, UserPlus } fro
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { vapidPublicKey } from "@/lib/push";
-import { emailConfigured, emailFrom } from "@/lib/email";
+import { emailConfigured } from "@/lib/email";
 import { EMAIL_NOTIFICATION_TYPES } from "@/lib/domain/email-notifications";
 import { Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { markAllReadAction, saveEmailPrefsAction } from "./actions";
 import { PushToggle } from "./push-toggle";
+import { TestEmailButton } from "./test-email";
 
 const ICON: Record<string, React.ReactNode> = {
   HUMAN_STAGE: <Hand aria-hidden />,
@@ -29,7 +30,7 @@ export default async function NotificationsPage() {
   });
   const unread = notifications.filter((n) => !n.readAt).length;
   const isAdmin = user.role === "ADMIN";
-  const emailReady = (await emailConfigured()) && (await emailFrom()) != null;
+  const emailReady = emailConfigured();
 
   return (
     <>
@@ -94,19 +95,9 @@ export default async function NotificationsPage() {
               title="Avisos por correo"
               icon={<Mail />}
               description={
-                emailReady ? (
-                  `Elige qué avisos quieres recibir también en ${user.email}.`
-                ) : isAdmin ? (
-                  <>
-                    Para mandar correos falta la clave de Resend o el remitente en{" "}
-                    <Link href="/settings/credentials" className="font-medium text-brand-700 underline">
-                      Configuración → Credenciales
-                    </Link>
-                    . Puedes dejar elegidos tus avisos desde ya.
-                  </>
-                ) : (
-                  "Los correos aún no están configurados en tu empresa. Puedes dejar elegidos tus avisos desde ya."
-                )
+                emailReady
+                  ? `Elige qué avisos quieres recibir también en ${user.email}.`
+                  : "Los correos aún no están activados en Beliapp. Puedes dejar elegidos tus avisos desde ya."
               }
             />
             <form action={saveEmailPrefsAction} className="space-y-3">
@@ -126,6 +117,11 @@ export default async function NotificationsPage() {
                 Guardar
               </SubmitButton>
             </form>
+            {user.superadmin && (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <TestEmailButton />
+              </div>
+            )}
           </Card>
         </div>
       </div>

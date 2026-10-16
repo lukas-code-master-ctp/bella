@@ -51,13 +51,13 @@ describe("resumen semanal por correo", () => {
 
   it("encendido, lo manda a los admins y a los destinatarios extra, sin repetir", async () => {
     const i = await insight();
-    await saveWeeklyEmailSettings({ enabled: true, from: "Reportes <r@empresa.cl>", toAdmins: true, extra: "gerencia@empresa.cl, admin@test.cl; malo" });
+    await saveWeeklyEmailSettings({ enabled: true, toAdmins: true, extra: "gerencia@empresa.cl, admin@test.cl; malo" });
     const { sender, sent } = fakeSender();
     const result = await sendWeeklyInsightEmail(i.id, { sender });
 
     expect(result).toMatchObject({ ok: true, detail: "Enviado a 2 destinatarios." });
     expect(sent).toHaveLength(1);
-    expect(sent[0].from).toBe("Reportes <r@empresa.cl>");
+    expect(sent[0].from).toBe("Beliapp <no-reply@avisos.beliapp.cl>");
     expect(sent[0].to.sort()).toEqual(["admin@test.cl", "gerencia@empresa.cl"]);
     expect(sent[0].subject).toContain("5 de octubre al 11 de octubre");
     expect(sent[0].html).toContain("Buena semana &lt;con&gt; financiamiento.");
@@ -65,12 +65,9 @@ describe("resumen semanal por correo", () => {
     expect(sent[0].text).toContain("- Llamar a los cotizados");
   });
 
-  it("anota el error del proveedor y la falta de remitente", async () => {
+  it("anota el error del proveedor", async () => {
     const i = await insight();
-    await saveWeeklyEmailSettings({ enabled: true, from: "", toAdmins: true, extra: "" });
-    expect(await sendWeeklyInsightEmail(i.id, { sender: fakeSender().sender })).toMatchObject({ ok: false, detail: "Falta el remitente." });
-
-    await saveWeeklyEmailSettings({ enabled: false, from: "r@empresa.cl", toAdmins: true, extra: "" });
+    await saveWeeklyEmailSettings({ enabled: false, toAdmins: true, extra: "" });
     // "Enviar ahora" funciona aunque el envío automático esté apagado.
     await sendWeeklyInsightEmail(i.id, { force: true, sender: fakeSender("dominio no verificado").sender });
     expect(await getWeeklyEmailLog()).toMatchObject({ ok: false, detail: "dominio no verificado" });
