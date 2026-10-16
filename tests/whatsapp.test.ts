@@ -250,6 +250,51 @@ describe("WhatsApp: envío y estado de entrega", () => {
     ]);
   });
 
+  it("espera que Meta confirme cada archivo antes de mandar lo que sigue", async () => {
+    const lead = await waLead();
+    for (const name of ["plano.pdf", "foto.jpg"]) {
+      await db.message.create({
+        data: { leadId: lead.id, author: "AI", body: "", mediaUrl: `https://b/${name}`, mediaName: name, mediaType: name.endsWith(".pdf") ? "application/pdf" : "image/jpeg" },
+      });
+    }
+    await db.message.create({ data: { leadId: lead.id, author: "AI", body: "¿Te sirve?" } });
+    const { api, sent } = fakeApi();
+    const order: string[] = [];
+    const sendFile = api.sendFile;
+    api.sendFile = async (to, file) => {
+      const id = await sendFile(to, file);
+      // Meta avisa "sent" un rato después, cuando ya descargó el archivo.
+      setTimeout(() => {
+        order.push(`sent ${id}`);
+        void receiveWhatsApp(webhook([], { statuses: [{ id, status: "sent" }] }));
+      }, 100);
+      return id;
+    };
+    const sendText = api.sendText;
+    api.sendText = async (to, body) => (order.push("text"), sendText(to, body));
+
+    expect(await deliverOutbound(lead.id, { whatsapp: api })).toBeNull();
+    expect(order).toEqual(["sent wamid.out1", "sent wamid.out2", "text"]);
+    expect(sent.map((s) => s.text ?? (s.file as { fileName: string }).fileName)).toEqual(["plano.pdf", "foto.jpg", "¿Te sirve?"]);
+    const out = await db.message.findMany({ where: { author: "AI" }, orderBy: { createdAt: "asc" } });
+    expect(out.map((m) => [m.deliveryStatus, m.externalId])).toEqual([
+      ["SENT", "wamid.out1"],
+      ["SENT", "wamid.out2"],
+      ["SENT", "wamid.out3"],
+    ]);
+  });
+
+  it("si Meta no confirma el archivo, igual manda el texto al cumplirse la espera", async () => {
+    const lead = await waLead();
+    await db.message.create({ data: { leadId: lead.id, author: "AI", body: "", mediaUrl: "https://b/foto.jpg", mediaType: "image/jpeg" } });
+    await db.message.create({ data: { leadId: lead.id, author: "AI", body: "Mira" } });
+    const { api, sent } = fakeApi();
+    expect(await deliverOutbound(lead.id, { whatsapp: api, mediaWaitMs: 50 })).toBeNull();
+    expect(sent.map((s) => (s.text ? "text" : "file"))).toEqual(["file", "text"]);
+    const out = await db.message.findMany({ where: { author: "AI" }, orderBy: { createdAt: "asc" } });
+    expect(out.map((m) => m.deliveryStatus)).toEqual(["SENT", "SENT"]);
+  });
+
   it("guarda el motivo cuando WhatsApp rechaza el envío y lo devuelve al ejecutivo", async () => {
     const lead = await waLead();
     await db.message.create({ data: { leadId: lead.id, author: "AI", body: "¿Sigues interesada?" } });
