@@ -83,7 +83,9 @@ export async function runAutoClose(now = new Date()): Promise<number> {
         select: {
           id: true,
           events: {
-            where: { type: "STAGE_CHANGED", reason: { not: null } },
+            // Solo el movimiento que lo dejó en esta etapa: el motivo de una etapa anterior (ej. el
+            // resumen de "Visita agendada") no explica por qué se perdió.
+            where: { type: "STAGE_CHANGED" },
             orderBy: { createdAt: "desc" },
             take: 1,
             select: { reason: true },

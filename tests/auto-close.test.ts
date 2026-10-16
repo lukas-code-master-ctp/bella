@@ -90,15 +90,20 @@ describe("cierre automático por inactividad", () => {
   });
 
   it("cierra los leads en una etapa de cierre con el motivo del movimiento", async () => {
-    const [nuevo, , cotizacion] = await seedFunnel();
+    const [nuevo, calificado, cotizacion] = await seedFunnel();
     await setSetting("autoClose", { enabled: true, days: 30, reason: "Inactivo", lostStageIds: [cotizacion.id] });
     const a = await createLead({ name: "A", channel: "SIMULATOR" });
     await moveStage(a.id, cotizacion.id, { actor: "USER" }, "Compró con otra empresa");
     const b = await createLead({ name: "B", channel: "SIMULATOR" });
     await moveStage(b.id, cotizacion.id, { actor: "USER" });
     const c = await createLead({ name: "C", channel: "SIMULATOR" });
+    // El motivo de una etapa anterior no se hereda al moverlo sin motivo a la etapa de cierre.
+    const d = await createLead({ name: "D", channel: "SIMULATOR" });
+    await moveStage(d.id, calificado.id, { actor: "AI" }, "Visita agendada: RUT 1-9");
+    await moveStage(d.id, cotizacion.id, { actor: "USER" });
 
-    expect(await runAutoClose(now)).toBe(2);
+    expect(await runAutoClose(now)).toBe(3);
+    expect((await status(d.id)).lostReason).toBe("Inactivo");
     expect((await status(a.id)).lostReason).toBe("Compró con otra empresa");
     expect((await status(b.id)).lostReason).toBe("Inactivo");
     expect(await status(c.id)).toMatchObject({ status: "OPEN", stageId: nuevo.id });
