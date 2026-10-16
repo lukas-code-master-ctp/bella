@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { saveCredentials } from "@/lib/credentials";
-import { ChannelSendError, toApprovedTemplate, type WaWebhook, type WhatsAppApi } from "@/lib/channels/whatsapp";
+import { ChannelSendError, templateComponents, toApprovedTemplate, type TemplateMessage, type WaWebhook, type WhatsAppApi } from "@/lib/channels/whatsapp";
+import { messagePrice } from "@/lib/domain/broadcast-pricing";
 import { receiveWhatsApp, saveChannelSettings } from "@/lib/domain/channels";
 import { createLead } from "@/lib/domain/leads";
 import {
@@ -9,6 +10,7 @@ import {
   broadcastStats,
   cancelBroadcast,
   createBroadcast,
+  pauseBroadcast,
   previewBroadcast,
   resumeBroadcast,
   runBroadcasts,
@@ -27,15 +29,17 @@ let fakes = 0;
 
 function fakeWa(fail: Record<string, ChannelSendError> = {}) {
   const sent: { to: string; params: string[]; from?: string }[] = [];
+  const messages: TemplateMessage[] = [];
   const prefix = `wamid.f${++fakes}`;
   const api = {
-    sendTemplate: async (to: string, t: { params: string[] }, from?: string) => {
+    sendTemplate: async (to: string, t: TemplateMessage, from?: string) => {
       if (fail[to]) throw fail[to];
       sent.push({ to, params: t.params, from });
+      messages.push(t);
       return `${prefix}.${to}`;
     },
   } as unknown as WhatsAppApi;
-  return { api, sent };
+  return { api, sent, messages };
 }
 
 let stages: Awaited<ReturnType<typeof seedFunnel>>;
@@ -219,9 +223,13 @@ describe("plantillas aprobadas", () => {
       params: 2,
       unsupported: null,
     });
-    expect(toApprovedTemplate({ name: "b", language: "es", status: "APPROVED", components: [{ type: "HEADER", format: "IMAGE" }, body] }).unsupported).toMatch(/imagen/);
+    expect(toApprovedTemplate({ name: "b", language: "es", status: "APPROVED", components: [{ type: "HEADER", format: "IMAGE" }, body] })).toMatchObject({ header: "image", unsupported: null });
+    expect(toApprovedTemplate({ name: "e", language: "es", status: "APPROVED", components: [{ type: "HEADER", format: "LOCATION" }, body] }).unsupported).toMatch(/ubicación/);
     expect(toApprovedTemplate({ name: "c", language: "es", status: "APPROVED", parameter_format: "NAMED", components: [{ type: "BODY", text: "Hola {{nombre}}" }] }).unsupported).toMatch(/nombre/);
-    expect(toApprovedTemplate({ name: "d", language: "es", status: "APPROVED", components: [body, { type: "BUTTONS", buttons: [{ type: "URL", url: "https://x.cl/{{1}}" }] }] }).unsupported).toMatch(/botón/);
+    expect(
+      toApprovedTemplate({ name: "d", language: "es", status: "APPROVED", components: [body, { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Sí" }, { type: "URL", text: "Ver", url: "https://x.cl/{{1}}" }] }] }),
+    ).toMatchObject({ unsupported: null, urlButtons: [{ index: 1, text: "Ver", url: "https://x.cl/{{1}}" }] });
+    expect(toApprovedTemplate({ name: "f", language: "es", status: "APPROVED", components: [body, { type: "BUTTONS", buttons: [{ type: "COPY_CODE" }] }] }).unsupported).toMatch(/código/);
   });
 });
 
@@ -339,5 +347,85 @@ describe("envíos masivos: programar, baja y prueba", () => {
     expect(templateDraftError({ ...ok, text: "{{1}}, hola" })).toMatch(/empiece o termine/);
     expect(templateDraftError({ ...ok, examples: ["María", " "] })).toMatch(/ejemplo/);
     expect(templateDraftError({ ...ok, text: "Hola {{nombre}}." })).toMatch(/números/);
+  });
+});
+
+describe("envíos masivos: archivo, botones, A/B, reenvío y costo", () => {
+  const vars = { variables: [{ source: "name" as const }, { source: "text" as const, text: "algo" }] };
+  const people = (n: number, from = 1) =>
+    Array.from({ length: n }, (_, i) => ({ phone: `+569111100${String(from + i).padStart(2, "0")}`, name: `Persona ${from + i}` }));
+
+  it("arma los componentes con archivo arriba, cuerpo y botón de enlace", () => {
+    expect(
+      templateComponents({ name: "x", language: "es", params: ["Ana"], header: { kind: "document", url: "https://f/x.pdf", fileName: "x.pdf" }, buttons: [{ index: 1, text: "abc" }] }),
+    ).toEqual([
+      { type: "header", parameters: [{ type: "document", document: { link: "https://f/x.pdf", filename: "x.pdf" } }] },
+      { type: "body", parameters: [{ type: "text", text: "Ana" }] },
+      { type: "button", sub_type: "url", index: "1", parameters: [{ type: "text", text: "abc" }] },
+    ]);
+  });
+
+  it("envía la imagen elegida y el final del enlace de cada persona", async () => {
+    const image = await db.mediaFile.create({ data: { title: "Portada", url: "https://blob/portada.png", mimeType: "image/png", fileName: "portada.png" } });
+    const pdf = await db.mediaFile.create({ data: { title: "Plano", url: "https://blob/plano.pdf", mimeType: "application/pdf", fileName: "plano.pdf" } });
+    const template = { ...TEMPLATE, header: "image" as const, urlButtons: [0] };
+    const base = input(
+      { kind: "rows", rows: [{ phone: "+56911110001", name: "Ana", values: { proyecto: "Robles", codigo: "R1" } }] },
+      { template, buttonVariables: [{ source: "column", column: "codigo" }] },
+    );
+    await expect(previewBroadcast(base)).rejects.toThrow(/imagen/);
+    await expect(previewBroadcast({ ...base, headerFileId: pdf.id })).rejects.toThrow(/JPG o PNG/);
+
+    await createBroadcast({ ...base, headerFileId: image.id }, userId);
+    const { api, messages } = fakeWa();
+    await runBroadcasts({ api });
+    expect(messages[0]).toMatchObject({
+      params: ["Ana", "Robles"],
+      header: { kind: "image", url: "https://blob/portada.png" },
+      buttons: [{ index: 0, text: "R1" }],
+    });
+    const msg = await db.message.findFirstOrThrow({ where: { lead: { contact: { externalId: "56911110001" } } } });
+    expect(msg).toMatchObject({ mediaUrl: "https://blob/portada.png", mediaType: "image/png" });
+  });
+
+  it("una prueba A/B reparte la lista en dos mitades y se maneja junta", async () => {
+    const other = { name: "preventa_b", language: "es", body: "{{1}}: oferta {{2}}.", params: 2 };
+    const a = await createBroadcast(input({ kind: "rows", rows: people(10) }, { ...vars, variantB: { template: other, ...vars } }), userId);
+    const group = await db.broadcast.findMany({ where: { abGroup: a.abGroup! }, include: { _count: { select: { recipients: true } } }, orderBy: { name: "asc" } });
+    expect(group.map((g) => [g.name, g.templateName, g._count.recipients])).toEqual([
+      ["Preventa octubre · A", "preventa", 5],
+      ["Preventa octubre · B", "preventa_b", 5],
+    ]);
+    await pauseBroadcast(a.id);
+    expect((await db.broadcast.findMany({ where: { abGroup: a.abGroup! } })).map((g) => g.status)).toEqual(["PAUSED", "PAUSED"]);
+    await resumeBroadcast(a.id);
+    const { api, messages } = fakeWa();
+    await runBroadcasts({ api });
+    expect(messages.filter((m) => m.name === "preventa_b")).toHaveLength(5);
+    await expect(createBroadcast(input({ kind: "rows", rows: people(4) }, { ...vars, variantB: { template: TEMPLATE, ...vars } }), userId)).rejects.toThrow(/distintas/);
+  });
+
+  it("reenvía solo a quienes no leyeron", async () => {
+    await saveCredentials({ WHATSAPP_PHONE_NUMBER_ID: "PHONE" });
+    const first = await createBroadcast(input({ kind: "rows", rows: people(3) }, vars), userId);
+    await runBroadcasts({ api: fakeWa().api });
+    const wamid = async (phone: string) => (await db.message.findFirstOrThrow({ where: { lead: { contact: { externalId: phone } } } })).externalId!;
+    await receiveWhatsApp({
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "messages", value: { metadata: { phone_number_id: "PHONE" }, statuses: [{ id: await wamid("56911110001"), status: "read" }] } }] }],
+    });
+    const preview = await previewBroadcast(input({ kind: "resend", broadcastId: first.id }, vars));
+    expect(preview.count).toBe(2);
+    const again = await createBroadcast(input({ kind: "resend", broadcastId: first.id }, vars), userId);
+    expect(again.resentFromId).toBe(first.id);
+    expect((await db.broadcastRecipient.findMany({ where: { broadcastId: again.id } })).map((r) => r.phone).sort()).toEqual(["56911110002", "56911110003"]);
+  });
+
+  it("estima el costo según el país y el tipo de plantilla", async () => {
+    expect(messagePrice("56911110001", "MARKETING")).toBeCloseTo(0.0889);
+    expect(messagePrice("56911110001", "UTILITY")).toBeCloseTo(0.02);
+    expect(messagePrice("5215512345678", "MARKETING")).toBeCloseTo(0.0305);
+    const preview = await previewBroadcast(input({ kind: "rows", rows: people(2) }, { ...vars, template: { ...TEMPLATE, category: "MARKETING" } }));
+    expect(preview.cost).toBeCloseTo(0.1778);
   });
 });

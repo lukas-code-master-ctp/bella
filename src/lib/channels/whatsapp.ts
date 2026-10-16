@@ -36,9 +36,31 @@ export type WhatsAppApi = {
   /** Imagen, video o documento por URL pública; `caption` va como texto del archivo. */
   sendFile(to: string, file: { kind: FileKind; url: string; fileName?: string; caption?: string }, from?: string): Promise<string>;
   downloadMedia(mediaId: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
-  /** Plantilla aprobada en Meta; `params` llena las variables del cuerpo ({{1}}, {{2}}…). */
-  sendTemplate?(to: string, template: { name: string; language: string; params: string[] }, from?: string): Promise<string>;
+  /**
+   * Plantilla aprobada en Meta; `params` llena las variables del cuerpo ({{1}}, {{2}}…), `header`
+   * el archivo del encabezado y `buttons` la parte variable de los botones de enlace.
+   */
+  sendTemplate?(to: string, template: TemplateMessage, from?: string): Promise<string>;
 };
+
+export type TemplateMessage = {
+  name: string;
+  language: string;
+  params: string[];
+  header?: { kind: FileKind; url: string; fileName?: string } | null;
+  buttons?: { index: number; text: string }[];
+};
+
+/** Componentes de una plantilla con sus valores, como los pide la API de WhatsApp. */
+export function templateComponents({ params, header, buttons = [] }: TemplateMessage) {
+  return [
+    ...(header
+      ? [{ type: "header", parameters: [{ type: header.kind, [header.kind]: { link: header.url, ...(header.kind === "document" && header.fileName ? { filename: header.fileName } : {}) } }] }]
+      : []),
+    ...(params.length ? [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }] : []),
+    ...buttons.map((b) => ({ type: "button", sub_type: "url", index: String(b.index), parameters: [{ type: "text", text: b.text }] })),
+  ];
+}
 
 /** Motivo legible de los errores de Meta más comunes al enviar. */
 export function describeMetaError(code: number | undefined, fallback: string): string {
@@ -106,17 +128,10 @@ export const cloudApi: WhatsAppApi = {
         ...(kind === "document" && fileName ? { filename: fileName } : {}),
       },
     }, from),
-  sendTemplate: (to, { name, language, params }, from) =>
-    send(to, {
-      type: "template",
-      template: {
-        name,
-        language: { code: language },
-        ...(params.length
-          ? { components: [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }] }
-          : {}),
-      },
-    }, from),
+  sendTemplate: (to, t, from) => {
+    const components = templateComponents(t);
+    return send(to, { type: "template", template: { name: t.name, language: { code: t.language }, ...(components.length ? { components } : {}) } }, from);
+  },
   async downloadMedia(mediaId) {
     const meta = await graph<{ url: string; mime_type: string }>(mediaId);
     const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${await credential("WHATSAPP_TOKEN")}` } });
@@ -391,9 +406,15 @@ export type ApprovedTemplate = {
   body: string;
   /** Cuántas variables tiene el cuerpo. */
   params: number;
+  /** Archivo del encabezado que hay que elegir al enviar; null si no tiene o es de texto fijo. */
+  header: FileKind | null;
+  /** Botones de enlace con una parte variable ({{1}} al final de la URL), por posición. */
+  urlButtons: { index: number; text: string; url: string }[];
   /** Por qué Beliapp todavía no puede enviarla; null si se puede. */
   unsupported: string | null;
 };
+
+const HEADER_KIND: Record<string, FileKind> = { IMAGE: "image", VIDEO: "video", DOCUMENT: "document" };
 
 type MetaTemplate = {
   name: string;
@@ -401,12 +422,12 @@ type MetaTemplate = {
   status: string;
   category?: string;
   parameter_format?: string;
-  components?: { type: string; format?: string; text?: string; buttons?: { type: string; url?: string }[] }[];
+  components?: { type: string; format?: string; text?: string; buttons?: { type: string; text?: string; url?: string }[] }[];
 };
 
 const VAR = /\{\{\s*([^}\s]+)\s*\}\}/g;
 
-/** Lee una plantilla de Meta y dice si Beliapp puede enviarla (por ahora, solo variables en el cuerpo). */
+/** Lee una plantilla de Meta: qué hay que llenar al enviarla y si Beliapp puede hacerlo. */
 export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
   const parts = t.components ?? [];
   const body = parts.find((c) => c.type === "BODY")?.text ?? "";
@@ -416,12 +437,12 @@ export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
   let unsupported: string | null = null;
   if (t.parameter_format === "NAMED" || vars.some((v) => !/^\d+$/.test(v))) {
     unsupported = "Usa variables con nombre; por ahora se pueden enviar solo las que usan {{1}}, {{2}}…";
-  } else if (header && header.format !== "TEXT") {
-    unsupported = "Tiene imagen, video o documento en el encabezado; por ahora solo se envían plantillas de texto.";
+  } else if (header && header.format !== "TEXT" && !HEADER_KIND[header.format ?? ""]) {
+    unsupported = "Tiene una ubicación en el encabezado; por ahora no se puede enviar desde aquí.";
   } else if (header?.text && /\{\{/.test(header.text)) {
     unsupported = "Tiene una variable en el encabezado; por ahora solo se llenan las del cuerpo.";
-  } else if (buttons.some((b) => !["QUICK_REPLY", "PHONE_NUMBER", "URL"].includes(b.type) || (b.type === "URL" && b.url && /\{\{/.test(b.url)))) {
-    unsupported = "Tiene un botón con variable o de código; por ahora solo se envían botones fijos.";
+  } else if (buttons.some((b) => !["QUICK_REPLY", "PHONE_NUMBER", "URL"].includes(b.type))) {
+    unsupported = "Tiene un botón de código o de catálogo; por ahora no se puede enviar desde aquí.";
   }
   return {
     name: t.name,
@@ -430,6 +451,8 @@ export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
     category: t.category ?? "",
     body,
     params: vars.length ? Math.max(...vars.map(Number).filter(Number.isFinite)) : 0,
+    header: header ? (HEADER_KIND[header.format ?? ""] ?? null) : null,
+    urlButtons: buttons.flatMap((b, index) => (b.type === "URL" && b.url && /\{\{/.test(b.url) ? [{ index, text: b.text ?? "Enlace", url: b.url }] : [])),
     unsupported,
   };
 }

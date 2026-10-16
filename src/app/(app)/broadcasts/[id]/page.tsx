@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleX, Pause, Play, Send } from "lucide-react";
+import { ArrowLeft, CircleX, Pause, Play, Repeat, Send, Split, Trophy } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { credential } from "@/lib/credentials";
@@ -13,7 +13,7 @@ import {
   type RecipientState,
 } from "@/lib/domain/broadcasts";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, buttonClass, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Callout, Stat } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { cancelBroadcastAction, pauseBroadcastAction, resumeBroadcastAction, sendBroadcastNowAction } from "../actions";
@@ -46,8 +46,10 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
   const b = await db.broadcast.findUnique({ where: { id } });
   if (!b) notFound();
 
+  const group = b.abGroup ? await db.broadcast.findMany({ where: { abGroup: b.abGroup }, orderBy: { name: "asc" } }) : [];
+  const resentFrom = b.resentFromId ? await db.broadcast.findUnique({ where: { id: b.resentFromId }, select: { id: true, name: true } }) : null;
   const [statsMap, recipients, stage, creator, number, mainNumber] = await Promise.all([
-    broadcastStats([b.id]),
+    broadcastStats(group.length ? group.map((g) => g.id) : [b.id]),
     broadcastRecipients(b.id, filter),
     db.stage.findUnique({ where: { id: b.stageId }, include: { funnel: true } }),
     b.createdById ? db.user.findUnique({ where: { id: b.createdById }, select: { name: true } }) : null,
@@ -55,6 +57,14 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
     credential("WHATSAPP_PHONE_NUMBER_ID"),
   ]);
   const s = statsMap.get(b.id) ?? EMPTY_STATS;
+  const unread = s.sent - s.read;
+  // Gana la que más respuestas logra en proporción; con empate, la más leída. Se declara con al menos 20 enviados por lado.
+  const rate = (id: string) => {
+    const x = statsMap.get(id) ?? EMPTY_STATS;
+    return x.sent ? (x.replied * 1000 + x.read) / x.sent : 0;
+  };
+  const decided = group.length > 1 && group.every((g) => (statsMap.get(g.id)?.sent ?? 0) >= 20);
+  const winner = decided ? [...group].sort((x, y) => rate(y.id) - rate(x.id))[0] : null;
   const fromLabel = number ? `${number.label}${number.displayPhone ? ` (${number.displayPhone})` : ""}` : mainNumber ? "el número principal" : null;
 
   return (
@@ -69,6 +79,16 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
         description={
           <>
             Plantilla <span className="font-medium text-slate-800">{b.templateName}</span>
+            {b.headerFileName && ` con ${b.headerFileName}`}
+            {resentFrom && (
+              <>
+                {" "}
+                · reenvío de{" "}
+                <Link href={`/broadcasts/${resentFrom.id}`} className="font-medium text-brand-700 hover:underline">
+                  {resentFrom.name}
+                </Link>
+              </>
+            )}
             {fromLabel && ` · desde ${fromLabel}`} · los leads nuevos quedan en{" "}
             <span className="font-medium text-slate-800">{stage ? `${stage.funnel.name} · ${stage.name}` : "la primera etapa"}</span> · máximo{" "}
             {b.dailyLimit.toLocaleString("es-CL")} por día · creado {dateTime(b.createdAt)}
@@ -102,6 +122,12 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
               </SubmitButton>
             </form>
           )}
+          {(b.status === "DONE" || b.status === "CANCELED") && unread > 0 && (
+            <Link href={`/broadcasts/new?reenviar=${b.id}`} className={buttonClass("secondary")}>
+              <Repeat aria-hidden />
+              Reenviar a quienes no leyeron ({unread.toLocaleString("es-CL")})
+            </Link>
+          )}
           {(b.status === "SCHEDULED" || b.status === "SENDING" || b.status === "PAUSED") && (
             <form action={cancelBroadcastAction.bind(null, b.id)}>
               <SubmitButton variant="ghost-danger" pendingText="Cancelando…" confirm="¿Cancelar el envío? A quienes faltan ya no les llegará.">
@@ -129,6 +155,55 @@ export default async function BroadcastPage({ params, searchParams }: { params: 
             Sale por tandas cada pocos minutos, hasta {b.dailyLimit.toLocaleString("es-CL")} personas por día. Faltan{" "}
             {s.pending.toLocaleString("es-CL")}.
           </Callout>
+        )}
+
+        {group.length > 1 && (
+          <Card className="animate-rise overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+              <Split aria-hidden className="size-4 text-brand-600" />
+              <h2 className="text-sm font-semibold text-slate-900">Prueba A/B</h2>
+              <p className="text-xs text-slate-600">
+                {winner ? "Gana la que logra más respuestas por mensaje enviado." : "Se declara una ganadora cuando cada lado tenga al menos 20 enviados."}
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  <tr>
+                    <th className="px-4 py-2.5">Envío</th>
+                    <th className="px-4 py-2.5">Plantilla</th>
+                    <th className="px-4 py-2.5 text-right">Enviados</th>
+                    <th className="px-4 py-2.5 text-right">Leídos</th>
+                    <th className="px-4 py-2.5 text-right">Respondieron</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {group.map((g) => {
+                    const x = statsMap.get(g.id) ?? EMPTY_STATS;
+                    return (
+                      <tr key={g.id} className={g.id === b.id ? "bg-brand-50/40" : undefined}>
+                        <td className="px-4 py-2.5 font-medium text-slate-900">
+                          <Link href={`/broadcasts/${g.id}`} className="hover:text-brand-700 hover:underline">
+                            {g.name}
+                          </Link>
+                          {winner?.id === g.id && (
+                            <Badge tone="success" className="ml-2">
+                              <Trophy aria-hidden />
+                              Ganadora
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-700">{g.templateName}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{x.sent.toLocaleString("es-CL")}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{pct(x.read, x.sent)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{pct(x.replied, x.sent)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
 
         <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

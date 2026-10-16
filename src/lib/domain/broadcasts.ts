@@ -2,7 +2,10 @@ import { Prisma, type Broadcast, type BroadcastRecipient, type LeadStatus } from
 import { db, isDuplicate } from "../db";
 import { currentCompanyId } from "../tenant";
 import { credential } from "../credentials";
-import { ChannelSendError, cloudApi, type WhatsAppApi } from "../channels/whatsapp";
+import { randomUUID } from "node:crypto";
+import { ChannelSendError, cloudApi, type TemplateMessage, type WhatsAppApi } from "../channels/whatsapp";
+import { fileKind, type FileKind } from "../media";
+import { estimateCost } from "./broadcast-pricing";
 import { parseLocalDateTime } from "../dates";
 import { getChannelSettings } from "./channels";
 import { normalizePhone } from "./contact-import";
@@ -42,9 +45,32 @@ export type RecipientRow = { phone: string; name?: string; values?: Record<strin
 
 export type Audience =
   | { kind: "rows"; rows: RecipientRow[]; countryCode?: string }
-  | { kind: "funnel"; funnelId: string; stageId?: string | null; status?: LeadStatus | "ALL"; tagId?: string | null };
+  | { kind: "funnel"; funnelId: string; stageId?: string | null; status?: LeadStatus | "ALL"; tagId?: string | null }
+  /** Quienes recibieron otro envío y no lo leyeron (ni respondieron). */
+  | { kind: "resend"; broadcastId: string };
 
-export type TemplateRef = { name: string; language: string; body: string; params: number };
+export type TemplateRef = {
+  name: string;
+  language: string;
+  body: string;
+  params: number;
+  /** MARKETING, UTILITY…: para estimar el costo. */
+  category?: string;
+  /** El encabezado pide una imagen, un video o un documento. */
+  header?: FileKind | null;
+  /** Posición de los botones de enlace con parte variable. */
+  urlButtons?: number[];
+};
+
+/** Plantilla con sus datos: el envío normal, o cada lado de una prueba A/B. */
+export type TemplateFill = {
+  template: TemplateRef;
+  variables: VariableMapping[];
+  /** Parte variable de cada botón de enlace, en el orden de `template.urlButtons`. */
+  buttonVariables?: VariableMapping[];
+  /** Archivo de la biblioteca (Configuración → Conocimiento → Archivos) para el encabezado. */
+  headerFileId?: string | null;
+};
 
 export type Exclusions = {
   /** Sin teléfono o con uno que no parece de WhatsApp (o sin código de país). */
@@ -59,7 +85,8 @@ export type Exclusions = {
   missing: number;
 };
 
-export type ResolvedRecipient = { phone: string; name: string; params: string[] };
+/** `fills[i]` son los valores (cuerpo y luego botones) para la plantilla i del envío. */
+export type ResolvedRecipient = { phone: string; name: string; fills: string[][] };
 
 export type Audit = { total: number; excluded: Exclusions; recipients: ResolvedRecipient[] };
 
@@ -98,6 +125,13 @@ async function audienceRows(audience: Audience): Promise<{ rows: { phone: string
       })),
     };
   }
+  if (audience.kind === "resend") {
+    const rows = await db.$queryRaw<{ phone: string; name: string }[]>`
+      SELECT phone, name FROM (${STATE_SQL(await currentCompanyId())} AND r."broadcastId" = ${audience.broadcastId}) s
+      WHERE state IN ('SENT', 'DELIVERED')
+      ORDER BY name`;
+    return { rows };
+  }
   if (!(await db.funnel.count({ where: { id: audience.funnelId } }))) throw new DomainError("Ese embudo no existe.");
   const leads = await db.lead.findMany({
     where: {
@@ -120,7 +154,7 @@ async function audienceRows(audience: Audience): Promise<{ rows: { phone: string
  * A quiénes les llegaría el envío y a quiénes se deja fuera (y por qué). Se calcula igual al
  * revisar (paso 3) y al crear el envío.
  */
-export async function auditAudience(audience: Audience, variables: VariableMapping[], now = new Date()): Promise<Audit> {
+export async function auditAudience(audience: Audience, variableSets: VariableMapping[][], now = new Date()): Promise<Audit> {
   const { rows } = await audienceRows(audience);
   const excluded: Exclusions = { invalid: 0, duplicate: 0, blocked: 0, optedOut: 0, active: 0, missing: 0 };
   const seen = new Set<string>();
@@ -164,23 +198,23 @@ export async function auditAudience(audience: Audience, variables: VariableMappi
       continue;
     }
     const name = r.name || contact?.name || `+${r.phone}`;
-    const params = resolveParams(variables, { name, values: r.values });
-    if (!params) {
+    const fills = variableSets.map((vars) => resolveParams(vars, { name, values: r.values }));
+    if (fills.some((f) => !f)) {
       excluded.missing++;
       continue;
     }
-    recipients.push({ phone: r.phone, name, params });
+    recipients.push({ phone: r.phone, name, fills: fills as string[][] });
   }
   return { total: rows.length, excluded, recipients };
 }
 
 // --- Crear ----------------------------------------------------------------------------------
 
-export type BroadcastInput = {
+export type BroadcastInput = TemplateFill & {
   name: string;
-  template: TemplateRef;
-  variables: VariableMapping[];
   audience: Audience;
+  /** Segunda plantilla para una prueba A/B: la lista se reparte al azar en dos mitades. */
+  variantB?: TemplateFill | null;
   fromPhoneNumberId?: string | null;
   stageId: string;
   tagId?: string | null;
@@ -201,10 +235,39 @@ function scheduleOf(input: BroadcastInput, now = new Date()): Date | null {
   return at;
 }
 
+type HeaderFile = { url: string; mimeType: string; fileName: string };
+
+/** Revisa una plantilla con sus datos y busca el archivo del encabezado. */
+async function validateFill(fill: TemplateFill, label: string): Promise<HeaderFile | null> {
+  const t = fill.template;
+  if (!t.name || !t.language) throw new DomainError(`Elige ${label}.`);
+  if (fill.variables.length !== t.params) throw new DomainError("Indica de dónde sale cada variable de la plantilla.");
+  if ((fill.buttonVariables ?? []).length !== (t.urlButtons ?? []).length) throw new DomainError("Indica el final del enlace de cada botón.");
+  if (!t.header) return null;
+  const file = fill.headerFileId ? await db.mediaFile.findUnique({ where: { id: fill.headerFileId } }) : null;
+  const names = { image: "una imagen", video: "un video", document: "un documento" } as const;
+  if (!file) throw new DomainError(`La plantilla lleva ${names[t.header]} arriba: elige el archivo.`);
+  // WhatsApp solo acepta JPEG o PNG como imagen y MP4 como video.
+  if (t.header !== "document" && fileKind(file.mimeType) !== t.header) {
+    throw new DomainError(t.header === "image" ? "La imagen tiene que ser JPG o PNG." : "El video tiene que ser MP4.");
+  }
+  return { url: file.url, mimeType: file.mimeType, fileName: file.fileName };
+}
+
+/** Variables del cuerpo y luego las de los botones: así se guardan juntas por persona. */
+const allVariables = (f: TemplateFill) => [...f.variables, ...(f.buttonVariables ?? [])];
+const fills = (input: BroadcastInput) => [input, ...(input.variantB ? [input.variantB] : [])];
+
 async function validate(input: BroadcastInput) {
   if (!input.name.trim()) throw new DomainError("Ponle un nombre al envío.");
-  if (!input.template.name || !input.template.language) throw new DomainError("Elige una plantilla aprobada.");
-  if (input.variables.length !== input.template.params) throw new DomainError("Indica de dónde sale cada variable de la plantilla.");
+  const headers = [await validateFill(input, "una plantilla aprobada")];
+  if (input.variantB) {
+    headers.push(await validateFill(input.variantB, "la segunda plantilla de la prueba A/B"));
+    const b = input.variantB.template;
+    if (b.name === input.template.name && b.language === input.template.language) {
+      throw new DomainError("Para la prueba A/B elige dos plantillas distintas.");
+    }
+  }
   if (!Number.isInteger(input.dailyLimit) || input.dailyLimit < 1 || input.dailyLimit > 1_000_000) {
     throw new DomainError("El máximo por día tiene que ser un número mayor que cero.");
   }
@@ -213,52 +276,85 @@ async function validate(input: BroadcastInput) {
   if (input.fromPhoneNumberId && !(await whatsappPhoneIds()).includes(input.fromPhoneNumberId)) {
     throw new DomainError("Ese número de WhatsApp no está conectado.");
   }
-  return { scheduledAt: scheduleOf(input) };
+  return { scheduledAt: scheduleOf(input), headers };
+}
+
+/** Reparte la lista al azar: con A/B, la mitad recibe cada plantilla (`fill` 0 o 1). */
+function assignVariants(recipients: ResolvedRecipient[], variants: number) {
+  const order = recipients.map((r) => ({ r, k: Math.random() })).sort((a, b) => a.k - b.k);
+  return order.map(({ r }, i) => ({ ...r, variant: i % variants }));
 }
 
 /** Revisión del paso 3: sin guardar nada. */
 export async function previewBroadcast(input: BroadcastInput) {
   await validate(input);
-  const audit = await auditAudience(input.audience, input.variables);
+  const audit = await auditAudience(input.audience, fills(input).map(allVariables));
   const first = audit.recipients[0];
+  const sample = (f: TemplateFill, i: number) => (first ? renderBody(f.template.body, first.fills[i].slice(0, f.template.params)) : null);
+  const assigned = assignVariants(audit.recipients, fills(input).length);
   return {
     total: audit.total,
     excluded: audit.excluded,
     count: audit.recipients.length,
-    sample: first ? { name: first.name, body: renderBody(input.template.body, first.params) } : null,
+    sample: first ? { name: first.name, body: sample(input, 0)!, bodyB: input.variantB ? sample(input.variantB, 1) : null } : null,
+    /** USD aproximados según el país de cada persona y la categoría de la plantilla. */
+    cost: estimateCost(assigned.map((r) => ({ phone: r.phone, category: fills(input)[r.variant].template.category ?? "MARKETING" }))),
   };
 }
 
 /** Crea el envío con sus destinatarios; queda enviándose o, si tiene fecha, programado (ver runBroadcasts). */
 export async function createBroadcast(input: BroadcastInput, userId: string): Promise<Broadcast> {
-  const { scheduledAt } = await validate(input);
-  const { recipients } = await auditAudience(input.audience, input.variables);
+  const { scheduledAt, headers } = await validate(input);
+  const { recipients } = await auditAudience(input.audience, fills(input).map(allVariables));
   if (!recipients.length) throw new DomainError("No queda nadie a quien enviarle: revisa los números y las exclusiones.");
   if (recipients.length > MAX_RECIPIENTS) {
     throw new DomainError(`Un envío puede tener hasta ${MAX_RECIPIENTS.toLocaleString("es-CL")} personas: divide la lista.`);
   }
+  const variants = fills(input);
+  if (input.variantB && recipients.length < 2) throw new DomainError("Para una prueba A/B hacen falta al menos dos personas.");
+  const assigned = assignVariants(recipients, variants.length);
+  const abGroup = input.variantB ? randomUUID() : null;
   return db.$transaction(
     async (tx) => {
-      const broadcast = await tx.broadcast.create({
-        data: {
-          name: input.name.trim(),
-          templateName: input.template.name,
-          templateLanguage: input.template.language,
-          templateText: input.template.body,
-          fromPhoneNumberId: input.fromPhoneNumberId || null,
-          stageId: input.stageId,
-          tagId: input.tagId || null,
-          dailyLimit: input.dailyLimit,
-          createdById: userId,
-          ...(scheduledAt ? { status: "SCHEDULED" as const, scheduledAt } : {}),
-        },
-      });
-      for (let i = 0; i < recipients.length; i += 1000) {
-        await tx.broadcastRecipient.createMany({
-          data: recipients.slice(i, i + 1000).map((r) => ({ broadcastId: broadcast.id, ...r })),
+      const created: Broadcast[] = [];
+      for (const [v, fill] of variants.entries()) {
+        const header = headers[v];
+        const broadcast = await tx.broadcast.create({
+          data: {
+            name: input.name.trim() + (abGroup ? ` · ${v ? "B" : "A"}` : ""),
+            templateName: fill.template.name,
+            templateLanguage: fill.template.language,
+            templateText: fill.template.body,
+            templateCategory: fill.template.category ?? "",
+            headerUrl: header?.url ?? null,
+            headerMimeType: header?.mimeType ?? null,
+            headerFileName: header?.fileName ?? null,
+            buttonIndexes: fill.template.urlButtons ?? [],
+            abGroup,
+            resentFromId: input.audience.kind === "resend" ? input.audience.broadcastId : null,
+            fromPhoneNumberId: input.fromPhoneNumberId || null,
+            stageId: input.stageId,
+            tagId: input.tagId || null,
+            dailyLimit: input.dailyLimit,
+            createdById: userId,
+            ...(scheduledAt ? { status: "SCHEDULED" as const, scheduledAt } : {}),
+          },
         });
+        created.push(broadcast);
+        const mine = assigned.filter((r) => r.variant === v);
+        for (let i = 0; i < mine.length; i += 1000) {
+          await tx.broadcastRecipient.createMany({
+            data: mine.slice(i, i + 1000).map((r) => ({
+              broadcastId: broadcast.id,
+              phone: r.phone,
+              name: r.name,
+              params: r.fills[v].slice(0, fill.template.params),
+              buttonParams: r.fills[v].slice(fill.template.params),
+            })),
+          });
+        }
       }
-      return broadcast;
+      return created[0];
     },
     { timeout: 60_000 },
   );
@@ -266,29 +362,37 @@ export async function createBroadcast(input: BroadcastInput, userId: string): Pr
 
 // --- Pausar, seguir, cancelar -----------------------------------------------------------
 
+/** Una prueba A/B se maneja junta: pausar, seguir o cancelar una mitad hace lo mismo con la otra. */
+async function withGroup(id: string): Promise<string[]> {
+  const b = await db.broadcast.findUnique({ where: { id }, select: { abGroup: true } });
+  if (!b?.abGroup) return [id];
+  return (await db.broadcast.findMany({ where: { abGroup: b.abGroup }, select: { id: true } })).map((x) => x.id);
+}
+
 export async function pauseBroadcast(id: string) {
-  await db.broadcast.updateMany({ where: { id, status: "SENDING" }, data: { status: "PAUSED", note: null } });
+  await db.broadcast.updateMany({ where: { id: { in: await withGroup(id) }, status: "SENDING" }, data: { status: "PAUSED", note: null } });
 }
 
 export async function resumeBroadcast(id: string) {
-  await db.broadcast.updateMany({ where: { id, status: "PAUSED" }, data: { status: "SENDING", note: null } });
+  await db.broadcast.updateMany({ where: { id: { in: await withGroup(id) }, status: "PAUSED" }, data: { status: "SENDING", note: null } });
 }
 
 /** Un envío programado parte ya, sin esperar su hora. */
 export async function sendBroadcastNow(id: string) {
-  await db.broadcast.updateMany({ where: { id, status: "SCHEDULED" }, data: { status: "SENDING", scheduledAt: new Date() } });
+  await db.broadcast.updateMany({ where: { id: { in: await withGroup(id) }, status: "SCHEDULED" }, data: { status: "SENDING", scheduledAt: new Date() } });
 }
 
 /** Cancela lo que falta por enviar; lo ya enviado queda. */
 export async function cancelBroadcast(id: string) {
+  const ids = await withGroup(id);
   await db.$transaction(async (tx) => {
     const { count } = await tx.broadcast.updateMany({
-      where: { id, status: { in: ["SCHEDULED", "SENDING", "PAUSED"] } },
+      where: { id: { in: ids }, status: { in: ["SCHEDULED", "SENDING", "PAUSED"] } },
       data: { status: "CANCELED", finishedAt: new Date() },
     });
     if (count) {
       await tx.broadcastRecipient.updateMany({
-        where: { broadcastId: id, status: "PENDING" },
+        where: { broadcastId: { in: ids }, status: "PENDING", broadcast: { status: "CANCELED" } },
         data: { status: "SKIPPED", error: "Se canceló el envío." },
       });
     }
@@ -434,12 +538,19 @@ async function sendRecipient(b: Broadcast, r: BroadcastRecipient, api: WhatsAppA
       await db.contact.updateMany({ where: { channel: "WHATSAPP", externalId: r.phone }, data: { waPhoneNumberId: b.fromPhoneNumberId } });
     }
     const message = await db.message.create({
-      data: { leadId: lead.leadId, author: "USER", userId: b.createdById, body: renderBody(b.templateText, r.params), deliveryStatus: "SENDING" },
+      data: {
+        leadId: lead.leadId,
+        author: "USER",
+        userId: b.createdById,
+        body: renderBody(b.templateText, r.params),
+        deliveryStatus: "SENDING",
+        ...(b.headerUrl ? { mediaUrl: b.headerUrl, mediaType: b.headerMimeType, mediaName: b.headerFileName } : {}),
+      },
     });
     messageId = message.id;
     await db.broadcastRecipient.update({ where: { id: r.id }, data: { leadId: lead.leadId, messageId } });
     if (!api.sendTemplate) throw new ChannelSendError("WhatsApp no permite enviar plantillas con esta conexión.");
-    const externalId = await api.sendTemplate(r.phone, { name: b.templateName, language: b.templateLanguage, params: r.params }, b.fromPhoneNumberId ?? undefined);
+    const externalId = await api.sendTemplate(r.phone, templateMessage(b, r.params, r.buttonParams), b.fromPhoneNumberId ?? undefined);
     await markSent(r.id, messageId, externalId);
     return "sent";
   } catch (err) {
@@ -459,6 +570,22 @@ async function sendRecipient(b: Broadcast, r: BroadcastRecipient, api: WhatsAppA
     ]);
     return "failed";
   }
+}
+
+/** Lo que va a WhatsApp: la plantilla con los valores de la persona, el archivo y los botones. */
+function templateMessage(
+  b: Pick<Broadcast, "templateName" | "templateLanguage" | "headerUrl" | "headerMimeType" | "headerFileName" | "buttonIndexes">,
+  params: string[],
+  buttonParams: string[],
+): TemplateMessage {
+  const kind = b.headerUrl ? fileKind(b.headerMimeType) : null;
+  return {
+    name: b.templateName,
+    language: b.templateLanguage,
+    params,
+    header: b.headerUrl && kind && kind !== "audio" ? { kind, url: b.headerUrl, fileName: b.headerFileName ?? undefined } : null,
+    buttons: b.buttonIndexes.map((index, i) => ({ index, text: buttonParams[i] ?? "" })),
+  };
 }
 
 /** Ya salió: aunque no se pueda guardar el id de WhatsApp, cuenta como enviado (no se reintenta). */
@@ -576,11 +703,11 @@ export async function broadcastRecipients(broadcastId: string, filter: Recipient
  * para ver cómo llega. No crea contacto, lead ni mensaje en el chat.
  */
 export async function sendBroadcastTest(input: BroadcastInput, to: string, { api = cloudApi }: { api?: WhatsAppApi } = {}) {
-  await validate(input);
+  const { headers } = await validate(input);
   const phone = normalizePhone(to, input.audience.kind === "rows" ? (input.audience.countryCode ?? "") : "");
   if (!phone) throw new DomainError("Escribe tu número de WhatsApp con código de país, ej. +56 9 1234 5678.");
-  const { recipients } = await auditAudience(input.audience, input.variables);
-  const params = recipients[0]?.params ?? resolveParams(input.variables, { name: "María" });
+  const { recipients } = await auditAudience(input.audience, [allVariables(input)]);
+  const params = recipients[0]?.fills[0] ?? resolveParams(allVariables(input), { name: "María" });
   if (!params) throw new DomainError("Para la prueba hace falta al menos una persona en la lista con todos los datos.");
   if (api === cloudApi) {
     const missing = await missingSendCredentials(input.fromPhoneNumberId || null);
@@ -588,10 +715,23 @@ export async function sendBroadcastTest(input: BroadcastInput, to: string, { api
   }
   if (!api.sendTemplate) throw new DomainError("WhatsApp no permite enviar plantillas con esta conexión.");
   try {
-    await api.sendTemplate(phone, { name: input.template.name, language: input.template.language, params }, input.fromPhoneNumberId || undefined);
+    const header = headers[0];
+    const message = templateMessage(
+      {
+        templateName: input.template.name,
+        templateLanguage: input.template.language,
+        headerUrl: header?.url ?? null,
+        headerMimeType: header?.mimeType ?? null,
+        headerFileName: header?.fileName ?? null,
+        buttonIndexes: input.template.urlButtons ?? [],
+      },
+      params.slice(0, input.template.params),
+      params.slice(input.template.params),
+    );
+    await api.sendTemplate(phone, message, input.fromPhoneNumberId || undefined);
   } catch (err) {
     if (err instanceof ChannelSendError) throw new DomainError(err.message);
     throw err;
   }
-  return { phone: `+${phone}`, body: renderBody(input.template.body, params) };
+  return { phone: `+${phone}`, body: renderBody(input.template.body, params.slice(0, input.template.params)) };
 }

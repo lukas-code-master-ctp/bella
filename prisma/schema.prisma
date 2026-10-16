@@ -957,6 +957,18 @@ model Broadcast {
   templateLanguage  String
   /// Cuerpo de la plantilla con {{1}}, {{2}}…: así se guarda cada mensaje en el chat.
   templateText      String
+  /// MARKETING, UTILITY…: con esto se estima el costo.
+  templateCategory  String          @default("")
+  /// Archivo del encabezado (imagen, video o documento) si la plantilla lo pide.
+  headerUrl         String?
+  headerMimeType    String?
+  headerFileName    String?
+  /// Posición de los botones de enlace con parte variable; su valor va en BroadcastRecipient.buttonParams.
+  buttonIndexes     Int[]           @default([])
+  /// Prueba A/B: los envíos de la misma prueba comparten este id y se reparten la lista.
+  abGroup           String?
+  /// Reenvío a quienes no leyeron este otro envío.
+  resentFromId      String?
   /// phone_number_id que envía; null usa WHATSAPP_PHONE_NUMBER_ID.
   fromPhoneNumberId String?
   /// Etapa donde quedan quienes no tenían un lead abierto.
@@ -975,6 +987,7 @@ model Broadcast {
 
   @@index([companyId, createdAt])
   @@index([companyId, status])
+  @@index([abGroup])
 }
 
 /// Una persona de un envío masivo. Al enviarle queda con contacto y lead (el abierto que ya
@@ -989,6 +1002,8 @@ model BroadcastRecipient {
   name        String
   /// Valores de las variables {{1}}, {{2}}… para esta persona.
   params      String[]
+  /// Parte variable de cada botón de enlace, en el orden de Broadcast.buttonIndexes.
+  buttonParams String[]                @default([])
   status      BroadcastRecipientStatus @default(PENDING)
   /// Motivo cuando falló o se saltó.
   error       String?
