@@ -1,4 +1,5 @@
 import { Download, Upload, UsersRound } from "lucide-react";
+import { TIME_ZONE } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { findDuplicateGroups } from "@/lib/domain/contact-import";
 import { buttonClass, EmptyState, PageHeader } from "@/components/ui";
@@ -68,7 +69,7 @@ export default async function ContactsSettingsPage() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {groups.slice(0, 50).map((g) => (
-              <DuplicateGroup key={g[0].id} contacts={g.map((c) => ({ ...c, createdAt: c.createdAt.toLocaleDateString("es-CL") }))} />
+              <DuplicateGroup key={g[0].id} contacts={g.map((c) => ({ ...c, createdAt: c.createdAt.toLocaleDateString("es-CL", { timeZone: TIME_ZONE }) }))} />
             ))}
           </ul>
         )}

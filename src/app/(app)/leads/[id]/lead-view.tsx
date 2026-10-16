@@ -11,7 +11,7 @@ import { stageOptions } from "@/lib/domain/funnels";
 import { formatChileDateTime, getFollowUpSettings } from "@/lib/domain/follow-ups";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { sourceLabel } from "@/lib/domain/attribution";
-import { formatAgo, formatLocal, startOfLocalDay, toLocalInput } from "@/lib/dates";
+import { formatAgo, formatLocal, startOfLocalDay, TIME_ZONE, toLocalInput } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { Avatar, Badge, Card, inputClass, TagPill } from "@/components/ui";
@@ -82,7 +82,7 @@ function describe(data: Record<string, unknown>) {
 }
 
 const time = (d: Date) =>
-  d.toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  d.toLocaleString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TIME_ZONE });
 
 /**
  * Conversación y ficha de un lead. Se usa en su página (/leads/[id]) y como panel dentro de Chats
