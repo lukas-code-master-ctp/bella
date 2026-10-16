@@ -1,20 +1,29 @@
 import Link from "next/link";
-import { GraduationCap, MessageSquareText, PencilLine } from "lucide-react";
+import { GraduationCap, Merge, MessageSquareText, PencilLine } from "lucide-react";
 import { listLessons } from "@/lib/domain/ai-lessons";
 import { formatChileDateTime } from "@/lib/domain/follow-ups";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { Disclosure, StatusPill } from "@/components/settings-ui";
+import { IntegratePanel } from "./integrate-panel";
 import { LessonForm } from "./lesson-form";
+
+// Integrar reescribe las instrucciones completas con la IA: puede tardar más que el límite normal.
+export const maxDuration = 300;
 
 const STATUS = {
   PENDING: { title: "Por revisar", hint: "Nada de esto llega a los clientes hasta que lo apruebes." },
   ACTIVE: { title: "Activos", hint: "La IA los sigue en todas las conversaciones, por sobre las instrucciones si chocan." },
   PAUSED: { title: "Pausados", hint: "Aprobados antes, pero apagados." },
+  INTEGRATED: {
+    title: "Integrados en las instrucciones",
+    hint: "Ya son parte del texto de Configuración → Asistente, así que no se envían aparte. Quedan aquí como historial.",
+  },
 } as const;
 
 export default async function LessonsPage() {
   const lessons = await listLessons();
-  const groups = (["PENDING", "ACTIVE", "PAUSED"] as const)
+  const activeCount = lessons.filter((l) => l.status === "ACTIVE").length;
+  const groups = (["PENDING", "ACTIVE", "PAUSED", "INTEGRATED"] as const)
     .map((status) => ({ status, lessons: lessons.filter((l) => l.status === status) }))
     .filter((g) => g.lessons.length);
 
@@ -42,6 +51,21 @@ export default async function LessonsPage() {
             </h2>
             <p className="text-sm text-slate-600">{STATUS[g.status].hint}</p>
           </div>
+          {g.status === "INTEGRATED" ? (
+            <Card className="divide-y divide-slate-100">
+              {g.lessons.map((l) => (
+                <div key={l.id} className="flex items-start gap-3 p-4">
+                  <Merge aria-hidden className="mt-0.5 size-4 shrink-0 text-slate-400" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-slate-800">{l.rule}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {l.createdBy || "Equipo"} · integrado el {formatChileDateTime(l.integratedAt ?? l.updatedAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          ) : (
           <div className="stagger space-y-3">
             {g.lessons.map((l) => (
               <Disclosure
@@ -92,6 +116,8 @@ export default async function LessonsPage() {
               </Disclosure>
             ))}
           </div>
+          )}
+          {g.status === "ACTIVE" && <IntegratePanel activeCount={activeCount} />}
         </section>
       ))}
     </div>
