@@ -15,6 +15,7 @@ import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { loadRunView } from "@/lib/ai/trace";
 import { setContactFields } from "@/lib/domain/fields";
+import { createLesson, draftLesson, type LessonDraft } from "@/lib/domain/ai-lessons";
 import {
   addTag,
   closeLead,
@@ -227,6 +228,54 @@ export async function refreshInsightsAction(leadId: string): Promise<string | nu
 export async function getAgentRunAction(leadId: string, messageId: string) {
   await authorize(leadId);
   return loadRunView(leadId, messageId);
+}
+
+export type CorrectionState = { error: string | null; feedback: string; draft: LessonDraft | null; saved: boolean };
+
+async function authorizeAiMessage(leadId: string, messageId: string) {
+  const { user } = await authorize(leadId);
+  const message = await db.message.findUnique({ where: { id: messageId } });
+  if (!message || message.leadId !== leadId || message.author !== "AI") throw new Error("Mensaje no encontrado.");
+  return user;
+}
+
+/** Corregir una respuesta de la IA, paso 1: la IA redacta la regla a partir de la corrección. */
+export async function draftLessonAction(leadId: string, messageId: string, _prev: CorrectionState, form: FormData): Promise<CorrectionState> {
+  await authorizeAiMessage(leadId, messageId);
+  const feedback = String(form.get("feedback") ?? "").trim();
+  const failed = (error: string) => ({ error, feedback, draft: null, saved: false });
+  const missing = await missingKeyMessage((await getAiConfig()).provider);
+  if (missing) return failed(missing);
+  try {
+    const { conversation: _c, leadId: _l, ...draft } = await draftLesson({ messageId, feedback });
+    return { error: null, feedback, draft, saved: false };
+  } catch (e) {
+    if (e instanceof DomainError) return failed(e.message);
+    console.error("[aprendizajes] redactar regla:", e);
+    return failed("La IA no pudo redactar la regla. Intenta de nuevo.");
+  }
+}
+
+/** Paso 2: guarda la regla (editada o no) como aprendizaje pendiente de aprobación. */
+export async function saveLessonAction(leadId: string, messageId: string, prev: CorrectionState, form: FormData): Promise<CorrectionState> {
+  const user = await authorizeAiMessage(leadId, messageId);
+  const str = (key: string) => String(form.get(key) ?? "");
+  try {
+    await createLesson({
+      messageId,
+      rule: str("rule"),
+      goodExample: str("goodExample"),
+      badExample: str("badExample"),
+      feedback: str("feedback"),
+      conflict: str("conflict"),
+      createdBy: user.name,
+    });
+  } catch (e) {
+    if (e instanceof DomainError) return { ...prev, error: e.message };
+    throw e;
+  }
+  revalidatePath("/settings/lessons");
+  return { ...prev, error: null, saved: true };
 }
 
 /** Bloquea al contacto: cierra sus leads abiertos y descarta sus mensajes nuevos. */

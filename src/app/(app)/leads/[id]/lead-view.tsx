@@ -224,6 +224,7 @@ export async function LeadView({
           userName={user.name}
           simulator={lead.contact.channel === "SIMULATOR"}
           blocked={Boolean(lead.contact.blockedAt)}
+          isAdmin={user.role === "ADMIN"}
           messages={lead.messages.map((m) => ({
             id: m.id,
             author: m.author,

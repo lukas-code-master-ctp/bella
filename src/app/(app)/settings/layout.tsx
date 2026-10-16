@@ -1,5 +1,6 @@
-import { Archive, ListChecks, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
+import { Archive, GraduationCap, ListChecks, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
+import { pendingLessonCount } from "@/lib/domain/ai-lessons";
 import { NavLink } from "../nav-link";
 import { ScrollActiveIntoView } from "./scroll-active";
 
@@ -11,6 +12,7 @@ const GROUPS = [
       ["/settings/assistant", "Asistente", <Bot key="i" />],
       ["/settings/ai-operation", "Funcionamiento IA", <Power key="i" />],
       ["/settings/knowledge", "Conocimiento", <BookOpen key="i" />],
+      ["/settings/lessons", "Aprendizajes", <GraduationCap key="i" />],
       ["/settings/ab-tests", "Pruebas A/B", <FlaskConical key="i" />],
     ],
   ],
@@ -54,6 +56,7 @@ const OWNER_GROUP = ["Beliapp", [["/settings/companies", "Empresas", <Building2 
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdmin();
+  const pendingLessons = await pendingLessonCount();
   const groups = user.superadmin ? [...GROUPS, OWNER_GROUP] : GROUPS;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[220px_minmax(0,1fr)] lg:gap-8">
@@ -64,7 +67,20 @@ export default async function SettingsLayout({ children }: { children: React.Rea
             <div key={group} role="group" aria-label={group} className="flex gap-1 md:flex-col md:gap-0.5">
               <p className="hidden px-3 pb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 md:block">{group}</p>
               {tabs.map(([href, label, icon]) => (
-                <NavLink key={href} href={href} icon={icon} label={label} exact={href === "/settings"} />
+                <NavLink
+                  key={href}
+                  href={href}
+                  icon={icon}
+                  label={label}
+                  exact={href === "/settings"}
+                  badge={
+                    href === "/settings/lessons" && pendingLessons > 0 ? (
+                      <span title="Aprendizajes por revisar" className="rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold tabular-nums text-amber-800">
+                        {pendingLessons}
+                      </span>
+                    ) : undefined
+                  }
+                />
               ))}
             </div>
           ))}
