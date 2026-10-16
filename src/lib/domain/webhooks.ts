@@ -2,6 +2,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import type { Prisma } from "@prisma/client";
+import { decryptValue, encryptValue } from "../credentials";
 import { db } from "../db";
 import { DomainError } from "./leads";
 
@@ -70,12 +71,62 @@ async function assertPublicHost(url: string) {
   if (addresses.some((a) => isInternalIp(a.address))) throw new Error("La URL apunta a una red interna.");
 }
 
-export async function createWebhook(input: { name: string; url: string; stageId: string }) {
+/** Cabeceras que Beliapp ya pone o que no tiene sentido reemplazar. */
+const RESERVED_HEADERS = /^(content-type|content-length|host|user-agent|x-beliapp-.*|x-bella-.*)$/i;
+
+/**
+ * "X-API-Key: abc" → { name, value }, o lanza DomainError. Vacío = sin cabecera. Sirve para que el
+ * otro sistema (otro CRM, un ERP) autentique a Beliapp con su propia API key, además de la firma.
+ */
+export function parseAuthHeader(raw: string): { name: string; value: string } | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const i = text.indexOf(":");
+  const name = i > 0 ? text.slice(0, i).trim() : "";
+  const value = i > 0 ? text.slice(i + 1).trim() : "";
+  if (!/^[A-Za-z0-9-]+$/.test(name) || !value || /[\r\n]/.test(value)) {
+    throw new DomainError('La cabecera debe tener la forma "Nombre: valor", por ejemplo "X-API-Key: abc123".');
+  }
+  if (RESERVED_HEADERS.test(name)) throw new DomainError(`La cabecera ${name} la pone Beliapp; usa otro nombre.`);
+  return { name, value };
+}
+
+/** Nombre de la cabecera guardada (sin el valor), para mostrarla en Configuración. */
+export function authHeaderName(stored: string | null): string | null {
+  if (!stored) return null;
+  const plain = decryptValue(stored);
+  return plain ? plain.slice(0, plain.indexOf(":")) : null;
+}
+
+function authHeaderEntry(stored: string | null): Record<string, string> {
+  if (!stored) return {};
+  const plain = decryptValue(stored);
+  const i = plain?.indexOf(":") ?? -1;
+  return plain && i > 0 ? { [plain.slice(0, i)]: plain.slice(i + 1) } : {};
+}
+
+export async function createWebhook(input: { name: string; url: string; stageId: string; authHeader?: string }) {
   const name = input.name.trim();
   if (!name) throw new DomainError("Ponle un nombre al webhook.");
+  const auth = parseAuthHeader(input.authHeader ?? "");
   await db.stage.findUniqueOrThrow({ where: { id: input.stageId } });
   return db.webhook.create({
-    data: { name, url: normalizeWebhookUrl(input.url), stageId: input.stageId, secret: newWebhookSecret() },
+    data: {
+      name,
+      url: normalizeWebhookUrl(input.url),
+      stageId: input.stageId,
+      secret: newWebhookSecret(),
+      authHeader: auth ? encryptValue(`${auth.name}:${auth.value}`) : null,
+    },
+  });
+}
+
+/** Cambia o quita (texto vacío) la cabecera de autenticación de un webhook ya creado. */
+export async function setWebhookAuthHeader(id: string, raw: string) {
+  const auth = parseAuthHeader(raw);
+  return db.webhook.update({
+    where: { id },
+    data: { authHeader: auth ? encryptValue(`${auth.name}:${auth.value}`) : null },
   });
 }
 
@@ -189,7 +240,7 @@ type PostResult = { ok: true; httpStatus: number } | { ok: false; httpStatus: nu
 
 async function post(
   send: WebhookSender,
-  webhook: { url: string; secret: string },
+  webhook: { url: string; secret: string; authHeader: string | null },
   deliveryId: string,
   payload: unknown,
 ): Promise<PostResult> {
@@ -199,6 +250,7 @@ async function post(
     const res = await send(webhook.url, {
       body,
       headers: {
+        ...authHeaderEntry(webhook.authHeader),
         "Content-Type": "application/json",
         "User-Agent": "Beliapp-Webhooks/1",
         "X-Beliapp-Event": WEBHOOK_EVENT,

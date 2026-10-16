@@ -2,7 +2,16 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { createLead, moveStage } from "@/lib/domain/leads";
-import { createWebhook, deliverPendingWebhooks, httpSender, isInternalIp, sendTestWebhook, type WebhookSender } from "@/lib/domain/webhooks";
+import {
+  authHeaderName,
+  createWebhook,
+  deliverPendingWebhooks,
+  httpSender,
+  isInternalIp,
+  sendTestWebhook,
+  setWebhookAuthHeader,
+  type WebhookSender,
+} from "@/lib/domain/webhooks";
 import { seedFunnel } from "./factories";
 
 // Sin DNS en las pruebas: un nombre que resuelve a la red interna.
@@ -21,6 +30,30 @@ function fakeSender(status = 200) {
 }
 
 describe("webhooks al entrar a una etapa", () => {
+  it("envía la cabecera de autenticación guardada cifrada, y se puede cambiar o quitar", async () => {
+    const [, calificado] = await seedFunnel();
+    const hook = await createWebhook({ name: "Cierra", url: LOCAL, stageId: calificado.id, authHeader: "X-API-Key:  ctp_abc123 " });
+    expect(hook.authHeader).not.toContain("ctp_abc123");
+    expect(authHeaderName(hook.authHeader)).toBe("X-API-Key");
+
+    const { send, calls } = fakeSender();
+    await sendTestWebhook(hook.id, send);
+    expect(calls[0].headers["X-API-Key"]).toBe("ctp_abc123");
+    expect(calls[0].headers["Content-Type"]).toBe("application/json");
+
+    await setWebhookAuthHeader(hook.id, "Authorization: Bearer xyz");
+    await sendTestWebhook(hook.id, send);
+    expect(calls[1].headers.Authorization).toBe("Bearer xyz");
+    expect(calls[1].headers["X-API-Key"]).toBeUndefined();
+
+    await setWebhookAuthHeader(hook.id, "");
+    await sendTestWebhook(hook.id, send);
+    expect(calls[2].headers.Authorization).toBeUndefined();
+
+    await expect(setWebhookAuthHeader(hook.id, "sin dos puntos")).rejects.toThrow("Nombre: valor");
+    await expect(setWebhookAuthHeader(hook.id, "Content-Type: text/plain")).rejects.toThrow("la pone Beliapp");
+  });
+
   it("envía el lead firmado al entrar a la etapa, con la etapa anterior", async () => {
     const [nuevo, calificado] = await seedFunnel();
     const hook = await createWebhook({ name: "Calendario", url: LOCAL, stageId: calificado.id });
