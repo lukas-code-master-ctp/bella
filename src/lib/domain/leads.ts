@@ -1,6 +1,7 @@
 import type { Actor, Channel, Prisma } from "@prisma/client";
 import { db } from "../db";
 import { deliverPendingPush } from "../push";
+import { getSetting } from "../settings";
 import { applyAssignment } from "./assignment";
 import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
 import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
@@ -14,6 +15,13 @@ export type ActorRef = { actor: Actor; userId?: string | null };
 type Tx = Prisma.TransactionClient;
 
 export class DomainError extends Error {}
+
+/** Etapas donde entrar cierra el lead como ganado (Configuración → Cierre automático). */
+export type WonStagesSettings = { enabled: boolean; stageIds: string[] };
+
+export async function getWonStagesSettings(): Promise<WonStagesSettings> {
+  return { enabled: false, stageIds: [], ...(await getSetting<Partial<WonStagesSettings>>("wonStages", {})) };
+}
 
 /**
  * Crea contacto + lead en la primera etapa del funnel. Con `contactId`, el lead es una nueva
@@ -95,6 +103,10 @@ export async function moveStageTx(
   if (stage.requiresHuman) await notifyHumanStageTx(tx, leadId, reason, by.userId);
   await queueQualifiedTx(tx, leadId, stageId);
   await queueStageWebhooksTx(tx, leadId, stage, lead.stage);
+  const won = await getWonStagesSettings();
+  if (updated.status === "OPEN" && won.enabled && won.stageIds.includes(stageId)) {
+    return closeLeadTx(tx, leadId, "WON", by, {});
+  }
   return updated;
 }
 
@@ -167,32 +179,40 @@ export async function closeLead(
   if (outcome === "LOST" && !details.lostReason?.trim()) {
     throw new DomainError("Indica el motivo de pérdida.");
   }
-  const closed = await db.$transaction(async (tx) => {
-    const lead = await tx.lead.update({
-      where: { id: leadId },
-      data: {
-        status: outcome,
-        closedAt: new Date(),
-        aiEnabled: false,
-        amount: outcome === "WON" ? (details.amount ?? null) : null,
-        lostReason: outcome === "LOST" ? details.lostReason!.trim() : null,
-      },
-    });
-    await tx.leadEvent.create({
-      data: {
-        leadId,
-        type: outcome,
-        actor: by.actor,
-        userId: by.userId ?? null,
-        reason: outcome === "LOST" ? details.lostReason : null,
-        data: { amount: details.amount ?? null },
-      },
-    });
-    if (outcome === "WON") await queuePurchaseTx(tx, leadId, lead.amount);
-    return lead;
-  });
+  const closed = await db.$transaction((tx) => closeLeadTx(tx, leadId, outcome, by, details));
   await deliverPendingConversions();
   return closed;
+}
+
+export async function closeLeadTx(
+  tx: Tx,
+  leadId: string,
+  outcome: "WON" | "LOST",
+  by: ActorRef,
+  details: { amount?: number | null; lostReason?: string | null },
+) {
+  const lead = await tx.lead.update({
+    where: { id: leadId },
+    data: {
+      status: outcome,
+      closedAt: new Date(),
+      aiEnabled: false,
+      amount: outcome === "WON" ? (details.amount ?? null) : null,
+      lostReason: outcome === "LOST" ? details.lostReason!.trim() : null,
+    },
+  });
+  await tx.leadEvent.create({
+    data: {
+      leadId,
+      type: outcome,
+      actor: by.actor,
+      userId: by.userId ?? null,
+      reason: outcome === "LOST" ? details.lostReason : null,
+      data: { amount: details.amount ?? null },
+    },
+  });
+  if (outcome === "WON") await queuePurchaseTx(tx, leadId, lead.amount);
+  return lead;
 }
 
 export async function reopenLead(leadId: string, by: ActorRef) {

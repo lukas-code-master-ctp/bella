@@ -1,17 +1,19 @@
-import { Archive, CalendarX2, History, Hourglass } from "lucide-react";
+import { Archive, CalendarX2, History, Hourglass, Trophy } from "lucide-react";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { getSetting } from "@/lib/settings";
 import { effectiveDays, getAutoCloseSettings, type AutoCloseRun } from "@/lib/domain/auto-close";
+import { getWonStagesSettings } from "@/lib/domain/leads";
 import { Field, inputClass, PageHeader } from "@/components/ui";
 import { Callout, Chip, Panel, PanelBody, PanelFooter, Stat, StatusPill } from "@/components/settings-ui";
 import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
-import { saveAutoCloseAction } from "../actions";
+import { saveAutoCloseAction, saveWonStagesAction } from "../actions";
 
 export default async function AutoCloseSettingsPage() {
-  const [s, lastRun, stages] = await Promise.all([
+  const [s, won, lastRun, stages] = await Promise.all([
     getAutoCloseSettings(),
+    getWonStagesSettings(),
     getSetting<AutoCloseRun | null>("autoCloseRun", null),
     stageOptions(),
   ]);
@@ -28,7 +30,7 @@ export default async function AutoCloseSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Cierre automático"
-        description="Una vez al día, Beliapp cierra como perdidos los leads que quedaron sin actividad, para que el funnel no se llene de tickets muertos."
+        description="Beliapp cierra como perdidos los leads que quedaron sin actividad, para que el funnel no se llene de tickets muertos, y marca como ganados los que llegan a una etapa de ganado."
       />
 
       <div className="stagger grid gap-3 sm:grid-cols-3">
@@ -89,6 +91,35 @@ export default async function AutoCloseSettingsPage() {
                   </Callout>
                 )}
               </ToggleSection>
+            </ToggleSection>
+          </PanelBody>
+          <PanelFooter>
+            <SubmitButton toast="Cambios guardados">Guardar</SubmitButton>
+          </PanelFooter>
+        </form>
+      </Panel>
+
+      <Panel
+        icon={<Trophy />}
+        title="Etapas de ganado"
+        description="Cuando un lead entra a una de estas etapas, sea porque lo movió la IA o una persona, se marca como ganado al instante."
+        aside={<StatusPill on={won.enabled} onLabel="Activo" offLabel="Apagado" />}
+      >
+        <form action={saveWonStagesAction}>
+          <PanelBody>
+            <ToggleSection
+              name="enabled"
+              defaultChecked={won.enabled}
+              title="Marcar como ganado al entrar a una etapa"
+              description="El lead se cierra como ganado sin monto (se puede reabrir), la IA deja de responderle y, si el píxel de Meta está activo, se envía la compra."
+            >
+              <div className="flex flex-wrap gap-2">
+                {stages.map((st) => (
+                  <Chip key={st.id} name="stageIds" value={st.id} defaultChecked={won.stageIds.includes(st.id)}>
+                    {st.label}
+                  </Chip>
+                ))}
+              </div>
             </ToggleSection>
           </PanelBody>
           <PanelFooter>
