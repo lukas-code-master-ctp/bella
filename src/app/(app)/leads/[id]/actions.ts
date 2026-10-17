@@ -201,6 +201,7 @@ export async function closeLeadAction(leadId: string, _prev: string | null, form
     await closeLead(leadId, outcome, by, {
       amount: amountRaw ? Number(amountRaw) : null,
       lostReason: String(form.get("lostReason") ?? ""),
+      amountRequired: form.get("amountRequired") === "on",
     });
   } catch (e) {
     if (e instanceof DomainError) return e.message;

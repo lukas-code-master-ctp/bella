@@ -365,6 +365,7 @@ export async function saveWonStagesAction(form: FormData) {
   await setSetting<WonStagesSettings>("wonStages", {
     enabled: form.get("enabled") === "on",
     stageIds: form.getAll("stageIds").map(String),
+    requireAmount: form.get("requireAmount") === "on",
   });
   revalidatePath("/settings/auto-close");
 }

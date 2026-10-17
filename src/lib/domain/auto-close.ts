@@ -1,7 +1,7 @@
 import { db } from "../db";
 import { currentCompanyId } from "../tenant";
 import { getSetting, setSetting } from "../settings";
-import { closeLead } from "./leads";
+import { awaitingAmountStageIds, closeLead } from "./leads";
 
 export type AutoCloseSettings = {
   enabled: boolean;
@@ -62,6 +62,8 @@ export async function runAutoClose(now = new Date()): Promise<number> {
 
   // Las consultas en SQL no pasan por el filtro de empresa de `db`: va explícito.
   const companyId = await currentCompanyId();
+  // Una venta que espera que confirmen el monto no se pierde por inactividad.
+  const awaitingAmount = await awaitingAmountStageIds();
   const inactive = await db.$queryRaw<{ id: string }[]>`
     SELECT l.id FROM "Lead" l
     WHERE l.status = 'OPEN' AND l."companyId" = ${companyId}
@@ -75,7 +77,8 @@ export async function runAutoClose(now = new Date()): Promise<number> {
         ''
       ) <> 'CONTACT'
       -- Un recontacto que la IA agendó con el cliente todavía no llega: el lead sigue vivo.
-      AND (l."followUpAt" IS NULL OR l."followUpAt" <= ${now})`;
+      AND (l."followUpAt" IS NULL OR l."followUpAt" <= ${now})
+      AND NOT (l."stageId" = ANY(${awaitingAmount}::text[]))`;
 
   const inLostStage = settings.lostStagesEnabled && settings.lostStageIds.length
     ? await db.lead.findMany({

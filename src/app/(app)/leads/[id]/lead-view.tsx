@@ -14,6 +14,7 @@ import { sourceLabel } from "@/lib/domain/attribution";
 import { formatAgo, formatLocal, startOfLocalDay, TIME_ZONE, toLocalInput } from "@/lib/dates";
 import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
+import { awaitingAmountStageIds } from "@/lib/domain/leads";
 import { Avatar, Badge, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
@@ -27,7 +28,7 @@ import {
   setAssigneeAction,
 } from "./actions";
 import { FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
-import { AiPausedChip, LeadMenu } from "./lead-menu";
+import { AiPausedChip, ConfirmAmountForm, LeadMenu } from "./lead-menu";
 import { LeadTabs } from "./lead-tabs";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
@@ -115,7 +116,7 @@ export async function LeadView({
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields, followUps, waNumber] = await Promise.all([
+  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages] = await Promise.all([
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -127,10 +128,12 @@ export async function LeadView({
     lead.contact.waPhoneNumberId
       ? db.whatsAppNumber.findUnique({ where: { phoneNumberId: lead.contact.waPhoneNumberId }, select: { label: true } })
       : null,
+    awaitingAmountStageIds(),
     markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
+  const awaitingAmount = isOpen && awaitingStages.includes(lead.stageId);
   const lastMessage = lead.messages.at(-1) ?? null;
   const waitingSince =
     isOpen && attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage }) === "waiting"
@@ -188,6 +191,12 @@ export async function LeadView({
               <Badge tone="danger">
                 <CircleX aria-hidden />
                 Perdido
+              </Badge>
+            )}
+            {awaitingAmount && (
+              <Badge tone="success">
+                <Trophy aria-hidden />
+                Venta por confirmar
               </Badge>
             )}
             {waitingSince && (
@@ -249,6 +258,16 @@ export async function LeadView({
               label: "Resumen",
               panel: (
                 <Card className="divide-y divide-slate-100">
+                  {awaitingAmount && (
+                    <section className="space-y-2 p-4">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                        <Trophy aria-hidden className="size-4" />
+                        Venta por confirmar
+                      </p>
+                      <p className="text-sm text-slate-600">Ingresa el monto de la venta para cerrarlo como ganado.</p>
+                      <ConfirmAmountForm leadId={lead.id} />
+                    </section>
+                  )}
                   {(!isOpen || lead.contact.blockedAt) && (
                     <section className="space-y-2 p-4">
                       {!isOpen && (
