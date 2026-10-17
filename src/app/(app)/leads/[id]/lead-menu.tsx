@@ -196,6 +196,8 @@ export function AiPausedChip({ leadId, canResume }: { leadId: string; canResume:
     <>
       {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : <BotOff aria-hidden />}
       {pending ? "Reactivando…" : "IA pausada"}
+      {/* Se nota que es un botón y no solo un estado. */}
+      {canResume && !pending && <span className="font-semibold text-brand-700">· Reactivar</span>}
     </>
   );
   const chip = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-slate-100 text-slate-700 ring-slate-200 [&_svg]:size-3.5";

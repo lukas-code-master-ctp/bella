@@ -25,7 +25,6 @@ import {
   optBackInAction,
   removeTagAction,
   setAssigneeAction,
-  toggleAiAction,
 } from "./actions";
 import { FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
 import { AiPausedChip, LeadMenu } from "./lead-menu";
@@ -351,15 +350,6 @@ export async function LeadView({
                         {lead.assignee?.name ?? "Sin asignar"}
                       </p>
                     )}
-                  </Section>
-
-                  <Section title="Asistente IA">
-                    <form action={toggleAiAction.bind(null, lead.id, !lead.aiEnabled)}>
-                      <SubmitButton variant="secondary" className="w-full" disabled={!isOpen}>
-                        {lead.aiEnabled ? <BotOff aria-hidden /> : <Bot aria-hidden />}
-                        {lead.aiEnabled ? "Pausar IA y tomar la conversación" : "Reactivar IA"}
-                      </SubmitButton>
-                    </form>
                   </Section>
 
                   {followUps.enabled && isOpen && lead.aiEnabled && (
