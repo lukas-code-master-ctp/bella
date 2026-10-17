@@ -239,6 +239,29 @@ function MenuItem({ icon, danger, onClick, children }: { icon: React.ReactNode; 
   );
 }
 
+/** Monto de una venta que espera confirmación en una etapa de ganado; al guardarlo se cierra como ganado. */
+export function ConfirmAmountForm({ leadId }: { leadId: string }) {
+  const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
+    const result = await closeLeadAction(leadId, prev, form);
+    if (!result) toast("Lead marcado como ganado");
+    return result;
+  }, null);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="hidden" name="outcome" value="WON" />
+      <input type="hidden" name="amountRequired" value="on" />
+      <div className="flex gap-2">
+        <input name="amount" inputMode="numeric" required autoComplete="off" placeholder="Ej. 25.000.000" aria-label="Monto de la venta" className={inputClass} />
+        <SubmitButton variant="success">
+          <Trophy aria-hidden />
+          Confirmar
+        </SubmitButton>
+      </div>
+      {error && <FormMessage>{error}</FormMessage>}
+    </form>
+  );
+}
+
 function CloseForm({ leadId, outcome, onDone }: { leadId: string; outcome: "WON" | "LOST"; onDone: () => void }) {
   const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
     const result = await closeLeadAction(leadId, prev, form);

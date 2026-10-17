@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { runAutoClose } from "@/lib/domain/auto-close";
-import { createLead, moveStage } from "@/lib/domain/leads";
+import { closeLead, createLead, moveStage } from "@/lib/domain/leads";
 import { getSetting, setSetting } from "@/lib/settings";
 import { seedFunnel } from "./factories";
 
@@ -149,5 +149,22 @@ describe("etapas de ganado", () => {
     const a = await createLead({ name: "A", channel: "SIMULATOR" });
     await moveStage(a.id, cotizacion.id, { actor: "USER" });
     expect((await status(a.id)).status).toBe("OPEN");
+  });
+
+  it("con 'esperar el monto', queda abierto hasta que confirmen el monto y no se cierra por inactividad", async () => {
+    const [, , cotizacion] = await seedFunnel();
+    await setSetting("wonStages", { enabled: true, stageIds: [cotizacion.id], requireAmount: true });
+    await setSetting("autoClose", { enabled: true, days: 7 });
+    const a = await leadInactiveFor(20, "AI");
+    await moveStage(a.id, cotizacion.id, { actor: "AI" });
+    await db.leadEvent.updateMany({ where: { leadId: a.id }, data: { createdAt: ago(20) } });
+    expect((await status(a.id)).status).toBe("OPEN");
+
+    expect(await runAutoClose(now)).toBe(0);
+    expect((await status(a.id)).status).toBe("OPEN");
+
+    await expect(closeLead(a.id, "WON", { actor: "USER" }, { amountRequired: true })).rejects.toThrow("monto");
+    await closeLead(a.id, "WON", { actor: "USER" }, { amount: 25_000_000, amountRequired: true });
+    expect(await status(a.id)).toMatchObject({ status: "WON", amount: 25_000_000 });
   });
 });

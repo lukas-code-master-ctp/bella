@@ -4,7 +4,7 @@ import { deliverPendingPush } from "../push";
 import { getSetting } from "../settings";
 import { applyAssignment } from "./assignment";
 import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
-import { notifyAssignedTx, notifyHumanStageTx } from "./notifications";
+import { notifyAssignedTx, notifyHumanStageTx, notifyWonAmountTx } from "./notifications";
 import { entryStage } from "./funnels";
 import { pickVariant } from "./ab-tests";
 import { moveOpenTasksTx } from "./tasks";
@@ -16,11 +16,25 @@ type Tx = Prisma.TransactionClient;
 
 export class DomainError extends Error {}
 
-/** Etapas donde entrar cierra el lead como ganado (Configuración → Cierre automático). */
-export type WonStagesSettings = { enabled: boolean; stageIds: string[] };
+/**
+ * Etapas donde entrar cierra el lead como ganado (Configuración → Cierre automático). Con
+ * `requireAmount`, el lead queda abierto en la etapa hasta que alguien confirma el monto.
+ */
+export type WonStagesSettings = { enabled: boolean; stageIds: string[]; requireAmount: boolean };
 
 export async function getWonStagesSettings(): Promise<WonStagesSettings> {
-  return { enabled: false, stageIds: [], ...(await getSetting<Partial<WonStagesSettings>>("wonStages", {})) };
+  return {
+    enabled: false,
+    stageIds: [],
+    requireAmount: false,
+    ...(await getSetting<Partial<WonStagesSettings>>("wonStages", {})),
+  };
+}
+
+/** Etapas cuyos leads abiertos esperan que confirmen el monto de venta para cerrarse como ganados. */
+export async function awaitingAmountStageIds(): Promise<string[]> {
+  const won = await getWonStagesSettings();
+  return won.enabled && won.requireAmount ? won.stageIds : [];
 }
 
 /**
@@ -105,7 +119,8 @@ export async function moveStageTx(
   await queueStageWebhooksTx(tx, leadId, stage, lead.stage);
   const won = await getWonStagesSettings();
   if (updated.status === "OPEN" && won.enabled && won.stageIds.includes(stageId)) {
-    return closeLeadTx(tx, leadId, "WON", by, {});
+    if (!won.requireAmount) return closeLeadTx(tx, leadId, "WON", by, {});
+    await notifyWonAmountTx(tx, leadId, by.userId);
   }
   return updated;
 }
@@ -174,10 +189,13 @@ export async function closeLead(
   leadId: string,
   outcome: "WON" | "LOST",
   by: ActorRef,
-  details: { amount?: number | null; lostReason?: string | null },
+  details: { amount?: number | null; lostReason?: string | null; amountRequired?: boolean },
 ) {
   if (outcome === "LOST" && !details.lostReason?.trim()) {
     throw new DomainError("Indica el motivo de pérdida.");
+  }
+  if (outcome === "WON" && details.amountRequired && !details.amount) {
+    throw new DomainError("Indica el monto de la venta.");
   }
   const closed = await db.$transaction((tx) => closeLeadTx(tx, leadId, outcome, by, details));
   await deliverPendingConversions();

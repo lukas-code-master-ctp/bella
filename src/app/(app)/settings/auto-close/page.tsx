@@ -5,7 +5,7 @@ import { getSetting } from "@/lib/settings";
 import { effectiveDays, getAutoCloseSettings, type AutoCloseRun } from "@/lib/domain/auto-close";
 import { getWonStagesSettings } from "@/lib/domain/leads";
 import { Field, inputClass, PageHeader } from "@/components/ui";
-import { Callout, Chip, Panel, PanelBody, PanelFooter, Stat, StatusPill } from "@/components/settings-ui";
+import { Callout, Chip, Panel, PanelBody, PanelFooter, Stat, StatusPill, ToggleRow } from "@/components/settings-ui";
 import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAutoCloseAction, saveWonStagesAction } from "../actions";
@@ -111,7 +111,7 @@ export default async function AutoCloseSettingsPage() {
               name="enabled"
               defaultChecked={won.enabled}
               title="Marcar como ganado al entrar a una etapa"
-              description="El lead se cierra como ganado sin monto (se puede reabrir), la IA deja de responderle y, si el píxel de Meta está activo, se envía la compra."
+              description="El lead se cierra como ganado (se puede reabrir), la IA deja de responderle y, si el píxel de Meta está activo, se envía la compra."
             >
               <div className="flex flex-wrap gap-2">
                 {stages.map((st) => (
@@ -120,6 +120,12 @@ export default async function AutoCloseSettingsPage() {
                   </Chip>
                 ))}
               </div>
+              <ToggleRow
+                name="requireAmount"
+                defaultChecked={won.requireAmount}
+                title="Esperar el monto de la venta"
+                description="El lead queda abierto en la etapa y se avisa a su ejecutivo. Se cierra como ganado cuando alguien ingresa el monto en la ficha. Mientras espera, el cierre por inactividad no lo toca."
+              />
             </ToggleSection>
           </PanelBody>
           <PanelFooter>

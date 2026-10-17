@@ -48,6 +48,14 @@ export async function notifyHumanStageTx(tx: Tx, leadId: string, reason?: string
   await upsertNotifications(tx, leadId, await recipients(tx, lead, by), { type: "HUMAN_STAGE", body });
 }
 
+/** El lead llegó a una etapa de ganado que espera el monto de venta para cerrarse. */
+export async function notifyWonAmountTx(tx: Tx, leadId: string, by?: string | null) {
+  const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId }, include: { stage: true } });
+  if (lead.status !== "OPEN") return;
+  const body = `Venta por confirmar (${lead.stage.name}): ingresa el monto para cerrarlo como ganado`;
+  await upsertNotifications(tx, leadId, await recipients(tx, lead, by), { type: "HUMAN_STAGE", body });
+}
+
 /** El lead se asignó a un ejecutivo. */
 export async function notifyAssignedTx(tx: Tx, leadId: string, assigneeId: string, by?: string | null) {
   if (assigneeId === by) return;
