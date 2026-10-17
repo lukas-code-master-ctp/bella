@@ -12,6 +12,7 @@ import { currentCompanyId } from "@/lib/tenant";
 import { runDueFollowUps } from "@/lib/ai/follow-ups";
 import { getFollowUpSettings, parseDelays, templateError, type FollowUpSettings } from "@/lib/domain/follow-ups";
 import type { AutoCloseSettings } from "@/lib/domain/auto-close";
+import type { WonStagesSettings } from "@/lib/domain/leads";
 import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attribution";
 import { ChannelSendError, submitTemplate, subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
@@ -355,6 +356,15 @@ export async function saveAutoCloseAction(form: FormData) {
     reason: str(form, "reason") || "Sin respuesta del cliente",
     lostStageIds: form.getAll("lostStageIds").map(String),
     lostStagesEnabled: form.get("lostStagesEnabled") === "on",
+  });
+  revalidatePath("/settings/auto-close");
+}
+
+export async function saveWonStagesAction(form: FormData) {
+  await requireAdmin();
+  await setSetting<WonStagesSettings>("wonStages", {
+    enabled: form.get("enabled") === "on",
+    stageIds: form.getAll("stageIds").map(String),
   });
   revalidatePath("/settings/auto-close");
 }

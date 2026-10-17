@@ -188,12 +188,14 @@ export async function executeTool(
           content: `Etapa desconocida. Etapas válidas: ${stages.map((s) => s.name).join(", ")}`,
         };
       }
-      await db.$transaction((tx) => moveStageTx(tx, leadId, stage.id, { actor: "AI" }, str("reason")));
+      const moved = await db.$transaction((tx) => moveStageTx(tx, leadId, stage.id, { actor: "AI" }, str("reason")));
       await deliverPendingPush();
       await deliverPendingConversions();
       await deliverPendingWebhooks();
       return {
-        content: stage.requiresHuman
+        content: moved.status === "WON"
+          ? `Lead movido a "${stage.name}". Es una etapa de ganado: el lead quedó cerrado como ganado.`
+          : stage.requiresHuman
           ? `Lead movido a "${stage.name}". Es una etapa de atención humana: quedas pausada y un ejecutivo continuará.`
           : `Lead movido a "${stage.name}".`,
       };

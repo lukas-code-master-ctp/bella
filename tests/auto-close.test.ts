@@ -128,3 +128,26 @@ describe("cierre automático por inactividad", () => {
     expect(await getSetting("autoCloseRun", null)).toEqual({ at: now.toISOString(), closed: 0 });
   });
 });
+
+describe("etapas de ganado", () => {
+  it("marca como ganado al entrar a una etapa de ganado, la mueva quien la mueva", async () => {
+    const [, calificado, cotizacion] = await seedFunnel();
+    await setSetting("wonStages", { enabled: true, stageIds: [cotizacion.id] });
+    const a = await createLead({ name: "A", channel: "SIMULATOR" });
+    await moveStage(a.id, calificado.id, { actor: "AI" });
+    expect((await status(a.id)).status).toBe("OPEN");
+
+    await moveStage(a.id, cotizacion.id, { actor: "AI" }, "Pagó la reserva");
+    expect(await status(a.id)).toMatchObject({ status: "WON", stageId: cotizacion.id, aiEnabled: false });
+    const event = await db.leadEvent.findFirstOrThrow({ where: { leadId: a.id, type: "WON" } });
+    expect(event.actor).toBe("AI");
+  });
+
+  it("apagado, no marca nada", async () => {
+    const [, , cotizacion] = await seedFunnel();
+    await setSetting("wonStages", { enabled: false, stageIds: [cotizacion.id] });
+    const a = await createLead({ name: "A", channel: "SIMULATOR" });
+    await moveStage(a.id, cotizacion.id, { actor: "USER" });
+    expect((await status(a.id)).status).toBe("OPEN");
+  });
+});
