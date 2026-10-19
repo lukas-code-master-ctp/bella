@@ -17,12 +17,20 @@ export type ChannelRow = {
   setup: string;
 };
 
-/** Lista de canales agrupada por red, con buscador. */
+/** Lista de los canales conectados, agrupada por red, con buscador. */
 export function ChannelList({ rows }: { rows: ChannelRow[] }) {
   const [q, setQ] = useState("");
   const term = q.trim().toLowerCase();
   const shown = term ? rows.filter((r) => `${r.group} ${r.name} ${r.detail}`.toLowerCase().includes(term)) : rows;
   const groups = [...new Set(shown.map((r) => r.group))];
+
+  if (!rows.length) {
+    return (
+      <p className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
+        Aún no conectas ningún canal. Con &quot;Agregar canal&quot; eliges el primero.
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-4">

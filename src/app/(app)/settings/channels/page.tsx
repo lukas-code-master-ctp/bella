@@ -93,7 +93,7 @@ export default async function ChannelsSettingsPage() {
         <Card className="flex flex-col p-5">
           <CardHeader title="Canales conectados" description="Administra tus canales conectados." icon={<Smartphone />} />
           <div className="flex-1">
-            <ChannelList rows={rows} />
+            <ChannelList rows={rows.filter((r) => r.connected)} />
           </div>
           <AddChannel
             options={rows.map((r) => ({
