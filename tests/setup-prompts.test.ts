@@ -32,7 +32,7 @@ describe("Prompt para conectar Meta con Claude", () => {
 
   it("Meta: con el botón Conectar con Meta, manda a usarlo para WhatsApp", () => {
     const p = metaSetupPrompt(status({ quickWhatsApp: true }));
-    expect(p).toContain('botón "Conectar con Meta" de https://bella.test/settings/channels');
+    expect(p).toContain('botón "Conectar con Meta" de https://bella.test/settings/channels/whatsapp');
     expect(p).not.toContain("whatsapp_biz_");
   });
 

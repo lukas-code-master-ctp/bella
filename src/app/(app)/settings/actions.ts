@@ -279,7 +279,7 @@ export async function saveChannelsAction(form: FormData) {
     facebookAi: form.get("facebookAi") === "on",
     replyDelaySeconds: Math.min(Math.max(Math.round(Number(form.get("replyDelaySeconds")) || 0), 0), MAX_REPLY_DELAY_SECONDS),
   });
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
 }
 
 export async function addWhatsAppNumberAction(_prev: string | null, form: FormData): Promise<string | null> {
@@ -290,27 +290,27 @@ export async function addWhatsAppNumberAction(_prev: string | null, form: FormDa
     if (e instanceof DomainError || e instanceof ChannelSendError) return e.message;
     throw e;
   }
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
   return null;
 }
 
 export async function updateWhatsAppNumberAction(id: string, form: FormData) {
   await requireAdmin();
   await updateWhatsAppNumber(id, { label: str(form, "label"), funnelId: str(form, "funnelId") });
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
 }
 
 export async function deleteWhatsAppNumberAction(id: string) {
   await requireAdmin();
   await deleteWhatsAppNumber(id);
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
 }
 
 export async function subscribeWhatsAppAction(form: FormData) {
   await requireAdmin();
   const wabaId = str(form, "wabaId");
   if (wabaId) await subscribeWhatsAppApp(wabaId);
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
 }
 
 /** Fin de "Conectar con Meta": lo que devolvió la ventana de registro de WhatsApp. */
@@ -328,21 +328,21 @@ export async function completeWhatsAppSignupAction(input: {
     if (err instanceof DomainError) return { error: err.message };
     throw err;
   }
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
   return {};
 }
 
 export async function saveLegalAction(form: FormData) {
   await requireAdmin();
   await saveLegalSettings({ legalName: str(form, "legalName"), contactEmail: str(form, "contactEmail") });
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
   revalidatePath("/privacidad");
 }
 
 export async function resolveDeletionRequestAction(id: string) {
   await requireAdmin();
   await resolveDeletionRequest(id);
-  revalidatePath("/settings/channels");
+  revalidatePath("/settings/channels", "layout");
 }
 
 // Cierre automático

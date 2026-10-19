@@ -43,7 +43,7 @@ export async function setupChecklist(): Promise<SetupStep[]> {
       id: "whatsapp",
       title: "Conecta WhatsApp",
       description: "El número donde te escriben los clientes, para que la asistente responda ahí.",
-      href: "/settings/channels",
+      href: "/settings/channels/whatsapp",
       done: whatsappMissing.length === 0,
     },
     {
@@ -85,7 +85,7 @@ export async function setupChecklist(): Promise<SetupStep[]> {
       id: "messenger",
       title: "Suma Instagram y Messenger",
       description: "Para atender también los mensajes directos y comentarios de tus redes.",
-      href: "/settings/channels",
+      href: "/settings/channels/meta",
       done: messengerMissing.length === 0,
       optional: true,
     },
