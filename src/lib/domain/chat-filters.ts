@@ -12,7 +12,7 @@ export const CHAT_DATES = ["today", "7d", "30d", "custom"] as const;
 export const CHAT_STATUSES = ["open", "won", "lost", "all"] as const;
 export const CHAT_SORTS = ["recent", "oldest", "waiting", "score", "newest"] as const;
 export const ATTENTIONS = ["waiting", "ai", "human"] as const satisfies readonly Attention[];
-const CHANNELS = ["WHATSAPP", "INSTAGRAM", "FACEBOOK", "SIMULATOR"] as const satisfies readonly Channel[];
+const CHANNELS = ["WHATSAPP", "INSTAGRAM", "FACEBOOK", "WEB", "SIMULATOR"] as const satisfies readonly Channel[];
 
 export type ChatFilters = {
   /** Busca en el nombre, teléfono o correo del contacto. */

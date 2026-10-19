@@ -22,6 +22,8 @@ enum Channel {
   WHATSAPP
   INSTAGRAM
   FACEBOOK
+  /// Widget de chat flotante en el sitio web de la empresa.
+  WEB
 }
 
 enum LeadStatus {
