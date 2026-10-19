@@ -1,9 +1,9 @@
 /**
- * Prompts para "Configurar con Claude": el admin copia uno, lo pega en Claude (con acceso a su
- * navegador) y Claude hace la configuración por él. Sirven para cualquier empresa, también una
- * que parte desde cero (sin portafolio de Meta, número de WhatsApp ni píxel): cada paso dice qué
- * revisar y qué crear si no existe. Se arman con lo que ya está configurado, así Claude salta lo
- * que está listo. Nunca incluyen valores secretos, solo qué credenciales faltan.
+ * Prompt para "Conectar Meta con Claude": el admin lo copia, lo pega en Claude (con acceso a su
+ * navegador) y Claude conecta Meta por él. Sirve para cualquier empresa, también una que parte
+ * desde cero (sin portafolio de Meta, número de WhatsApp ni píxel): cada paso dice qué revisar y
+ * qué crear si no existe. Se arma con lo que ya está configurado, así Claude salta lo que está
+ * listo. Nunca incluye valores secretos, solo qué credenciales faltan.
  */
 
 import { companyUrls } from "./company-urls";
@@ -21,13 +21,8 @@ export type SetupStatus = {
   whatsappNumber: string;
   pixel: { enabled: boolean; datasetId: string; qualifiedStage: string | null };
   legal: { legalName: string; contactEmail: string };
-  assistant: { assistantName: string; companyName: string };
-  knowledgeDocs: number;
-  inventorySheet: boolean;
-  stages: string[];
-  fields: number;
-  followUps: boolean;
-  executives: number;
+  /** Nombre de la empresa guardado en la asistente (puede ser el de respaldo). */
+  companyName: string;
   /** Esta instalación tiene el botón "Conectar con Meta" (registro integrado de WhatsApp). */
   quickWhatsApp?: boolean;
 };
@@ -58,7 +53,7 @@ const envLine = (s: SetupStatus, key: string, how: string) =>
 const CREDENTIALS_PAGE = (s: SetupStatus) => `Beliapp → Configuración → Credenciales (${s.origin}/settings/credentials)`;
 
 const namedCompany = (s: SetupStatus) =>
-  s.assistant.companyName && s.assistant.companyName !== DEFAULT_ASSISTANT.companyName ? s.assistant.companyName : "";
+  s.companyName && s.companyName !== DEFAULT_ASSISTANT.companyName ? s.companyName : "";
 
 const company = (s: SetupStatus) => (namedCompany(s) ? ` de ${namedCompany(s)}` : "");
 
@@ -101,26 +96,4 @@ ${envLine(s, "META_CAPI_TOKEN", "Administrador de eventos → el píxel → Conf
    - Origen de leads: ${s.whatsappNumber ? `el número de WhatsApp ya está (${s.whatsappNumber}).` : "pon el número de WhatsApp con código de país, solo dígitos."}
    - Píxel de Meta: ${s.pixel.datasetId ? `el id del píxel ya está (${s.pixel.datasetId}).` : "pega el id del píxel (Administrador de eventos → Orígenes de datos)."}${s.pixel.qualifiedStage ? "" : " Pregúntame qué etapa del funnel cuenta como lead calificado."} ${s.pixel.enabled ? "Ya está encendido." : "Déjalo apagado y pregúntame antes de encenderlo."}
 11. Comprueba: en Beliapp → Configuración → Canales y Píxel de Meta cada credencial debe aparecer con su check verde. Pídeme que escriba "hola" al número de WhatsApp desde mi teléfono y revisa que aparezca en el Funnel.`;
-}
-
-export function assistantSetupPrompt(s: SetupStatus): string {
-  const aiKey = has(s, "OPENROUTER_API_KEY");
-  return `Quiero que configures la asistente de IA de Beliapp, el CRM de leads${company(s)} que está en ${s.origin}. Puede que esté recién instalado, sin nada configurado. Toma el control del navegador; las pantallas están en ${s.origin}/settings.
-
-${RULES}
-
-Antes de cambiar nada, hazme estas preguntas en un solo mensaje (y usa lo que me respondas): qué vendemos y a quién, cómo se llama la empresa y cómo queremos que se llame y hable la asistente, qué datos debe pedir para calificar a un cliente, cuáles son las etapas reales de nuestra venta, cuándo debe pasar la conversación a una persona, quiénes son los ejecutivos y dónde están nuestras preguntas frecuentes, políticas e inventario.
-
-Estado actual: asistente "${s.assistant.assistantName}"${namedCompany(s) ? ` de "${namedCompany(s)}"` : ", sin el nombre de la empresa"}; clave de IA ${aiKey ? "configurada" : "sin configurar"}; ${s.knowledgeDocs} documentos en la base de conocimiento; inventario ${s.inventorySheet ? "conectado a un Google Sheet" : "sin conectar"}; etapas del funnel: ${s.stages.join(", ") || "ninguna"}; ${s.fields} campos del cliente; ${s.executives} ejecutivos; seguimientos ${s.followUps ? "encendidos" : "apagados"}.
-
-1. Clave de IA: ${aiKey ? "ya está, no la toques." : `en openrouter.ai crea una cuenta a nombre de la empresa, pregúntame antes de cargar crédito, crea una clave en Keys y pégala en ${CREDENTIALS_PAGE(s)}, en el campo Clave de OpenRouter.`} Después, en Asistente IA elige el modelo (pregúntame si prefiero calidad o costo).
-2. Asistente: nombre, empresa e instrucciones (tono, preguntas para calificar de a una, qué no decir, cuándo derivar). Los productos y políticas no van aquí, van en la base de conocimiento. Si ya hay instrucciones, mantenlas y propón los cambios antes de guardar.
-3. Base de conocimiento: un documento por tema (preguntas frecuentes, precios y formas de pago, proceso de compra, ubicación, políticas), en texto claro y solo con datos que yo te dé.
-4. Inventario (si vendemos productos con stock): pega la URL del Google Sheet compartido como "Cualquier persona con el enlace: Lector" y sincroniza. Revisa que las columnas tengan nombres claros (producto, precio, stock, ubicación).
-5. Funnel y etiquetas: las etapas de ejemplo (Nuevo, Calificado, Interesado) son genéricas; reemplázalas por las de nuestra venta en su orden real, con una de "Atención humana". Etiquetas por categoría (ej. Producto, Interés: alto/medio/bajo).
-6. Campos del cliente: los datos que la IA debe ir completando (ej. RUT, presupuesto, plazo, región), con una indicación de cuándo preguntarlos.
-7. Usuarios: crea a cada ejecutivo con su nombre y correo (pregúntame la lista); la clave inicial la escribo yo en el formulario.
-8. Asignación: reglas para repartir los leads entre los ejecutivos (pregúntame quién atiende qué).
-9. Seguimientos y cierre automático: propón tiempos razonables, pero déjalos como estén y pregúntame antes de encenderlos.
-10. Prueba en el Simulador (${s.origin}/chats/simulator) con 3 conversaciones distintas: un cliente interesado, uno que pregunta precio y stock, y uno que pide hablar con una persona. Revisa que la IA no invente precios, que mueva de etapa, que etiquete y que derive bien. Ajusta las instrucciones si algo falla y cuéntame qué cambiaste.`;
 }
