@@ -124,12 +124,7 @@ export default async function ChannelsSettingsPage() {
       <PageHeader
         title="Canales"
         description="Conecta los canales por donde escriben los leads. Las conversaciones llegan al mismo funnel y chat que el simulador."
-      >
-        <Link href="/settings/claude" className={buttonClass("secondary")}>
-          <Sparkles aria-hidden />
-          Conectar Meta con Claude
-        </Link>
-      </PageHeader>
+      />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
         <Card className="flex flex-col p-5">
           <CardHeader title="Canales conectados" description="Administra tus canales conectados." icon={<Smartphone />} />
@@ -185,16 +180,22 @@ export default async function ChannelsSettingsPage() {
         </Card>
       </div>
 
-      <h2 id="configurar" className="mb-1 mt-10 scroll-mt-6 text-lg font-semibold text-slate-900">
-        Agregar o configurar un canal
-      </h2>
-      <p className="mb-4 text-sm text-slate-600">
-        Beliapp se conecta directo con Meta. Carga los datos en{" "}
-        <Link href="/settings/credentials" className="font-medium text-brand-700 hover:underline">
-          Credenciales
-        </Link>{" "}
-        y registra el webhook en la app de Meta.
-      </p>
+      <div id="configurar" className="mb-4 mt-10 flex scroll-mt-6 flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">Agregar o configurar un canal</h2>
+          <p className="text-sm text-slate-600">
+            Beliapp se conecta directo con Meta. Carga los datos en{" "}
+            <Link href="/settings/credentials" className="font-medium text-brand-700 hover:underline">
+              Credenciales
+            </Link>{" "}
+            y registra el webhook en la app de Meta, o deja que Claude lo haga por ti.
+          </p>
+        </div>
+        <Link href="/settings/claude" className={buttonClass("secondary")}>
+          <Sparkles aria-hidden />
+          Conectar Meta con Claude
+        </Link>
+      </div>
       <div className="space-y-6">
         <Card id="whatsapp" className="scroll-mt-6 p-5">
           <CardHeader title="WhatsApp" description="API oficial de WhatsApp Cloud, directa con Meta.">
