@@ -3,6 +3,7 @@ import { db, rootDb } from "@/lib/db";
 import { canWorkIn, createCompany, listCompanies } from "@/lib/domain/companies";
 import { primaryFunnelIdFor } from "@/lib/domain/default-funnel";
 import { readSession, signSession } from "@/lib/session-token";
+import { getAssistantSettings } from "@/lib/settings";
 import { withCompany } from "@/lib/tenant";
 import { TEST_COMPANY_ID } from "./company";
 
@@ -28,6 +29,7 @@ describe("Empresas", () => {
         ["Atención humana", funnel.id],
       ]);
       expect(await db.tag.count()).toBe(3);
+      expect(await getAssistantSettings()).toMatchObject({ companyName: "Motos del Sur", assistantName: "Bella" });
     });
     // La empresa en curso de la prueba no recibió nada.
     expect(await db.stage.count()).toBe(0);
