@@ -2,6 +2,8 @@ import { db } from "../db";
 import { credentials } from "../credentials";
 import { missingMessengerEnv } from "../channels/messenger";
 import { missingWhatsAppEnv } from "../channels/whatsapp";
+import { getAssistantSettings } from "../settings";
+import { assistantConfigured } from "./assistant-setup";
 import { getPixelSettings } from "./conversions";
 
 /**
@@ -19,7 +21,8 @@ export type SetupStep = {
 };
 
 export async function setupChecklist(): Promise<SetupStep[]> {
-  const [whatsappMissing, messengerMissing, docs, users, simulated, creds, pixel] = await Promise.all([
+  const [assistant, whatsappMissing, messengerMissing, docs, users, simulated, creds, pixel] = await Promise.all([
+    getAssistantSettings(),
     missingWhatsAppEnv(),
     missingMessengerEnv(),
     db.knowledgeDoc.count(),
@@ -29,6 +32,13 @@ export async function setupChecklist(): Promise<SetupStep[]> {
     getPixelSettings(),
   ]);
   return [
+    {
+      id: "assistant",
+      title: "Presenta a tu asistente",
+      description: "Qué vendes, cómo habla y cuándo deriva: la IA redacta sus instrucciones y tú las revisas.",
+      href: "/settings/assistant/setup",
+      done: assistantConfigured(assistant),
+    },
     {
       id: "whatsapp",
       title: "Conecta WhatsApp",

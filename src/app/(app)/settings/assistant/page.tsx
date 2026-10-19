@@ -1,9 +1,10 @@
-import { Bot, Cpu, Wallet } from "lucide-react";
+import Link from "next/link";
+import { Bot, Cpu, Sparkles, Wallet } from "lucide-react";
 import { getAssistantSettings } from "@/lib/settings";
 import { credentials } from "@/lib/credentials";
 import { DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
 import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
-import { Avatar, Field, inputClass, PageHeader } from "@/components/ui";
+import { Avatar, buttonClass, Field, inputClass, PageHeader } from "@/components/ui";
 import { Panel, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { saveAssistantAction } from "../actions";
@@ -26,7 +27,12 @@ export default async function AssistantSettingsPage() {
   };
   return (
     <div className="space-y-6">
-      <PageHeader title="Asistente IA" description="Quién es la asistente, cómo habla y con qué modelo piensa." />
+      <PageHeader title="Asistente IA" description="Quién es la asistente, cómo habla y con qué modelo piensa.">
+        <Link href="/settings/assistant/setup" className={buttonClass("secondary")}>
+          <Sparkles aria-hidden />
+          Redactar con IA
+        </Link>
+      </PageHeader>
 
       <Panel
         icon={<Bot />}

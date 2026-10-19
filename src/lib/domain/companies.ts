@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { db, rootDb } from "../db";
+import { DEFAULT_ASSISTANT, setSetting, type AssistantSettings } from "../settings";
 import { withCompany } from "../tenant";
 import { ensureDefaultFunnel } from "./default-funnel";
 
@@ -49,6 +50,8 @@ export async function createCompany(input: NewCompany): Promise<{ error: string 
       data: { name: input.adminName.trim(), email, role: "ADMIN", passwordHash: await bcrypt.hash(input.adminPassword, 10) },
     });
     await seedStarterData();
+    // La asistente parte con el nombre de la empresa; el resto lo redacta "Presenta a tu asistente".
+    await setSetting<AssistantSettings>("assistant", { ...DEFAULT_ASSISTANT, companyName: name });
   });
   return { id: company.id };
 }
