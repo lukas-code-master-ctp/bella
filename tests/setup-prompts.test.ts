@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assistantSetupPrompt, metaSetupPrompt, type SetupStatus } from "@/lib/setup-prompts";
+import { metaSetupPrompt, type SetupStatus } from "@/lib/setup-prompts";
 
 const status = (over: Partial<SetupStatus> = {}): SetupStatus => ({
   origin: "https://bella.test",
@@ -7,17 +7,11 @@ const status = (over: Partial<SetupStatus> = {}): SetupStatus => ({
   whatsappNumber: "",
   pixel: { enabled: false, datasetId: "", qualifiedStage: null },
   legal: { legalName: "CTP", contactEmail: "" },
-  assistant: { assistantName: "Valentina", companyName: "Compra tu Parcela" },
-  knowledgeDocs: 2,
-  inventorySheet: true,
-  stages: ["Nuevo", "Calificado"],
-  fields: 3,
-  followUps: false,
-  executives: 2,
+  companyName: "Compra tu Parcela",
   ...over,
 });
 
-describe("Prompts para configurar con Claude", () => {
+describe("Prompt para conectar Meta con Claude", () => {
   it("Meta: lista lo que falta, marca lo que ya está y trae las URLs de Beliapp", () => {
     const p = metaSetupPrompt(status());
     expect(p).toContain("faltan estas credenciales en Beliapp: Token de WhatsApp, Token de la API de Conversiones.");
@@ -34,7 +28,6 @@ describe("Prompts para configurar con Claude", () => {
     expect(p).toContain("https://mcp.facebook.com/whatsapp_business_tools");
     expect(p).toContain("whatsapp_biz_");
     expect(p).toContain("no envíes mensajes a clientes");
-    expect(assistantSetupPrompt(status())).not.toContain("whatsapp_biz_");
   });
 
   it("Meta: con el botón Conectar con Meta, manda a usarlo para WhatsApp", () => {
@@ -44,7 +37,7 @@ describe("Prompts para configurar con Claude", () => {
   });
 
   it("Meta: sirve para una empresa que parte desde cero", () => {
-    const p = metaSetupPrompt(status({ assistant: { assistantName: "Bella", companyName: "nuestra empresa" } }));
+    const p = metaSetupPrompt(status({ companyName: "nuestra empresa" }));
     expect(p).toContain("el CRM de leads que está en https://bella.test");
     expect(p).not.toMatch(/Compra tu Parcela|proyecto bella/i);
     for (const step of ["Portafolio comercial", "Número de WhatsApp", "Usuario del sistema", "Publicar la app"]) {
@@ -62,30 +55,5 @@ describe("Prompts para configurar con Claude", () => {
     expect(p).toContain("ya está (56912345678)");
     expect(p).toContain("ya está (999)");
     expect(p).not.toContain("qué etapa del funnel");
-  });
-
-  it("Asistente: describe el estado actual y pide probar en el simulador", () => {
-    const p = assistantSetupPrompt(status());
-    expect(p).toContain('asistente "Valentina" de "Compra tu Parcela"');
-    expect(p).toContain("etapas del funnel: Nuevo, Calificado");
-    expect(p).toContain("https://bella.test/chats/simulator");
-    expect(p).toContain("pregúntame antes de encenderlos");
-    expect(p).toContain("Clave de IA: ya está");
-  });
-
-  it("Asistente: en una instalación nueva pide la clave de IA, la empresa y los ejecutivos", () => {
-    const p = assistantSetupPrompt(
-      status({
-        missingEnv: ["OPENROUTER_API_KEY"],
-        assistant: { assistantName: "Bella", companyName: "nuestra empresa" },
-        knowledgeDocs: 0,
-        executives: 0,
-      }),
-    );
-    expect(p).toContain("sin el nombre de la empresa");
-    expect(p).toContain("en el campo Clave de OpenRouter");
-    expect(p).not.toContain("Vercel");
-    expect(p).toContain("0 ejecutivos");
-    expect(p).not.toContain("Compra tu Parcela");
   });
 });
