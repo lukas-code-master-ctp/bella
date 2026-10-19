@@ -28,11 +28,11 @@ import {
   type MsgEvent,
 } from "../channels/messenger";
 import type { AdsApi } from "../channels/ads";
-import { attachAdSource, attachLinkSource, takeRefCode } from "./attribution";
+import { attachAdSource, attachLinkSource, createSourceLink, takeRefCode, utmFromParams } from "./attribution";
 import { applyTemplateReply } from "./assignment";
 import { isBlocked, optOutIfAsked } from "./contacts";
 import { fileKind, type FileKind } from "../media";
-import { createLead } from "./leads";
+import { createLead, DomainError } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
 import { notifyContactMessage } from "./notifications";
 import { funnelForNumber, whatsappPhoneIds } from "./whatsapp-numbers";
@@ -42,6 +42,7 @@ export type ChannelSettings = {
   whatsappAi: boolean;
   instagramAi: boolean;
   facebookAi: boolean;
+  webAi: boolean;
   /**
    * Segundos de silencio del cliente antes de que la IA responda: si manda varios mensajes
    * seguidos, se contestan todos juntos (Meta no avisa cuando alguien está escribiendo).
@@ -55,10 +56,11 @@ export const DEFAULT_CHANNELS: ChannelSettings = {
   whatsappAi: false,
   instagramAi: false,
   facebookAi: false,
+  webAi: false,
   replyDelaySeconds: 15,
 };
 
-const AI_KEY = { WHATSAPP: "whatsappAi", INSTAGRAM: "instagramAi", FACEBOOK: "facebookAi" } as const;
+const AI_KEY = { WHATSAPP: "whatsappAi", INSTAGRAM: "instagramAi", FACEBOOK: "facebookAi", WEB: "webAi" } as const;
 
 export async function getChannelSettings(): Promise<ChannelSettings> {
   return { ...DEFAULT_CHANNELS, ...(await getSetting<Partial<ChannelSettings>>("channels", {})) };
@@ -76,7 +78,7 @@ export async function aiChannels(): Promise<Channel[]> {
 
 /** Leads abiertos por canal de origen del contacto (para la página de Canales). */
 export async function openLeadsByChannel(): Promise<Record<Channel, number>> {
-  const counts: Record<Channel, number> = { SIMULATOR: 0, WHATSAPP: 0, INSTAGRAM: 0, FACEBOOK: 0 };
+  const counts: Record<Channel, number> = { SIMULATOR: 0, WHATSAPP: 0, INSTAGRAM: 0, FACEBOOK: 0, WEB: 0 };
   const rows = await db.contact.groupBy({
     by: ["channel"],
     where: { leads: { some: { status: "OPEN" } } },
@@ -352,6 +354,62 @@ async function receiveMessengerEvent(
   return (await receiveText(leadId, externalId, body)) ? leadId : null;
 }
 
+// --- Widget web ----------------------------------------------------------------------------
+
+export type WebInbound = {
+  visitorId: string;
+  /** Id que pone el widget a cada mensaje: si lo reenvía (mala conexión) no se guarda dos veces. */
+  clientId: string;
+  body: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  /** Página del sitio donde escribió; sus UTM quedan como origen del lead. */
+  pageUrl?: string;
+};
+
+/** Mensajes por minuto que acepta un visitante, para que nadie inunde el chat. */
+const WEB_RATE_LIMIT = 10;
+
+/**
+ * Mensaje de un visitante del widget web. Devuelve el lead y si la IA debe responderle, o null si
+ * el contacto está bloqueado. El visitante se identifica con el id que guarda su navegador.
+ */
+export async function receiveWeb(input: WebInbound): Promise<{ leadId: string; answer: boolean } | null> {
+  const body = input.body.trim().slice(0, 2000);
+  if (!body) throw new DomainError("Escribe un mensaje.");
+  if (await isBlocked("WEB", input.visitorId)) return null;
+  const name = input.name?.trim().slice(0, 80);
+  const phone = input.phone?.replace(/[^\d+]/g, "").slice(0, 20) || undefined;
+  const email = input.email?.trim().toLowerCase().slice(0, 120) || undefined;
+  const aiOn = (await getChannelSettings()).webAi;
+  const leadId = await openLeadFor("WEB", input.visitorId, async () => name || "Visitante web", aiOn, phone);
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { contact: true } });
+  const recent = await db.message.count({
+    where: { leadId, author: "CONTACT", createdAt: { gt: new Date(Date.now() - 60_000) } },
+  });
+  if (recent >= WEB_RATE_LIMIT) throw new DomainError("Estás escribiendo muy rápido. Espera un momento.");
+  // Lo que el visitante deja en el formulario completa el contacto, sin pisar lo que ya tenía.
+  const c = lead.contact;
+  const update = {
+    ...(name && c.name === "Visitante web" ? { name } : {}),
+    ...(phone && !c.phone ? { phone } : {}),
+    ...(email && !c.email ? { email } : {}),
+  };
+  if (Object.keys(update).length) await db.contact.update({ where: { id: c.id }, data: update });
+  if (input.pageUrl && !(await db.leadSource.findUnique({ where: { leadId } }))) {
+    try {
+      const url = new URL(input.pageUrl);
+      const code = await createSourceLink({ ...utmFromParams(url.searchParams), landingUrl: `${url.origin}${url.pathname}` });
+      if (code) await attachLinkSource(leadId, code);
+    } catch {
+      // URL inválida: el lead queda sin origen.
+    }
+  }
+  const saved = await receiveText(leadId, `web:${input.visitorId}:${input.clientId.slice(0, 64)}`, body);
+  return { leadId, answer: saved && aiOn && lead.aiEnabled && lead.status === "OPEN" };
+}
+
 /** Origen de un mensaje de Instagram o Messenger: un anuncio o un enlace m.me/ig.me con código. */
 async function attachReferral(leadId: string, r: MsgReferral, deps: InboundDeps) {
   if (r.ad_id || r.source === "ADS") {
@@ -450,6 +508,11 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
       data: { deliveryStatus: "FAILED", deliveryError: BLOCKED_SEND_ERROR },
     });
     return BLOCKED_SEND_ERROR;
+  }
+  // En el widget web no hay a quién enviar: el visitante lee los mensajes desde el sitio.
+  if (channel === "WEB") {
+    await db.message.updateMany({ where: { leadId, author: { in: ["AI", "USER"] }, deliveryStatus: null }, data: { deliveryStatus: "SENT" } });
+    return null;
   }
   const wa = apis.whatsapp ?? cloudApi;
   const from = lead.contact.waPhoneNumberId ?? undefined;

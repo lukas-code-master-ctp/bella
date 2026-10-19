@@ -36,18 +36,20 @@ export function Webhook({ url, where, fields }: { url: string; where: string; fi
   );
 }
 
-/** Acciones de la cabecera de la pantalla de un canal: volver a Canales y conectar con Claude. */
-export function ChannelPageActions() {
+/** Acciones de la cabecera de la pantalla de un canal: volver a Canales y (en Meta) conectar con Claude. */
+export function ChannelPageActions({ claude = true }: { claude?: boolean }) {
   return (
     <div className="flex flex-wrap gap-2">
       <Link href="/settings/channels" className={buttonClass("ghost")}>
         <ArrowLeft aria-hidden />
         Canales
       </Link>
-      <Link href="/settings/claude" className={buttonClass("secondary")}>
-        <Sparkles aria-hidden />
-        Conectar Meta con Claude
-      </Link>
+      {claude && (
+        <Link href="/settings/claude" className={buttonClass("secondary")}>
+          <Sparkles aria-hidden />
+          Conectar Meta con Claude
+        </Link>
+      )}
     </div>
   );
 }

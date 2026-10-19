@@ -6,6 +6,7 @@ import { getChannelSettings, MAX_REPLY_DELAY_SECONDS, openLeadsByChannel } from 
 import { db } from "@/lib/db";
 import { credentials } from "@/lib/credentials";
 import { pendingDeletionRequests } from "@/lib/domain/privacy";
+import { getWebWidgetSettings } from "@/lib/domain/web-widget";
 import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
 import { buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -20,10 +21,11 @@ const DESCRIPTIONS: Record<Exclude<ChannelKind, "SIMULATOR">, string> = {
   WHATSAPP: "API oficial de WhatsApp, con tu número.",
   INSTAGRAM: "Mensajes directos y comentarios de tu cuenta.",
   FACEBOOK: "Mensajes de tu página de Facebook.",
+  WEB: "Burbuja de chat flotante en tu sitio web.",
 };
 
 export default async function ChannelsSettingsPage() {
-  const [s, leads, stages, numbers, env, waMissing, metaMissing, deletions] = await Promise.all([
+  const [s, leads, stages, numbers, env, waMissing, metaMissing, deletions, widget] = await Promise.all([
     getChannelSettings(),
     openLeadsByChannel(),
     db.stage.count(),
@@ -32,6 +34,7 @@ export default async function ChannelsSettingsPage() {
     missingWhatsAppEnv(),
     missingMessengerEnv(),
     pendingDeletionRequests(),
+    getWebWidgetSettings(),
   ]);
   const metaOk = metaMissing.length === 0;
 
@@ -64,6 +67,15 @@ export default async function ChannelsSettingsPage() {
       connected: metaOk,
       aiOn: s.facebookAi,
       setup: "/settings/channels/meta",
+    },
+    {
+      kind: "WEB",
+      group: "Sitio web",
+      name: "Widget web",
+      detail: widget.enabled ? "Activo en tu sitio" : "Sin activar",
+      connected: widget.enabled,
+      aiOn: s.webAi,
+      setup: "/settings/channels/web",
     },
   ];
   const inFunnel = [
@@ -158,6 +170,7 @@ export default async function ChannelsSettingsPage() {
               ["whatsappAi", "WhatsApp", s.whatsappAi],
               ["instagramAi", "Instagram", s.instagramAi],
               ["facebookAi", "Facebook Messenger", s.facebookAi],
+              ["webAi", "el widget web", s.webAi],
             ] as const
           ).map(([name, label, on]) => (
             <label key={name} className="flex min-h-10 items-center gap-2 text-sm font-medium text-slate-800">
@@ -166,7 +179,7 @@ export default async function ChannelsSettingsPage() {
             </label>
           ))}
           <p className="text-xs text-slate-600">
-            Encendido, la asistente contesta y hace los seguimientos (si están activos). Meta solo deja escribir
+            Encendido, la asistente contesta y hace los seguimientos (si están activos). En WhatsApp, Instagram y Messenger, Meta solo deja escribir
             libremente hasta 24 horas después del último mensaje del cliente.
           </p>
           <Field

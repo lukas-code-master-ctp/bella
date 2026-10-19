@@ -253,6 +253,7 @@ const CHANNEL_DOT: Record<Channel, string> = {
   WHATSAPP: "bg-[#25d366]",
   INSTAGRAM: "bg-[#e1306c]",
   FACEBOOK: "bg-[#1877f2]",
+  WEB: "bg-brand-600",
   SIMULATOR: "bg-slate-400",
 };
 

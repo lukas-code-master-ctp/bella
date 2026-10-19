@@ -17,6 +17,7 @@ import { DEFAULT_ATTRIBUTION, saveAttributionSettings } from "@/lib/domain/attri
 import { ChannelSendError, submitTemplate, subscribeWhatsAppApp } from "@/lib/channels/whatsapp";
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
+import { saveWebWidgetSettings } from "@/lib/domain/web-widget";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
@@ -277,8 +278,24 @@ export async function saveChannelsAction(form: FormData) {
     whatsappAi: form.get("whatsappAi") === "on",
     instagramAi: form.get("instagramAi") === "on",
     facebookAi: form.get("facebookAi") === "on",
+    webAi: form.get("webAi") === "on",
     replyDelaySeconds: Math.min(Math.max(Math.round(Number(form.get("replyDelaySeconds")) || 0), 0), MAX_REPLY_DELAY_SECONDS),
   });
+  revalidatePath("/settings/channels", "layout");
+}
+
+export async function saveWebWidgetAction(form: FormData) {
+  await requireAdmin();
+  await saveWebWidgetSettings({
+    enabled: form.get("enabled") === "on",
+    title: str(form, "title"),
+    greeting: str(form, "greeting"),
+    color: str(form, "color"),
+    position: str(form, "position") === "left" ? "left" : "right",
+    askContact: form.get("askContact") === "on",
+    allowedDomains: str(form, "allowedDomains"),
+  });
+  await saveChannelSettings({ webAi: form.get("webAi") === "on" });
   revalidatePath("/settings/channels", "layout");
 }
 

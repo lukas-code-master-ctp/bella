@@ -5,6 +5,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   WHATSAPP: "WhatsApp",
   INSTAGRAM: "Instagram",
   FACEBOOK: "Facebook",
+  WEB: "Web",
 };
 
 export type ScoreLevel = "bajo" | "medio" | "alto";
