@@ -420,11 +420,19 @@ export type ApprovedTemplate = {
   urlButtons: { index: number; text: string; url: string }[];
   /** Por qué Beliapp todavía no puede enviarla; null si se puede. */
   unsupported: string | null;
+  /** Para la página de plantillas: id en Meta, motivo de rechazo y lo que se ve en la vista previa. */
+  id?: string;
+  reason?: string | null;
+  headerText?: string | null;
+  footer?: string | null;
+  buttons?: string[];
 };
 
 const HEADER_KIND: Record<string, FileKind> = { IMAGE: "image", VIDEO: "video", DOCUMENT: "document" };
 
 type MetaTemplate = {
+  id?: string;
+  rejected_reason?: string;
   name: string;
   language: string;
   status: string;
@@ -462,13 +470,18 @@ export function toApprovedTemplate(t: MetaTemplate): ApprovedTemplate {
     header: header ? (HEADER_KIND[header.format ?? ""] ?? null) : null,
     urlButtons: buttons.flatMap((b, index) => (b.type === "URL" && b.url && /\{\{/.test(b.url) ? [{ index, text: b.text ?? "Enlace", url: b.url }] : [])),
     unsupported,
+    id: t.id,
+    reason: t.rejected_reason && t.rejected_reason !== "NONE" ? t.rejected_reason : null,
+    headerText: header?.format === "TEXT" ? (header.text ?? null) : null,
+    footer: parts.find((c) => c.type === "FOOTER")?.text ?? null,
+    buttons: buttons.map((b) => b.text ?? "Botón"),
   };
 }
 
 /** Plantillas aprobadas, en revisión o rechazadas de la cuenta de WhatsApp Business, por nombre. */
 export async function messageTemplates(): Promise<ApprovedTemplate[]> {
   const res = await graph<{ data?: MetaTemplate[] }>(
-    `${await wabaId()}/message_templates?limit=200&fields=name,language,status,category,parameter_format,components`,
+    `${await wabaId()}/message_templates?limit=200&fields=id,name,language,status,rejected_reason,category,parameter_format,components`,
     {},
     "la consulta de las plantillas",
   );
@@ -476,6 +489,15 @@ export async function messageTemplates(): Promise<ApprovedTemplate[]> {
     .filter((t) => ["APPROVED", "PENDING", "IN_APPEAL", "REJECTED"].includes(t.status))
     .map(toApprovedTemplate)
     .sort((a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language));
+}
+
+/** Borra en Meta esa plantilla (solo ese idioma). Meta no deja reusar el nombre por 30 días. */
+export async function deleteTemplate(id: string, name: string): Promise<void> {
+  await graph(
+    `${await wabaId()}/message_templates?hsm_id=${encodeURIComponent(id)}&name=${encodeURIComponent(name)}`,
+    { method: "DELETE" },
+    "el borrado de la plantilla",
+  );
 }
 
 /** Solo las aprobadas: las que se pueden enviar. */

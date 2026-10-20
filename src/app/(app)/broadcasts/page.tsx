@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Megaphone, Plus } from "lucide-react";
+import { Megaphone, MessageSquareText, Plus } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { broadcastStats, EMPTY_STATS } from "@/lib/domain/broadcasts";
@@ -20,10 +20,16 @@ export default async function BroadcastsPage() {
         title="Envíos masivos"
         description="Envía una plantilla de WhatsApp aprobada por Meta a una lista de personas. Cada una queda como lead: si responde, la conversación sigue en Chats."
       >
-        <Link href="/broadcasts/new" className={buttonClass()}>
-          <Plus aria-hidden />
-          Nuevo envío
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/broadcasts/templates" className={buttonClass("secondary")}>
+            <MessageSquareText aria-hidden />
+            Plantillas
+          </Link>
+          <Link href="/broadcasts/new" className={buttonClass()}>
+            <Plus aria-hidden />
+            Nuevo envío
+          </Link>
+        </div>
       </PageHeader>
 
       {broadcasts.length === 0 ? (
