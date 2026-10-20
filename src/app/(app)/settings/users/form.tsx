@@ -9,7 +9,7 @@ import { createUserAction } from "../actions";
 import { withToast } from "@/components/toast";
 
 export function NewUserForm() {
-  const [error, action] = useActionState(withToast(createUserAction, (e) => (e ? null : "Usuario creado")), null);
+  const [error, action] = useActionState(withToast(createUserAction, (e) => (e ? null : "Usuario creado. Le mandamos un correo de bienvenida.")), null);
   return (
     <form action={action}>
       <PanelBody>

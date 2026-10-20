@@ -22,6 +22,7 @@ import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conve
 import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
+import { createUser } from "@/lib/domain/users";
 import { completeWhatsAppSignup } from "@/lib/domain/whatsapp-signup";
 import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
@@ -460,21 +461,14 @@ export async function runFollowUpsNowAction(_prev: string | null): Promise<strin
 // Usuarios
 
 export async function createUserAction(_prev: string | null, form: FormData): Promise<string | null> {
-  await requireAdmin();
-  const email = str(form, "email").toLowerCase();
-  const password = str(form, "password");
-  if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
-  if (await rootDb.user.findUnique({ where: { email } })) return "Ya existe un usuario con ese correo.";
-  await db.user.create({
-    data: {
-      name: str(form, "name"),
-      email,
-      role: (str(form, "role") as Role) || "EXECUTIVE",
-      passwordHash: await hashPassword(password),
-    },
-  });
+  const admin = await requireAdmin();
+  const r = await createUser(
+    { name: str(form, "name"), email: str(form, "email"), password: str(form, "password"), role: (str(form, "role") as Role) || "EXECUTIVE" },
+    admin,
+  );
+  if ("error" in r) return r.error;
   revalidatePath("/settings/users");
-  return null;
+  return r.emailed ? null : "Usuario creado, pero no se pudo mandar el correo de bienvenida. Avísale tú cómo entrar.";
 }
 
 export async function toggleUserAction(id: string, active: boolean) {
