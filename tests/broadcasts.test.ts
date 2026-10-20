@@ -233,6 +233,25 @@ describe("plantillas aprobadas", () => {
     ).toMatchObject({ unsupported: null, urlButtons: [{ index: 1, text: "Ver", url: "https://x.cl/{{1}}" }] });
     expect(toApprovedTemplate({ name: "f", language: "es", status: "APPROVED", components: [body, { type: "BUTTONS", buttons: [{ type: "COPY_CODE" }] }] }).unsupported).toMatch(/código/);
   });
+
+  it("trae lo que muestra la vista previa y el motivo del rechazo", () => {
+    expect(
+      toApprovedTemplate({
+        id: "123",
+        name: "g",
+        language: "es",
+        status: "REJECTED",
+        rejected_reason: "PROMOTIONAL",
+        components: [
+          { type: "HEADER", format: "TEXT", text: "Novedades" },
+          { type: "BODY", text: "Hola {{1}}" },
+          { type: "FOOTER", text: "Responde BAJA" },
+          { type: "BUTTONS", buttons: [{ type: "QUICK_REPLY", text: "Me interesa" }] },
+        ],
+      }),
+    ).toMatchObject({ id: "123", reason: "PROMOTIONAL", headerText: "Novedades", footer: "Responde BAJA", buttons: ["Me interesa"] });
+    expect(toApprovedTemplate({ name: "h", language: "es", status: "APPROVED", rejected_reason: "NONE", components: [] }).reason).toBeNull();
+  });
 });
 
 describe("envíos masivos sin WhatsApp conectado", () => {

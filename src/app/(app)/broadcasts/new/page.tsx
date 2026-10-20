@@ -21,9 +21,9 @@ async function safely<T>(fn: () => Promise<T>): Promise<{ value: T } | { error: 
   }
 }
 
-export default async function NewBroadcastPage({ searchParams }: { searchParams: Promise<{ reenviar?: string }> }) {
+export default async function NewBroadcastPage({ searchParams }: { searchParams: Promise<{ reenviar?: string; plantilla?: string }> }) {
   await requireAdmin();
-  const { reenviar } = await searchParams;
+  const { reenviar, plantilla } = await searchParams;
   const resentFrom = reenviar ? await db.broadcast.findUnique({ where: { id: reenviar }, select: { id: true, name: true } }) : null;
   const resendStats = resentFrom ? ((await broadcastStats([resentFrom.id])).get(resentFrom.id) ?? EMPTY_STATS) : null;
   const missing = await missingWhatsAppEnv();
@@ -61,6 +61,7 @@ export default async function NewBroadcastPage({ searchParams }: { searchParams:
         dailyLimitKnown={Boolean(limit && "value" in limit && limit.value)}
         aiOn={channels.whatsappAi}
         files={files.map((f) => ({ id: f.id, label: f.product ? `${f.product} · ${f.title}` : f.title, kind: fileKind(f.mimeType) }))}
+        initialTemplate={plantilla ?? null}
         resend={resentFrom && resendStats ? { id: resentFrom.id, name: resentFrom.name, count: resendStats.sent - resendStats.read } : null}
       />
     </>

@@ -10,7 +10,7 @@ import { Button, Card, Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { createBroadcastAction, previewBroadcastAction, sendBroadcastTestAction, type PreviewResult } from "../actions";
 import { TemplateForm } from "./template-form";
-import { EMPTY_FILL, FillEditor, fillReady, keyOf, previewBody, toFill, type FillDraft, type LibraryFile } from "./fill-editor";
+import { draftFor, EMPTY_FILL, FillEditor, fillReady, keyOf, previewBody, toFill, type FillDraft, type LibraryFile } from "./fill-editor";
 
 type Option = { id: string; label: string };
 type Source = "file" | "paste" | "funnel" | "resend";
@@ -53,6 +53,7 @@ export function BroadcastWizard({
   aiOn,
   files,
   resend,
+  initialTemplate,
 }: {
   templates: ApprovedTemplate[];
   templatesError: string | null;
@@ -66,7 +67,10 @@ export function BroadcastWizard({
   files: LibraryFile[];
   /** Reenvío a quienes no leyeron otro envío (viene de su detalle). */
   resend: { id: string; name: string; count: number } | null;
+  /** "nombre|idioma" elegida desde la página de plantillas. */
+  initialTemplate?: string | null;
 }) {
+  const preselected = templates.find((t) => keyOf(t) === initialTemplate && t.status === "APPROVED" && !t.unsupported);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -86,13 +90,13 @@ export function BroadcastWizard({
   const [filterTag, setFilterTag] = useState("");
 
   // Paso 2
-  const [fillA, setFillA] = useState<FillDraft>(EMPTY_FILL);
+  const [fillA, setFillA] = useState<FillDraft>(preselected ? draftFor(preselected, []) : EMPTY_FILL);
   const [abTest, setAbTest] = useState(false);
   const [fillB, setFillB] = useState<FillDraft>(EMPTY_FILL);
   const [fromNumber, setFromNumber] = useState(numbers[0]?.id ?? "");
   const [stageId, setStageId] = useState(stages[0]?.id ?? "");
   const [tagId, setTagId] = useState("");
-  const [name, setName] = useState(resend ? `${resend.name} (reenvío)` : "");
+  const [name, setName] = useState(resend ? `${resend.name} (reenvío)` : preselected ? preselected.name.replaceAll("_", " ") : "");
 
   // Paso 3
   const [dailyLimit, setDailyLimit] = useState(String(initialLimit));

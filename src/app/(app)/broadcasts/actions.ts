@@ -16,7 +16,7 @@ import {
   sendBroadcastTest,
   type BroadcastInput,
 } from "@/lib/domain/broadcasts";
-import { submitTemplate } from "@/lib/channels/whatsapp";
+import { deleteTemplate, submitTemplate } from "@/lib/channels/whatsapp";
 import { templateDraftError, templateDraftParams, type TemplateDraft } from "@/lib/domain/broadcast-templates";
 import { DomainError } from "@/lib/domain/leads";
 
@@ -105,5 +105,18 @@ export async function submitBroadcastTemplateAction(draft: TemplateDraft): Promi
     return { error: err instanceof Error ? err.message : String(err) };
   }
   revalidatePath("/broadcasts/new");
+  revalidatePath("/broadcasts/templates");
   return { ok: "Enviada a Meta para revisión. Suele tardar minutos u horas; cuando la aprueben aparece en la lista." };
+}
+
+export async function deleteTemplateAction(id: string, name: string): Promise<{ error: string } | null> {
+  await requireAdmin();
+  try {
+    await deleteTemplate(id, name);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+  revalidatePath("/broadcasts/templates");
+  revalidatePath("/broadcasts/new");
+  return null;
 }
