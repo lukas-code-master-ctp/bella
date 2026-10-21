@@ -3,13 +3,14 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Avatar, Badge, PageHeader } from "@/components/ui";
 import { Panel, SwitchSubmit } from "@/components/settings-ui";
-import { setTakesLeadsAction, toggleUserAction } from "../actions";
+import { setTakesLeadsAction } from "../actions";
+import { UserMenu } from "./user-menu";
 import { NewUserForm } from "./form";
 
 export default async function UsersPage() {
   const me = await requireAdmin();
   const [users, load] = await Promise.all([
-    db.user.findMany({ orderBy: [{ active: "desc" }, { name: "asc" }] }),
+    db.user.findMany({ where: { deletedAt: null }, orderBy: [{ active: "desc" }, { name: "asc" }] }),
     db.lead.groupBy({ by: ["assigneeId"], where: { status: "OPEN" }, _count: { _all: true } }),
   ]);
   const openLeads = (id: string) => load.find((l) => l.assigneeId === id)?._count._all ?? 0;
@@ -29,6 +30,7 @@ export default async function UsersPage() {
                   {u.name}
                   <Badge tone={u.role === "ADMIN" ? "brand" : "neutral"}>{u.role === "ADMIN" ? "Admin" : "Ejecutivo"}</Badge>
                   {u.id === me.id && <Badge>Tú</Badge>}
+                  {!u.active && <Badge>Inactivo</Badge>}
                 </div>
                 <div className="truncate text-slate-600">{u.email}</div>
               </div>
@@ -45,13 +47,7 @@ export default async function UsersPage() {
                 <div className="h-full rounded-full bg-brand-500 transition-[width] duration-500" style={{ width: `${(openLeads(u.id) / maxLoad) * 100}%` }} />
               </div>
             </div>
-            <div className="flex w-11 justify-end">
-              {u.id !== me.id && (
-                <form action={toggleUserAction.bind(null, u.id, !u.active)}>
-                  <SwitchSubmit on={u.active} label={u.active ? `Desactivar a ${u.name}` : `Activar a ${u.name}`} />
-                </form>
-              )}
-            </div>
+            <UserMenu user={{ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active }} isMe={u.id === me.id} />
           </li>
         ))}
       </ul>
