@@ -41,8 +41,10 @@ export default async function FunnelPage({
   };
   const funnels = await listFunnels();
   const funnel = funnels.find((f) => f.id === funnelParam) ?? funnels[0];
-  const byScore = sort === "score";
-  const waitingFirst = sort === "waiting";
+  // Los ejecutivos parten con "Sin atender primero" (su trabajo es responder); los admins, con "Más recientes".
+  const order = sort || (user.role === "ADMIN" ? "recent" : "waiting");
+  const byScore = order === "score";
+  const waitingFirst = order === "waiting";
   const scope: Prisma.LeadWhereInput = {
     ...(user.role === "ADMIN" ? (executive ? { assigneeId: executive === "none" ? null : executive } : {}) : { assigneeId: user.id }),
     ...(funnel ? { stage: { funnelId: funnel.id } } : {}),
@@ -132,9 +134,9 @@ export default async function FunnelPage({
           <ParamSelect
             name="sort"
             label="Orden"
-            value={byScore ? "score" : waitingFirst ? "waiting" : ""}
+            value={byScore ? "score" : waitingFirst ? "waiting" : "recent"}
             options={[
-              { value: "", label: "Más recientes" },
+              { value: "recent", label: "Más recientes" },
               { value: "score", label: "Mayor puntaje" },
               { value: "waiting", label: "Sin atender primero" },
             ]}
