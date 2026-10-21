@@ -167,6 +167,11 @@ export async function LeadView({
   const isOpen = lead.status === "OPEN";
   const awaitingAmount = isOpen && awaitingStages.includes(lead.stageId);
   const lastMessage = lead.messages.at(-1) ?? null;
+  // WhatsApp, Instagram y Messenger solo dejan escribir libremente hasta 24 h después del último mensaje del cliente.
+  const lastFromContact = lead.messages.findLast((m) => m.author === "CONTACT");
+  const windowClosed =
+    ["WHATSAPP", "INSTAGRAM", "FACEBOOK"].includes(lead.contact.channel) &&
+    (!lastFromContact || Date.now() - lastFromContact.createdAt.getTime() > 24 * 60 * 60 * 1000);
   const waitingSince =
     isOpen && attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage }) === "waiting"
       ? lastMessage!.createdAt
@@ -263,6 +268,7 @@ export async function LeadView({
           simulator={lead.contact.channel === "SIMULATOR"}
           blocked={Boolean(lead.contact.blockedAt)}
           isAdmin={user.role === "ADMIN"}
+          windowClosed={windowClosed}
           ad={
             lead.source?.kind === "AD"
               ? {

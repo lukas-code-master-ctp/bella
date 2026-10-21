@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "../db";
 import { getAssistantSettings } from "../settings";
+import { fileKind } from "../media";
 import { getAiConfig } from "./config";
 import { defaultAnthropic, openRouterClient, type ProviderClients } from "./providers";
 
@@ -83,7 +84,12 @@ export async function refreshLeadInsights(
       .reverse()
       .map((m) => {
         const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : `Ejecutivo (${m.user?.name ?? "equipo"})`;
-        const text = m.mediaUrl ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"} ${m.body}`.trim() : m.body;
+        const media = !m.mediaUrl
+          ? ""
+          : fileKind(m.mediaType) === "audio"
+            ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"}`
+            : `[archivo ${m.mediaName ?? ""}]`;
+        const text = `${media} ${m.body}`.trim();
         return `${who}: ${text.slice(0, MAX_CHARS_PER_MESSAGE)}`;
       })
       .join("\n");

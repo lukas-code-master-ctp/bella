@@ -15,6 +15,7 @@ import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
 import { filesForPrompt, type FileForPrompt } from "../domain/files";
 import { knowledgeForPrompt } from "../knowledge";
+import { fileKind } from "../media";
 import { getAssistantSettings, type AssistantSettings } from "../settings";
 import { assistantFor, funnelStages } from "../domain/funnels";
 import { moveStageTx } from "../domain/leads";
@@ -204,11 +205,12 @@ function contactText(m: Message) {
     : `Cliente: [envió una nota de voz que no se pudo transcribir; pídele que la escriba]${caption}`;
 }
 
-/** Mensaje de un ejecutivo tal como lo ve la IA (también puede ser una nota de voz). */
+/** Mensaje de un ejecutivo tal como lo ve la IA (también puede ser una nota de voz o un archivo). */
 function userText(m: Message & { user: { name: string } | null }) {
   const who = `Ejecutivo (${m.user?.name ?? "equipo"})`;
   if (!m.mediaUrl) return `${who}: ${m.body}`;
   const caption = m.body ? `\n${m.body}` : "";
+  if (fileKind(m.mediaType) !== "audio") return `${who}: [envió el archivo ${m.mediaName ?? ""}]${caption}`;
   return `${who}, nota de voz: ${m.transcript ?? "[no se pudo transcribir]"}${caption}`;
 }
 

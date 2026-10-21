@@ -8,9 +8,9 @@ import type { AnthropicClient } from "@/lib/ai/providers";
 import type { WhatsAppApi } from "@/lib/channels/whatsapp";
 import type { MessengerApi } from "@/lib/channels/messenger";
 import { deliverOutbound } from "@/lib/domain/channels";
-import { addMediaFile } from "@/lib/domain/files";
+import { addMediaFile, sendLibraryFiles, sendUploadedFile } from "@/lib/domain/files";
 import type { MediaStore } from "@/lib/media";
-import { seedFunnel } from "./factories";
+import { executive, seedFunnel } from "./factories";
 
 const store: MediaStore = async (file, folder) => `https://blob.test/${folder}/${file.fileName}`;
 const pdf = { bytes: new Uint8Array([37, 80, 68, 70]), mimeType: "application/pdf", fileName: "masterplan.pdf" };
@@ -192,5 +192,65 @@ describe("envío de archivos por los canales", () => {
       { to: "user-1", kind: "image", url: "https://b/foto.jpg" },
       { to: "user-1", text: "Así se ve" },
     ]);
+  });
+});
+
+describe("archivos que manda un ejecutivo desde el chat", () => {
+  const MB = 1024 * 1024;
+  const blob = (leadId: string, name: string) => `https://abc.public.blob.vercel-storage.com/leads/${leadId}/archivos/${name}`;
+
+  it("manda archivos de la biblioteca en el orden del catálogo, con el texto de pie en el primero", async () => {
+    const plano = await addMediaFile({ title: "Plano", product: "Norte", description: "", file: pdf }, store);
+    const foto = await addMediaFile({ title: "Foto", product: "Norte", description: "", file: { ...pdf, fileName: "foto.png", mimeType: "image/png" } }, store);
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    const user = await executive("Pedro");
+    await sendLibraryFiles(lead.id, user.id, [foto.id, plano.id], "Te mando todo");
+    const sent = await db.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
+    expect(sent.map((m) => [m.author, m.userId, m.body, m.mediaName])).toEqual([
+      ["USER", user.id, "Te mando todo", "foto.png"],
+      ["USER", user.id, "", "masterplan.pdf"],
+    ]);
+    await expect(sendLibraryFiles(lead.id, user.id, ["no-existe"])).rejects.toThrow(/ya no está/);
+    await expect(sendLibraryFiles(lead.id, user.id, [])).rejects.toThrow(/al menos un archivo/);
+  });
+
+  it("guarda el archivo subido; un video de más de 16 MB va como documento", async () => {
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    const user = await executive("Pedro");
+    await sendUploadedFile(lead.id, user.id, { url: blob(lead.id, "foto-abc.jpg"), fileName: "foto.jpg", mimeType: "image/jpeg", size: 2 * MB }, "Mira");
+    await sendUploadedFile(lead.id, user.id, { url: blob(lead.id, "tour-abc.mp4"), fileName: "tour.mp4", mimeType: "video/mp4", size: 40 * MB });
+    const sent = await db.message.findMany({ where: { leadId: lead.id }, orderBy: { createdAt: "asc" } });
+    expect(sent.map((m) => [m.body, m.mediaType, m.mediaName])).toEqual([
+      ["Mira", "image/jpeg", "foto.jpg"],
+      ["", "application/octet-stream", "tour.mp4"],
+    ]);
+  });
+
+  it("rechaza enlaces ajenos, fotos muy pesadas, audios y archivos sobre 100 MB", async () => {
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    const other = await createLead({ name: "Beto", channel: "SIMULATOR" });
+    const user = await executive("Pedro");
+    const file = { fileName: "a.pdf", mimeType: "application/pdf", size: MB };
+    await expect(sendUploadedFile(lead.id, user.id, { ...file, url: "https://evil.test/leads/x/archivos/a.pdf" })).rejects.toThrow(/No se pudo subir/);
+    await expect(sendUploadedFile(lead.id, user.id, { ...file, url: blob(other.id, "a.pdf") })).rejects.toThrow(/No se pudo subir/);
+    await expect(
+      sendUploadedFile(lead.id, user.id, { url: blob(lead.id, "f.png"), fileName: "f.png", mimeType: "image/png", size: 8 * MB }),
+    ).rejects.toThrow(/hasta 5 MB en imágenes/);
+    await expect(
+      sendUploadedFile(lead.id, user.id, { url: blob(lead.id, "n.mp3"), fileName: "n.mp3", mimeType: "audio/mpeg", size: MB }),
+    ).rejects.toThrow(/nota de voz/);
+    await expect(sendUploadedFile(lead.id, user.id, { ...file, url: blob(lead.id, "a.pdf"), size: 120 * MB })).rejects.toThrow(/hasta 100 MB/);
+    expect(await db.message.count()).toBe(0);
+  });
+
+  it("la IA sabe qué archivo mandó el ejecutivo", async () => {
+    const lead = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    const user = await executive("Pedro");
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "¿Tienes el plano?" } });
+    await sendUploadedFile(lead.id, user.id, { url: blob(lead.id, "plano.pdf"), fileName: "plano.pdf", mimeType: "application/pdf", size: MB }, "Aquí está");
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Gracias" } });
+    const { clients, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [{ type: "text", text: "De nada" }] }]);
+    await runAgent(lead.id, clients);
+    expect(JSON.stringify(requests[0].messages)).toContain("Ejecutivo (Pedro): [envió el archivo plano.pdf]");
   });
 });

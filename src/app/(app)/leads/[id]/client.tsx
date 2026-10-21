@@ -11,6 +11,7 @@ import { ActivityPanel } from "./activity-panel";
 import { CorrectionDialog } from "./correction-dialog";
 import { timeline } from "@/lib/chat-timeline";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
+import { FileButton } from "./file-sender";
 
 export type ChatMessage = {
   id: string;
@@ -77,6 +78,7 @@ export function LeadChat({
   simulator,
   blocked = false,
   isAdmin = false,
+  windowClosed = false,
 }: {
   leadId: string;
   messages: ChatMessage[];
@@ -88,6 +90,8 @@ export function LeadChat({
   /** Contacto bloqueado: no se le escribe ni se simula que escribe. */
   blocked?: boolean;
   isAdmin?: boolean;
+  /** Pasaron más de 24 horas desde el último mensaje del cliente: el canal solo deja mandar plantillas. */
+  windowClosed?: boolean;
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
@@ -153,6 +157,7 @@ export function LeadChat({
         )}
         <UserComposer
           leadId={leadId}
+          windowClosed={windowClosed}
           onSend={(body, audioUrl) => {
             if (audioUrl) addPending(pending("USER", "", { url: audioUrl, transcript: null }));
             if (body) addPending(pending("USER", body));
@@ -496,9 +501,11 @@ function ContactComposer({
 
 function UserComposer({
   leadId,
+  windowClosed,
   onSend,
 }: {
   leadId: string;
+  windowClosed: boolean;
   onSend: (body: string, audioUrl: string | null) => void;
 }) {
   const router = useRouter();
@@ -541,6 +548,7 @@ function UserComposer({
               Responder como ejecutivo
             </label>
             <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
+            <FileButton leadId={leadId} windowClosed={windowClosed} disabled={sendingAudio} />
             <MicButton recorder={recorder} disabled={sendingAudio} label="Grabar nota de voz" />
             <SubmitButton pendingText="Enviando…">
               <Send aria-hidden />
