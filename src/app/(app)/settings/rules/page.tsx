@@ -115,7 +115,7 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
         title={editing ? `Editar regla "${editing.name}"` : "Nueva regla"}
         description="Define cuándo se dispara, entre quiénes se reparte y cómo."
       >
-        <form action={saveRuleAction}>
+        <form action={saveRuleAction} className="group/rule">
           {editing && <input type="hidden" name="id" value={editing.id} />}
           <PanelBody>
             <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -126,7 +126,7 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
                 <input name="priority" type="number" defaultValue={editing?.priority ?? 0} className={inputClass} />
               </Field>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 group-has-[option[value=template-reply]:checked]/rule:sm:grid-cols-2">
               <Field label="Cuándo se aplica">
                 <select name="target" required defaultValue={target} className={inputClass}>
                   <optgroup label="Entra a la etapa">
@@ -148,9 +148,12 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
                   </optgroup>
                 </select>
               </Field>
-              <Field label="Texto del botón" hint="Solo para botones de plantilla. Vacío = cualquier botón">
-                <input name="buttonText" defaultValue={editing?.buttonText ?? ""} placeholder="Ej. Quiero que me llamen" className={inputClass} />
-              </Field>
+              {/* Solo aplica a "Toca un botón de la plantilla": se muestra al elegirlo. */}
+              <div className="hidden group-has-[option[value=template-reply]:checked]/rule:block">
+                <Field label="Texto del botón" hint="Vacío = cualquier botón de la plantilla">
+                  <input name="buttonText" defaultValue={editing?.buttonText ?? ""} placeholder="Ej. Quiero que me llamen" className={inputClass} />
+                </Field>
+              </div>
             </div>
             <FieldGroup title="Ejecutivos" description="Sin selección, se reparte entre todos los ejecutivos activos y los admins que atienden leads.">
               {executives.length === 0 ? (
@@ -165,17 +168,20 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
                 </div>
               )}
             </FieldGroup>
-            <fieldset className="space-y-1.5">
-              <legend className="text-sm font-medium text-slate-800">Estrategia</legend>
-              <div className="grid gap-3 sm:grid-cols-2">
+            <FieldGroup title="Cómo se asigna">
+              <div role="radiogroup" aria-label="Cómo se asigna" className="grid gap-3 sm:grid-cols-2">
                 <ChoiceCard name="strategy" value="ROUND_ROBIN" defaultChecked={editing?.strategy !== "LEAST_LOADED"} icon={<Repeat />} title="Rotación" description="Uno a uno, por turnos (round robin)." />
                 <ChoiceCard name="strategy" value="LEAST_LOADED" defaultChecked={editing?.strategy === "LEAST_LOADED"} icon={<Gauge />} title="Menor carga" description="Al que tiene menos leads abiertos." />
               </div>
-            </fieldset>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ToggleRow name="reassign" defaultChecked={editing?.reassign} icon={<UserRoundCog />} title="Reasignar" description="Aunque el lead ya tenga ejecutivo." />
-              <ToggleRow name="pauseAi" defaultChecked={editing?.pauseAi ?? true} icon={<PauseCircle />} title="Pausar la IA" description="Para que siga el ejecutivo (botón de plantilla)." />
-            </div>
+            </FieldGroup>
+            <FieldGroup title="Qué más ocurre">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ToggleRow name="reassign" defaultChecked={editing?.reassign} icon={<UserRoundCog />} title="Reasignar" description="Cambia el ejecutivo aunque el lead ya tenga uno." />
+                <div className="hidden group-has-[option[value=template-reply]:checked]/rule:block">
+                  <ToggleRow name="pauseAi" defaultChecked={editing?.pauseAi ?? true} icon={<PauseCircle />} title="Pausar la IA" description="Para que siga el ejecutivo después de que el cliente toque el botón." className="h-full" />
+                </div>
+              </div>
+            </FieldGroup>
           </PanelBody>
           <PanelFooter>
             {editing && (
