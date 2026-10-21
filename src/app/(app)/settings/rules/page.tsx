@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ArrowRight, Gauge, PauseCircle, Pencil, Plus, Save, Repeat, Shuffle, Trash2, UserRoundCog } from "lucide-react";
+import { ArrowRight, PauseCircle, Pencil, Plus, Save, Shuffle, Trash2, UserRoundCog } from "lucide-react";
 import { LEAD_TAKERS, TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Avatar, Badge, Card, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
-import { Callout, Chip, ChoiceCard, FieldGroup, Panel, PanelBody, PanelFooter, SwitchSubmit, ToggleRow } from "@/components/settings-ui";
+import { Callout, FieldGroup, Panel, PanelBody, PanelFooter, SwitchSubmit, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
+import { ExecutivesAndStrategy } from "./executives-strategy";
 import { deleteRuleAction, saveRuleAction, toggleRuleAction } from "../actions";
 
 export default async function RulesPage({ searchParams }: { searchParams: Promise<{ editar?: string }> }) {
@@ -155,25 +156,11 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
                 </Field>
               </div>
             </div>
-            <FieldGroup title="Ejecutivos" description="Sin selección, se reparte entre todos los ejecutivos activos y los admins que atienden leads.">
-              {executives.length === 0 ? (
-                <p className="text-sm text-slate-500">No hay ejecutivos activos. Créalos en Usuarios.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {executives.map((e) => (
-                    <Chip key={e.id} name="executives" value={e.id} defaultChecked={chosen.has(e.id)}>
-                      {e.name}
-                    </Chip>
-                  ))}
-                </div>
-              )}
-            </FieldGroup>
-            <FieldGroup title="Cómo se asigna">
-              <div role="radiogroup" aria-label="Cómo se asigna" className="grid gap-3 sm:grid-cols-2">
-                <ChoiceCard name="strategy" value="ROUND_ROBIN" defaultChecked={editing?.strategy !== "LEAST_LOADED"} icon={<Repeat />} title="Rotación" description="Uno a uno, por turnos (round robin)." />
-                <ChoiceCard name="strategy" value="LEAST_LOADED" defaultChecked={editing?.strategy === "LEAST_LOADED"} icon={<Gauge />} title="Menor carga" description="Al que tiene menos leads abiertos." />
-              </div>
-            </FieldGroup>
+            <ExecutivesAndStrategy
+              executives={executives.map((e) => ({ id: e.id, name: e.name }))}
+              chosen={[...chosen]}
+              strategy={editing?.strategy ?? "ROUND_ROBIN"}
+            />
             <FieldGroup title="Qué más ocurre">
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleRow name="reassign" defaultChecked={editing?.reassign} icon={<UserRoundCog />} title="Reasignar" description="Cambia el ejecutivo aunque el lead ya tenga uno." />
