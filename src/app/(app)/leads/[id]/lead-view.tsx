@@ -27,7 +27,7 @@ import {
   removeTagAction,
   setAssigneeAction,
 } from "./actions";
-import { FollowUpNowButton, LeadChat, RefreshInsightsForm } from "./client";
+import { FollowUpNowButton, LeadChat, RefreshInsightsForm, type ChatEvent } from "./client";
 import { AiPausedChip, ConfirmAmountForm, LeadMenu } from "./lead-menu";
 import { LeadTabs } from "./lead-tabs";
 import { LeadFieldsForm } from "./fields-form";
@@ -64,6 +64,36 @@ const EVENT_LABEL: Record<string, string> = {
   TASK_REOPENED: "Tarea pendiente otra vez:",
   TASK_DELETED: "Tarea eliminada:",
 };
+
+/**
+ * Eventos que además se marcan dentro de la conversación (el resto, como etiquetas o campos,
+ * queda solo en Historial para no llenar el chat). Valor: color de la nota.
+ */
+const CHAT_EVENTS: Record<string, ChatEvent["tone"]> = {
+  STAGE_CHANGED: "neutral",
+  ASSIGNED: "neutral",
+  UNASSIGNED: "neutral",
+  HANDOFF: "neutral",
+  AI_PAUSED: "neutral",
+  AI_RESUMED: "neutral",
+  WON: "success",
+  LOST: "danger",
+  REOPENED: "neutral",
+  BLOCKED: "danger",
+  UNBLOCKED: "neutral",
+  OPTED_OUT: "neutral",
+  OPTED_IN: "neutral",
+  CONTACT_MERGED: "neutral",
+  FOLLOW_UP_SCHEDULED: "neutral",
+  FOLLOW_UP_CANCELED: "neutral",
+};
+
+/** Texto de un evento: "Cambio de etapa: Nuevo → Calificado". */
+function eventText(type: string, data: Record<string, unknown>) {
+  const label = (EVENT_LABEL[type] ?? type).replace(/:$/, "");
+  const detail = describe(data);
+  return detail ? `${label}: ${detail}` : label;
+}
 
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 
@@ -243,7 +273,20 @@ export async function LeadView({
               : {}),
             ...(m.deliveryStatus ? { delivery: { status: m.deliveryStatus, error: m.deliveryError } } : {}),
             time: time(m.createdAt),
+            at: m.createdAt.getTime(),
           }))}
+          events={lead.events
+            .filter((e) => Object.hasOwn(CHAT_EVENTS, e.type))
+            .reverse()
+            .map((e) => ({
+              id: e.id,
+              at: e.createdAt.getTime(),
+              text: eventText(e.type, e.data as Record<string, unknown>),
+              actor: e.actor === "USER" ? (e.user?.name ?? "") : ACTOR_LABEL[e.actor],
+              reason: e.reason,
+              time: time(e.createdAt),
+              tone: CHAT_EVENTS[e.type],
+            }))}
         />
       </Card>
 
