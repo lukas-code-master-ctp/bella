@@ -31,7 +31,7 @@ import type { AdsApi } from "../channels/ads";
 import { attachAdSource, attachLinkSource, createSourceLink, takeRefCode, utmFromParams } from "./attribution";
 import { applyTemplateReply } from "./assignment";
 import { isBlocked, optOutIfAsked } from "./contacts";
-import { fileKind, type FileKind } from "../media";
+import { blobStore, fileKind, INBOUND_MEDIA_MAX_BYTES, previewKind, type FileKind } from "../media";
 import { createLead, DomainError } from "./leads";
 import { receiveContactAudio, type MediaDeps } from "./messages";
 import { notifyContactMessage } from "./notifications";
@@ -224,10 +224,49 @@ async function receiveAudio(
   await notifyContactMessage(leadId, "🎤 Nota de voz");
 }
 
-/** Guarda un mensaje de texto del cliente una sola vez (Meta puede reintentar el webhook). */
-async function receiveText(leadId: string, externalId: string, body: string) {
+type MediaFields = { mediaUrl: string; mediaType: string; mediaName: string };
+
+/**
+ * Foto, video, documento o sticker del cliente: se descarga de Meta y se guarda en el Blob store
+ * para verlo en el chat. El texto ("[Imagen] pie de foto") queda igual, para la IA y los avisos;
+ * si el archivo no se puede guardar, el mensaje queda solo con ese texto.
+ */
+async function receiveFile(
+  leadId: string,
+  externalId: string,
+  body: string,
+  download: () => Promise<{ bytes: Uint8Array; mimeType: string }>,
+  fileName: string | undefined,
+  deps: InboundDeps,
+) {
+  let media: MediaFields | undefined;
   try {
-    await db.message.create({ data: { leadId, author: "CONTACT", body, externalId } });
+    const file = await download();
+    if (!file.bytes.byteLength) throw new Error("El archivo llegó vacío.");
+    if (file.bytes.byteLength > INBOUND_MEDIA_MAX_BYTES) {
+      throw new Error(`El archivo pesa más de ${INBOUND_MEDIA_MAX_BYTES / 1024 / 1024} MB.`);
+    }
+    const mimeType = file.mimeType.split(";")[0].trim() || "application/octet-stream";
+    const name = fileName?.trim() || defaultFileName(mimeType);
+    const mediaUrl = await (deps.media?.store ?? blobStore)({ bytes: file.bytes, mimeType, fileName: name }, `leads/${leadId}`);
+    media = { mediaUrl, mediaType: mimeType, mediaName: name };
+  } catch (err) {
+    console.error(`[canales] archivo ${externalId}:`, err);
+  }
+  return receiveText(leadId, externalId, body, media);
+}
+
+/** Nombre para un archivo que llegó sin uno (fotos, videos y stickers). */
+function defaultFileName(mimeType: string) {
+  const ext = mimeType.split("/")[1]?.replace(/[^\w]/g, "") || "bin";
+  const kind = previewKind(mimeType);
+  return `${kind === "image" ? "foto" : kind === "video" ? "video" : "archivo"}.${ext}`;
+}
+
+/** Guarda un mensaje del cliente una sola vez (Meta puede reintentar el webhook). */
+async function receiveText(leadId: string, externalId: string, body: string, media?: MediaFields) {
+  try {
+    await db.message.create({ data: { leadId, author: "CONTACT", body, externalId, ...media } });
   } catch (err) {
     // Otro servidor ya guardó el mismo mensaje. Otro error se relanza: el webhook responde 500
     // y Meta lo reintenta, en vez de perder el mensaje.
@@ -237,6 +276,9 @@ async function receiveText(leadId: string, externalId: string, body: string) {
   await notifyContactMessage(leadId, body);
   return true;
 }
+
+/** Mensajes de WhatsApp que traen un archivo para mostrar en el chat. */
+const WA_FILE_TYPES = new Set(["image", "video", "document", "sticker"]);
 
 async function receiveWhatsAppMessage(
   m: WaMessage,
@@ -292,6 +334,12 @@ async function receiveWhatsAppMessage(
     const mediaId = m.audio.id;
     await receiveAudio(leadId, m.id, () => (deps.api ?? cloudApi).downloadMedia(mediaId), deps);
     return leadId;
+  }
+  const file = WA_FILE_TYPES.has(m.type) ? m[m.type as "image" | "video" | "document" | "sticker"] : undefined;
+  if (file?.id) {
+    const mediaId = file.id;
+    const download = () => (deps.api ?? cloudApi).downloadMedia(mediaId, INBOUND_MEDIA_MAX_BYTES);
+    return (await receiveFile(leadId, m.id, body, download, m.document?.filename, deps)) ? leadId : null;
   }
   // El código de una landing (/wa) une sus UTM al lead y no se guarda en el mensaje.
   const text = m.type === "text" ? await takeRefCode(leadId, body) : body;
@@ -361,7 +409,34 @@ async function receiveMessengerEvent(
     await receiveAudio(leadId, externalId, () => api.download(audio.payload!.url!), deps);
     return leadId;
   }
+  // Fotos, videos o archivos (pueden venir varios juntos): cada uno queda como un mensaje con su archivo.
+  const files = m?.attachments ?? [];
+  if (!m?.text && files.length && files.every((a) => MSG_FILE_TYPES.has(a.type) && a.payload?.url)) {
+    let saved = false;
+    for (const [i, a] of files.entries()) {
+      const url = a.payload!.url!;
+      const id = i ? `${externalId}#${i + 1}` : externalId;
+      const download = () => api.download(url, INBOUND_MEDIA_MAX_BYTES);
+      if (await receiveFile(leadId, id, describeAttachment(a), download, a.type === "file" ? fileNameFromUrl(url) : undefined, deps)) {
+        saved = true;
+      }
+    }
+    return saved ? leadId : null;
+  }
   return (await receiveText(leadId, externalId, body)) ? leadId : null;
+}
+
+/** Adjuntos de Instagram y Messenger que se guardan para verlos en el chat. */
+const MSG_FILE_TYPES = new Set(["image", "video", "file"]);
+
+/** Meta no manda el nombre de un archivo de Messenger, pero suele venir al final de su URL. */
+function fileNameFromUrl(url: string) {
+  try {
+    const last = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "");
+    return /\.\w{2,5}$/.test(last) ? last : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // --- Widget web ----------------------------------------------------------------------------

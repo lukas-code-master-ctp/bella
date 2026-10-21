@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { renewSession, requireUser } from "@/lib/auth";
 import { DomainError } from "@/lib/domain/leads";
 import { changeOwnPassword, updateOwnName } from "@/lib/domain/profile";
+import { createQuickReply, deleteQuickReply, updateQuickReply } from "@/lib/domain/quick-replies";
 
 export type ProfileState = { ok: boolean; message: string } | null;
 
@@ -35,4 +36,23 @@ export async function changePasswordAction(_prev: ProfileState, form: FormData):
   );
   if (result?.ok) await renewSession();
   return result;
+}
+
+const quickReplyInput = (form: FormData) => ({ name: String(form.get("name") ?? ""), body: String(form.get("body") ?? "") });
+
+/** Crea (sin `id`) o edita una respuesta rápida propia. */
+export async function saveQuickReplyAction(id: string | null, _prev: ProfileState, form: FormData): Promise<ProfileState> {
+  const user = await requireUser();
+  const result = await run(
+    () => (id ? updateQuickReply(user.id, id, quickReplyInput(form)) : createQuickReply(user.id, quickReplyInput(form))),
+    id ? "Respuesta guardada." : "Respuesta creada.",
+  );
+  if (result?.ok) revalidatePath("/", "layout");
+  return result;
+}
+
+export async function deleteQuickReplyAction(id: string): Promise<void> {
+  const user = await requireUser();
+  await deleteQuickReply(user.id, id);
+  revalidatePath("/", "layout");
 }

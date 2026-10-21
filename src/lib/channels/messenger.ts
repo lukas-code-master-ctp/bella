@@ -29,7 +29,7 @@ export type MessengerApi = {
   sendFile(platform: MetaPlatform, to: string, file: { kind: FileKind; url: string }): Promise<string>;
   /** Nombre visible de quien escribe (null si Meta no lo entrega). */
   profileName(platform: MetaPlatform, userId: string): Promise<string | null>;
-  download(url: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
+  download(url: string, maxBytes?: number): Promise<{ bytes: Uint8Array; mimeType: string }>;
 };
 
 /** Motivo legible de los errores de Meta más comunes al enviar por Messenger o Instagram. */
@@ -92,7 +92,7 @@ export const messengerApi: MessengerApi = {
       return null;
     }
   },
-  download: (url) => downloadFromMeta(url),
+  download: (url, maxBytes) => downloadFromMeta(url, maxBytes),
 };
 
 /** Dominios desde los que Meta entrega los adjuntos de Instagram y Messenger. */

@@ -106,7 +106,7 @@ async function buildInput(alert: CampaignAlert, lostLeadIds: string[], days: num
   ];
   for (const [i, l] of leads.entries()) {
     const said = l.messages
-      .map((m) => (m.mediaUrl ? (m.transcript ?? "") : m.body).replace(/\s+/g, " ").trim().slice(0, MAX_CHARS_PER_MESSAGE))
+      .map((m) => (m.transcript ?? m.body).replace(/\s+/g, " ").trim().slice(0, MAX_CHARS_PER_MESSAGE))
       .filter(Boolean)
       .map((s) => `  - "${s}"`);
     const hours = l.closedAt ? Math.round((l.closedAt.getTime() - l.createdAt.getTime()) / 3_600_000) : null;

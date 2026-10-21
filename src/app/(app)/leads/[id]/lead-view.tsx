@@ -1,4 +1,4 @@
-import { fileKind } from "@/lib/media";
+import { previewKind } from "@/lib/media";
 import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
@@ -15,6 +15,7 @@ import { formatAgo, formatLocal, startOfLocalDay, TIME_ZONE, toLocalInput } from
 import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { awaitingAmountStageIds } from "@/lib/domain/leads";
+import { listQuickReplies } from "@/lib/domain/quick-replies";
 import { Avatar, Badge, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
@@ -148,7 +149,7 @@ export async function LeadView({
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages] = await Promise.all([
+  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages, quickReplies] = await Promise.all([
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -161,6 +162,7 @@ export async function LeadView({
       ? db.whatsAppNumber.findUnique({ where: { phoneNumberId: lead.contact.waPhoneNumberId }, select: { label: true } })
       : null,
     awaitingAmountStageIds(),
+    listQuickReplies(user.id),
     markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
@@ -269,6 +271,7 @@ export async function LeadView({
           blocked={Boolean(lead.contact.blockedAt)}
           isAdmin={user.role === "ADMIN"}
           windowClosed={windowClosed}
+          quickReplies={quickReplies}
           ad={
             lead.source?.kind === "AD"
               ? {
@@ -287,10 +290,11 @@ export async function LeadView({
             author: m.author,
             authorName:
               m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
-            body: m.body,
-            ...(m.mediaUrl && fileKind(m.mediaType) === "audio" ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
-            ...(m.mediaUrl && fileKind(m.mediaType) !== "audio"
-              ? { file: { url: m.mediaUrl, name: m.mediaName ?? "Archivo", kind: fileKind(m.mediaType) } }
+            // Con el archivo a la vista, sobra la etiqueta "[Imagen]" del cliente: queda solo el pie de foto.
+            body: m.author === "CONTACT" && m.mediaUrl ? m.body.replace(/^\[[^\]]*\]\s*/, "") : m.body,
+            ...(m.mediaUrl && previewKind(m.mediaType) === "audio" ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
+            ...(m.mediaUrl && previewKind(m.mediaType) !== "audio"
+              ? { file: { url: m.mediaUrl, name: m.mediaName ?? "Archivo", kind: previewKind(m.mediaType) } }
               : {}),
             ...(m.deliveryStatus ? { delivery: { status: m.deliveryStatus, error: m.deliveryError } } : {}),
             time: time(m.createdAt),

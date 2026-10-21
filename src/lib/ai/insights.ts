@@ -88,7 +88,7 @@ export async function refreshLeadInsights(
           ? ""
           : fileKind(m.mediaType) === "audio"
             ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"}`
-            : `[archivo ${m.mediaName ?? ""}]`;
+            : `[archivo${m.mediaName ? ` ${m.mediaName}` : ""}]`;
         const text = `${media} ${m.body}`.trim();
         return `${who}: ${text.slice(0, MAX_CHARS_PER_MESSAGE)}`;
       })
