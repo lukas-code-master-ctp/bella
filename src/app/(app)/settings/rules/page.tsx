@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { ArrowRight, Gauge, PauseCircle, Plus, Repeat, Shuffle, Trash2, UserRoundCog } from "lucide-react";
+import { ArrowRight, Gauge, PauseCircle, Pencil, Plus, Save, Repeat, Shuffle, Trash2, UserRoundCog } from "lucide-react";
 import { LEAD_TAKERS, TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Avatar, Badge, Card, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
 import { Callout, Chip, ChoiceCard, FieldGroup, Panel, PanelBody, PanelFooter, SwitchSubmit, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
-import { createRuleAction, deleteRuleAction, toggleRuleAction } from "../actions";
+import { deleteRuleAction, saveRuleAction, toggleRuleAction } from "../actions";
 
-export default async function RulesPage() {
+export default async function RulesPage({ searchParams }: { searchParams: Promise<{ editar?: string }> }) {
+  const { editar } = await searchParams;
   const [rules, stages, tags, executives] = await Promise.all([
     db.assignmentRule.findMany({
       include: { stage: true, tag: true, executives: true },
@@ -18,6 +19,9 @@ export default async function RulesPage() {
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     db.user.findMany({ where: LEAD_TAKERS, orderBy: { name: "asc" } }),
   ]);
+  const editing = rules.find((r) => r.id === editar) ?? null;
+  const target = editing ? (editing.trigger === "TEMPLATE_REPLY" ? TEMPLATE_REPLY_TARGET : (editing.stageId ?? editing.tagId ?? "")) : undefined;
+  const chosen = new Set(editing?.executives.map((e) => e.id));
 
   return (
     <div className="space-y-6">
@@ -53,6 +57,14 @@ export default async function RulesPage() {
                     <Badge>Prioridad {r.priority}</Badge>
                   </p>
                 </div>
+                <Link
+                  href={`/settings/rules?editar=${r.id}#regla`}
+                  aria-label={`Editar regla ${r.name}`}
+                  title="Editar regla"
+                  className="flex size-10 items-center justify-center rounded-lg text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 [&_svg]:size-4"
+                >
+                  <Pencil aria-hidden />
+                </Link>
                 <form action={deleteRuleAction.bind(null, r.id)}>
                   <SubmitButton toast="Regla borrada" variant="ghost-danger" size="icon" aria-label={`Borrar regla ${r.name}`} title="Borrar regla" confirm={`¿Borrar la regla "${r.name}"?`} pendingText="">
                     <Trash2 aria-hidden />
@@ -96,20 +108,27 @@ export default async function RulesPage() {
         </ul>
       )}
 
-      <Panel icon={<Plus />} title="Nueva regla" description="Define cuándo se dispara, entre quiénes se reparte y cómo.">
-        <form action={createRuleAction}>
+      <Panel
+        id="regla"
+        key={editing?.id ?? "nueva"}
+        icon={editing ? <Pencil /> : <Plus />}
+        title={editing ? `Editar regla "${editing.name}"` : "Nueva regla"}
+        description="Define cuándo se dispara, entre quiénes se reparte y cómo."
+      >
+        <form action={saveRuleAction}>
+          {editing && <input type="hidden" name="id" value={editing.id} />}
           <PanelBody>
             <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
               <Field label="Nombre">
-                <input name="name" required placeholder="Ej. Motos a equipo motos" className={inputClass} />
+                <input name="name" required defaultValue={editing?.name} placeholder="Ej. Motos a equipo motos" className={inputClass} />
               </Field>
               <Field label="Prioridad" hint="Mayor número se evalúa primero">
-                <input name="priority" type="number" defaultValue={0} className={inputClass} />
+                <input name="priority" type="number" defaultValue={editing?.priority ?? 0} className={inputClass} />
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Cuándo se aplica">
-                <select name="target" required className={inputClass}>
+                <select name="target" required defaultValue={target} className={inputClass}>
                   <optgroup label="Entra a la etapa">
                     {stages.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -130,7 +149,7 @@ export default async function RulesPage() {
                 </select>
               </Field>
               <Field label="Texto del botón" hint="Solo para botones de plantilla. Vacío = cualquier botón">
-                <input name="buttonText" placeholder="Ej. Quiero que me llamen" className={inputClass} />
+                <input name="buttonText" defaultValue={editing?.buttonText ?? ""} placeholder="Ej. Quiero que me llamen" className={inputClass} />
               </Field>
             </div>
             <FieldGroup title="Ejecutivos" description="Sin selección, se reparte entre todos los ejecutivos activos y los admins que atienden leads.">
@@ -139,7 +158,7 @@ export default async function RulesPage() {
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {executives.map((e) => (
-                    <Chip key={e.id} name="executives" value={e.id}>
+                    <Chip key={e.id} name="executives" value={e.id} defaultChecked={chosen.has(e.id)}>
                       {e.name}
                     </Chip>
                   ))}
@@ -149,19 +168,24 @@ export default async function RulesPage() {
             <fieldset className="space-y-1.5">
               <legend className="text-sm font-medium text-slate-800">Estrategia</legend>
               <div className="grid gap-3 sm:grid-cols-2">
-                <ChoiceCard name="strategy" value="ROUND_ROBIN" defaultChecked icon={<Repeat />} title="Rotación" description="Uno a uno, por turnos (round robin)." />
-                <ChoiceCard name="strategy" value="LEAST_LOADED" icon={<Gauge />} title="Menor carga" description="Al que tiene menos leads abiertos." />
+                <ChoiceCard name="strategy" value="ROUND_ROBIN" defaultChecked={editing?.strategy !== "LEAST_LOADED"} icon={<Repeat />} title="Rotación" description="Uno a uno, por turnos (round robin)." />
+                <ChoiceCard name="strategy" value="LEAST_LOADED" defaultChecked={editing?.strategy === "LEAST_LOADED"} icon={<Gauge />} title="Menor carga" description="Al que tiene menos leads abiertos." />
               </div>
             </fieldset>
             <div className="grid gap-3 sm:grid-cols-2">
-              <ToggleRow name="reassign" icon={<UserRoundCog />} title="Reasignar" description="Aunque el lead ya tenga ejecutivo." />
-              <ToggleRow name="pauseAi" defaultChecked icon={<PauseCircle />} title="Pausar la IA" description="Para que siga el ejecutivo (botón de plantilla)." />
+              <ToggleRow name="reassign" defaultChecked={editing?.reassign} icon={<UserRoundCog />} title="Reasignar" description="Aunque el lead ya tenga ejecutivo." />
+              <ToggleRow name="pauseAi" defaultChecked={editing?.pauseAi ?? true} icon={<PauseCircle />} title="Pausar la IA" description="Para que siga el ejecutivo (botón de plantilla)." />
             </div>
           </PanelBody>
           <PanelFooter>
-            <SubmitButton toast="Regla creada">
-              <Plus aria-hidden />
-              Crear regla
+            {editing && (
+              <Link href="/settings/rules" className="inline-flex min-h-10 items-center rounded-lg px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">
+                Cancelar
+              </Link>
+            )}
+            <SubmitButton toast={editing ? "Regla guardada" : "Regla creada"}>
+              {editing ? <Save aria-hidden /> : <Plus aria-hidden />}
+              {editing ? "Guardar cambios" : "Crear regla"}
             </SubmitButton>
           </PanelFooter>
         </form>

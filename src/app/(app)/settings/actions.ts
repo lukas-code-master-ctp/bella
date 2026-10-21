@@ -22,7 +22,7 @@ import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conve
 import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
-import { createUser } from "@/lib/domain/users";
+import { createUser, deleteUser, updateUser } from "@/lib/domain/users";
 import { completeWhatsAppSignup } from "@/lib/domain/whatsapp-signup";
 import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
@@ -197,7 +197,8 @@ export async function deleteTagAction(id: string) {
 
 // Reglas de asignación
 
-export async function createRuleAction(form: FormData) {
+/** Crea una regla o, si el formulario trae `id`, la edita. */
+export async function saveRuleAction(form: FormData) {
   await requireAdmin();
   // El disparador se deduce del destino elegido: una etapa, una etiqueta o un botón de plantilla.
   const target = str(form, "target");
@@ -208,8 +209,7 @@ export async function createRuleAction(form: FormData) {
   else return;
   // Prisma no filtra empresa al conectar relaciones: solo se conectan usuarios de esta empresa.
   const executives = await db.user.findMany({ where: { id: { in: form.getAll("executives").map(String) } }, select: { id: true } });
-  await db.assignmentRule.create({
-    data: {
+  const data = {
       name: str(form, "name") || "Regla",
       trigger,
       stageId: trigger === "STAGE_ENTERED" ? target : null,
@@ -219,9 +219,14 @@ export async function createRuleAction(form: FormData) {
       strategy: str(form, "strategy") as AssignStrategy,
       reassign: form.get("reassign") === "on",
       priority: Number(str(form, "priority") || 0),
-      executives: { connect: executives },
-    },
-  });
+  };
+  const id = str(form, "id");
+  if (id) {
+    await db.assignmentRule.update({ where: { id }, data: { ...data, executives: { set: executives } } });
+    revalidatePath("/settings/rules");
+    redirect("/settings/rules");
+  }
+  await db.assignmentRule.create({ data: { ...data, executives: { connect: executives } } });
   revalidatePath("/settings/rules");
 }
 
@@ -474,8 +479,22 @@ export async function createUserAction(_prev: string | null, form: FormData): Pr
 export async function toggleUserAction(id: string, active: boolean) {
   const admin = await requireAdmin();
   if (admin.id === id) throw new Error("No puedes desactivarte a ti mismo.");
-  await db.user.update({ where: { id }, data: { active } });
+  await db.user.update({ where: { id, deletedAt: null }, data: { active } });
   revalidatePath("/settings/users");
+}
+
+export async function updateUserAction(id: string, _prev: string | null, form: FormData): Promise<string | null> {
+  const admin = await requireAdmin();
+  const error = await updateUser(id, { name: str(form, "name"), email: str(form, "email"), role: (str(form, "role") as Role) || "EXECUTIVE" }, admin);
+  if (!error) revalidatePath("/settings/users");
+  return error;
+}
+
+export async function deleteUserAction(id: string): Promise<string | null> {
+  const admin = await requireAdmin();
+  const error = await deleteUser(id, admin);
+  if (!error) revalidatePath("/settings/users");
+  return error;
 }
 
 /** Un admin que además atiende leads entra a la asignación automática como un ejecutivo más. */

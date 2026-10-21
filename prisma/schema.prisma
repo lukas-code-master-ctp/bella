@@ -91,6 +91,8 @@ model User {
   emailNotifications String[]  @default([])
   /// Admin que además atiende leads: entra a la asignación automática como un ejecutivo más.
   takesLeads         Boolean   @default(false)
+  /// Eliminado desde Usuarios: se conserva por el historial (mensajes, eventos), pero no aparece ni puede entrar.
+  deletedAt          DateTime?
 
   leads        Lead[]           @relation("Assignee")
   messages     Message[]
