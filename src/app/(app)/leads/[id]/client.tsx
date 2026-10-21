@@ -11,6 +11,7 @@ import { ActivityPanel } from "./activity-panel";
 import { CorrectionDialog } from "./correction-dialog";
 import { timeline } from "@/lib/chat-timeline";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
+import { FileButton } from "./file-sender";
 import { autoGrow, useQuickReplyMenu, type QuickReplyOption } from "./quick-replies";
 
 export type ChatMessage = {
@@ -78,6 +79,7 @@ export function LeadChat({
   simulator,
   blocked = false,
   isAdmin = false,
+  windowClosed = false,
   quickReplies = [],
 }: {
   leadId: string;
@@ -90,6 +92,8 @@ export function LeadChat({
   /** Contacto bloqueado: no se le escribe ni se simula que escribe. */
   blocked?: boolean;
   isAdmin?: boolean;
+  /** Pasaron más de 24 horas desde el último mensaje del cliente: el canal solo deja mandar plantillas. */
+  windowClosed?: boolean;
   /** Respuestas rápidas del usuario, que busca escribiendo "/". */
   quickReplies?: QuickReplyOption[];
 }) {
@@ -157,6 +161,7 @@ export function LeadChat({
         )}
         <UserComposer
           leadId={leadId}
+          windowClosed={windowClosed}
           quickReplies={quickReplies}
           onSend={(body, audioUrl) => {
             if (audioUrl) addPending(pending("USER", "", { url: audioUrl, transcript: null }));
@@ -563,10 +568,12 @@ function ContactComposer({
 
 function UserComposer({
   leadId,
+  windowClosed,
   quickReplies,
   onSend,
 }: {
   leadId: string;
+  windowClosed: boolean;
   quickReplies: QuickReplyOption[];
   onSend: (body: string, audioUrl: string | null) => void;
 }) {
@@ -634,6 +641,7 @@ function UserComposer({
                 if (!quick.onKeyDown(e)) submitOnEnter(e);
               }}
             />
+            <FileButton leadId={leadId} windowClosed={windowClosed} disabled={sendingAudio} />
             <MicButton recorder={recorder} disabled={sendingAudio} label="Grabar nota de voz" />
             <SubmitButton pendingText="Enviando…">
               <Send aria-hidden />

@@ -27,6 +27,7 @@ import {
   setAssignee,
 } from "@/lib/domain/leads";
 import { receiveContactAudio, sendUserAudio } from "@/lib/domain/messages";
+import { sendLibraryFiles, sendUploadedFile, type UploadedFile } from "@/lib/domain/files";
 import { notifyContactMessage } from "@/lib/domain/notifications";
 import { BLOB_MISSING } from "@/lib/media";
 
@@ -121,6 +122,34 @@ export async function sendAsUserAction(leadId: string, form: FormData): Promise<
   await refreshInsightsLater(leadId);
   done(leadId);
   return failed;
+}
+
+/** Lo que el ejecutivo eligió en el clip: archivos de la biblioteca o uno subido desde su equipo. */
+export type FilesToSend = { libraryIds: string[]; caption: string } | { upload: UploadedFile; caption: string };
+
+/** El ejecutivo manda archivos desde el chat; igual que al escribir, toma la conversación y la IA se pausa. */
+export async function sendFilesAction(leadId: string, files: FilesToSend): Promise<string | null> {
+  const { user, lead, by } = await authorize(leadId);
+  if (lead.contact.blockedAt) return BLOCKED;
+  try {
+    if ("upload" in files) await sendUploadedFile(leadId, user.id, files.upload, files.caption);
+    else await sendLibraryFiles(leadId, user.id, files.libraryIds, files.caption);
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
+  const failed = await deliverOutbound(leadId);
+  await refreshInsightsLater(leadId);
+  done(leadId);
+  return failed;
+}
+
+/** Biblioteca de archivos (Conocimiento → Archivos) para elegir desde el chat. */
+export async function libraryFilesAction(leadId: string) {
+  await authorize(leadId);
+  const files = await db.mediaFile.findMany({ orderBy: [{ product: "asc" }, { title: "asc" }] });
+  return files.map((f) => ({ id: f.id, title: f.title, product: f.product, fileName: f.fileName, mimeType: f.mimeType, url: f.url }));
 }
 
 export async function moveStageAction(leadId: string, form: FormData) {

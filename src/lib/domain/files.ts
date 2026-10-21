@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { blobStore, fileKind, type AudioFile, type MediaStore } from "../media";
 import { normalize } from "../text";
+import { leadUploadFolder, META_MAX_BYTES } from "../file-limits";
 import { DomainError } from "./leads";
 
 const MB = 1024 * 1024;
@@ -8,8 +9,7 @@ const MB = 1024 * 1024;
 /** Tope de un archivo subido desde Beliapp (Vercel no acepta cuerpos de más de 4,5 MB). Más grande: por enlace. */
 export const FILE_MAX_BYTES = 4 * MB;
 
-/** Máximo que acepta WhatsApp (API de Meta) por tipo de archivo; más pesado, Meta no lo entrega. */
-export const META_MAX_BYTES = { image: 5 * MB, video: 16 * MB, audio: 16 * MB, document: 100 * MB } as const;
+export { META_MAX_BYTES };
 
 const KIND_PLURAL = { image: "imágenes", video: "videos", audio: "audios", document: "documentos" } as const;
 const mb = (bytes: number) => `${bytes / MB} MB`;
@@ -163,13 +163,24 @@ export async function sendMediaFiles(leadId: string, pick: { file?: string; prod
     throw new DomainError(`Hay varios "${chosen[0].title}": indica también el producto (${chosen.map((f) => f.product || "sin producto").join(", ")}).`);
   }
   const sent = chosen.slice(0, SEND_MAX_FILES);
-  // Mismo orden en que salen por el canal (se entregan por fecha de creación).
+  await createFileMessages(leadId, { author: "AI" }, sent, caption);
+  return { sent, skipped: chosen.length - sent.length };
+}
+
+type FileAuthor = { author: "AI" } | { author: "USER"; userId: string };
+type OutgoingFile = { url: string; mimeType: string; fileName: string };
+
+/**
+ * Deja cada archivo como un mensaje por enviar (el texto opcional va de pie en el primero), en el
+ * mismo orden en que salen por el canal (se entregan por fecha de creación).
+ */
+async function createFileMessages(leadId: string, from: FileAuthor, files: OutgoingFile[], caption: string) {
   const base = Date.now();
-  for (const [i, file] of sent.entries()) {
+  for (const [i, file] of files.entries()) {
     await db.message.create({
       data: {
         leadId,
-        author: "AI",
+        ...from,
         body: i === 0 ? caption.trim() : "",
         mediaUrl: file.url,
         mediaType: file.mimeType,
@@ -178,7 +189,54 @@ export async function sendMediaFiles(leadId: string, pick: { file?: string; prod
       },
     });
   }
-  return { sent, skipped: chosen.length - sent.length };
+}
+
+/** Un ejecutivo manda desde el chat archivos de la biblioteca (Conocimiento → Archivos). */
+export async function sendLibraryFiles(leadId: string, userId: string, ids: string[], caption = "") {
+  if (!ids.length) throw new DomainError("Elige al menos un archivo.");
+  if (ids.length > SEND_MAX_FILES) throw new DomainError(`Puedes mandar hasta ${SEND_MAX_FILES} archivos a la vez.`);
+  const wanted = new Set(ids);
+  const files = (await catalog()).filter((f) => wanted.has(f.id));
+  if (files.length !== wanted.size) throw new DomainError("Uno de los archivos ya no está en la biblioteca.");
+  await createFileMessages(leadId, { author: "USER", userId }, files, caption);
+  return files;
+}
+
+/** Archivo que el navegador del ejecutivo ya subió directo a Vercel Blob (ver la ruta upload del lead). */
+export type UploadedFile = { url: string; fileName: string; mimeType: string; size: number };
+
+const BLOB_HOST = ".public.blob.vercel-storage.com";
+/** Se guarda como documento: así WhatsApp lo acepta hasta 100 MB. */
+const AS_DOCUMENT = "application/octet-stream";
+
+/**
+ * Tipo con que se guarda y se envía el archivo. Un video más pesado de lo que WhatsApp acepta
+ * como video (16 MB) va como documento: el cliente lo descarga y lo abre igual, sin reproducirlo
+ * dentro del chat.
+ */
+export function sendableMimeType(mimeType: string, size: number) {
+  return fileKind(mimeType) === "video" && size > META_MAX_BYTES.video ? AS_DOCUMENT : mimeType;
+}
+
+/** Un ejecutivo manda un archivo de su equipo o celular, ya subido por el navegador. */
+export async function sendUploadedFile(leadId: string, userId: string, file: UploadedFile, caption = "") {
+  let url: URL;
+  try {
+    url = new URL(file.url);
+  } catch {
+    throw new DomainError("No se pudo subir el archivo. Intenta de nuevo.");
+  }
+  // Solo enlaces de nuestro almacenamiento y de la carpeta de este lead, no cualquier URL.
+  if (url.protocol !== "https:" || !url.hostname.endsWith(BLOB_HOST) || !url.pathname.startsWith(`/${leadUploadFolder(leadId)}/`)) {
+    throw new DomainError("No se pudo subir el archivo. Intenta de nuevo.");
+  }
+  const fileName = file.fileName.trim() || "archivo";
+  const declared = file.mimeType || mimeFromName(fileName);
+  if (fileKind(declared) === "audio") throw new DomainError("Para mandar audio, graba una nota de voz con el micrófono.");
+  if (!file.size) throw new DomainError(`"${fileName}" está vacío.`);
+  const mimeType = sendableMimeType(declared, file.size);
+  checkMetaSize(fileName, mimeType, file.size);
+  await createFileMessages(leadId, { author: "USER", userId }, [{ url: file.url, mimeType, fileName }], caption);
 }
 
 const label = (f: { title: string; product: string }) => (f.product ? `${f.title} (${f.product})` : f.title);
