@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, RefreshCw, Send } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, ExternalLink, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, Play, RefreshCw, Send, Target } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
@@ -44,6 +44,18 @@ export type ChatEvent = {
   tone: "neutral" | "success" | "danger";
 };
 
+/** Anuncio de Meta por el que el cliente escribió; se muestra arriba del primer mensaje. */
+export type ChatAd = {
+  /** "Anuncio de Meta" o "Publicación de Meta". */
+  label: string;
+  campaign: string | null;
+  headline: string | null;
+  body: string | null;
+  imageUrl: string | null;
+  video: boolean;
+  url: string | null;
+};
+
 /** Enter envía el formulario; Shift+Enter agrega una línea. */
 function submitOnEnter(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputElement>) {
   if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
@@ -59,6 +71,7 @@ export function LeadChat({
   leadId,
   messages,
   events = [],
+  ad = null,
   contactName,
   userName,
   simulator,
@@ -68,6 +81,7 @@ export function LeadChat({
   leadId: string;
   messages: ChatMessage[];
   events?: ChatEvent[];
+  ad?: ChatAd | null;
   contactName: string;
   userName: string;
   simulator: boolean;
@@ -101,6 +115,7 @@ export function LeadChat({
             Cuando el cliente escriba, la conversación aparecerá aquí.
           </EmptyState>
         )}
+        {ad && shown.length > 0 && <AdCard ad={ad} />}
         {timeline(shown, events).map((item) =>
           "text" in item ? (
             <EventNote key={item.id} event={item} />
@@ -172,6 +187,50 @@ function EventNote({ event }: { event: ChatEvent }) {
           {[event.actor, event.time].filter(Boolean).join(" · ")}
         </span>
       </p>
+    </div>
+  );
+}
+
+/** Tarjeta del anuncio, como la ve el cliente en WhatsApp: imagen, título, texto y enlace. */
+function AdCard({ ad }: { ad: ChatAd }) {
+  const link = ad.url && /^https?:\/\//.test(ad.url) ? ad.url : null;
+  return (
+    <div className="flex flex-col items-start">
+      <div className="w-72 max-w-[85%] overflow-hidden rounded-2xl border border-slate-200 bg-white text-sm shadow-xs sm:max-w-[70%]">
+        {ad.imageUrl && (
+          <div className="relative bg-slate-100">
+            <img
+              src={ad.imageUrl}
+              alt=""
+              loading="lazy"
+              className="max-h-72 w-full object-cover"
+              onError={(e) => (e.currentTarget.parentElement!.hidden = true)}
+            />
+            {ad.video && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex size-10 items-center justify-center rounded-full bg-black/55 text-white">
+                  <Play aria-hidden className="size-5 translate-x-px fill-current" />
+                </span>
+              </span>
+            )}
+          </div>
+        )}
+        <div className="space-y-1 px-3.5 py-2.5">
+          <p className="flex items-center gap-1 text-[11px] font-semibold text-brand-700">
+            <Target aria-hidden className="size-3.5" />
+            {ad.label}
+            {ad.campaign && <span className="truncate font-normal text-slate-600">· {ad.campaign}</span>}
+          </p>
+          {ad.headline && <p className="font-semibold text-slate-900">{ad.headline}</p>}
+          {ad.body && <p className="line-clamp-6 whitespace-pre-line text-slate-700" title={ad.body}>{ad.body}</p>}
+          {link && (
+            <a href={link} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline">
+              <ExternalLink aria-hidden className="size-3.5" />
+              Ver anuncio
+            </a>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -310,7 +369,6 @@ function Attachment({ file, light }: { file: NonNullable<ChatMessage["file"]>; l
   if (file.kind === "image") {
     return (
       <a href={file.url} target="_blank" rel="noreferrer" className="mb-1 block" onClick={(e) => e.stopPropagation()}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={file.url} alt={file.name} loading="lazy" className="max-h-64 w-64 max-w-full rounded-lg bg-white/10 object-cover" />
       </a>
     );

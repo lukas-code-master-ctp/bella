@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import type { AdsApi } from "@/lib/channels/ads";
@@ -8,6 +8,7 @@ import {
   campaignOf,
   createSourceLink,
   extractRefCode,
+  fillAdNames,
   saveAttributionSettings,
   getAttributionSettings,
   whatsappUrl,
@@ -104,6 +105,49 @@ describe("Origen: anuncios de Meta", () => {
     await receiveWhatsApp(wa([text("wamid.1", "Hola", { referral: { source_id: "77", source_type: "ad", headline: "Oferta" } })]), { ads });
     const source = await db.leadSource.findFirstOrThrow();
     expect([source.campaignName, campaignOf(source)]).toEqual([null, "Oferta"]);
+  });
+
+  it("copia la imagen del anuncio al Blob store y, si no puede, guarda la de Meta", async () => {
+    await seedFunnel();
+    const ads: AdsApi = { lookup: async () => null };
+    const stored: string[] = [];
+    const store = async (file: { fileName: string; mimeType: string }, folder: string) => {
+      stored.push(`${folder}/${file.fileName} ${file.mimeType}`);
+      return "https://blob.example/anuncio.jpg";
+    };
+    vi.stubGlobal("fetch", async () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } }));
+    try {
+      const referral = { source_id: "77", source_type: "ad", media_type: "video", thumbnail_url: "https://scontent.fbcdn.net/v.jpg" };
+      await receiveWhatsApp(wa([text("wamid.1", "Hola", { referral })]), { ads, media: { store } });
+      expect(await db.leadSource.findFirstOrThrow()).toMatchObject({ adMediaType: "video", adImageUrl: "https://blob.example/anuncio.jpg" });
+      expect(stored).toEqual(["anuncios/anuncio.jpg image/jpeg"]);
+
+      await db.leadSource.deleteMany();
+      const failing = async () => {
+        throw new Error("sin Blob store");
+      };
+      await receiveWhatsApp(
+        wa([text("wamid.2", "Hola", { referral: { source_id: "78", source_type: "ad", media_type: "image", image_url: "https://scontent.fbcdn.net/i.jpg" } })]),
+        { ads, media: { store: failing } },
+      );
+      expect(await db.leadSource.findFirstOrThrow()).toMatchObject({ adMediaType: "image", adImageUrl: "https://scontent.fbcdn.net/i.jpg" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("completa después la campaña de los leads que llegaron sin token de anuncios", async () => {
+    await seedFunnel();
+    await receiveWhatsApp(wa([text("wamid.1", "Hola", { referral: { source_id: "55", source_type: "ad", headline: "Oferta" } })]), {
+      ads: { lookup: async () => null },
+    });
+    expect(await fillAdNames({ lookup: async () => null })).toEqual({ ads: 1, filled: 0 });
+
+    const { ads, lookups } = fakeAds();
+    expect(await fillAdNames(ads)).toEqual({ ads: 1, filled: 1 });
+    expect(await db.leadSource.findFirstOrThrow()).toMatchObject({ campaignName: "Parcelas Sur", adName: "Video dron" });
+    expect(await fillAdNames(ads)).toEqual({ ads: 0, filled: 0 });
+    expect(lookups).toEqual(["55"]);
   });
 
   it("un lead nuevo del mismo contacto toma el anuncio por el que volvió", async () => {

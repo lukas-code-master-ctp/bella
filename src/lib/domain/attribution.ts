@@ -3,6 +3,7 @@ import type { LeadSource } from "@prisma/client";
 import { db } from "../db";
 import { getSetting, setSetting } from "../settings";
 import { marketingApi, type AdsApi } from "../channels/ads";
+import { blobStore, type MediaStore } from "../media";
 
 /**
  * Origen de cada lead, para saber de qué anuncio o campaña viene:
@@ -44,6 +45,10 @@ export type AdReferral = {
   body?: string;
   url?: string;
   ctwaClid?: string;
+  /** "image" o "video". */
+  mediaType?: string;
+  /** Imagen del anuncio o miniatura del video, en el CDN de Meta (vence en unos días). */
+  imageUrl?: string;
 };
 
 const clip = (s: string | undefined | null, max = 500) => {
@@ -51,15 +56,44 @@ const clip = (s: string | undefined | null, max = 500) => {
   return t ? t.slice(0, max) : null;
 };
 
+const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Copia la imagen del anuncio al Blob store, porque la URL del CDN de Meta vence. Si no se puede
+ * (sin Blob store, Meta no responde), queda la URL original, que sirve mientras no venza.
+ */
+async function keepAdImage(url: string | undefined, store: MediaStore): Promise<string | null> {
+  if (!url || !/^https:\/\//.test(url)) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const mimeType = (res.headers.get("content-type") ?? "").split(";")[0].trim();
+    if (!res.ok || !mimeType.startsWith("image/")) return clip(url, 2000);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length > IMAGE_MAX_BYTES) return clip(url, 2000);
+    const ext = mimeType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
+    return await store({ bytes, mimeType, fileName: `anuncio.${ext}` }, "anuncios");
+  } catch {
+    return clip(url, 2000);
+  }
+}
+
 /**
  * Guarda el anuncio por el que llegó el lead, si aún no tiene origen (cuenta el primer contacto),
  * y busca los nombres de la campaña. Nunca lanza: el mensaje del cliente importa más.
  */
-export async function attachAdSource(leadId: string, ad: AdReferral, ads: AdsApi = marketingApi): Promise<boolean> {
+export async function attachAdSource(
+  leadId: string,
+  ad: AdReferral,
+  ads: AdsApi = marketingApi,
+  store: MediaStore = blobStore,
+): Promise<boolean> {
   if (!ad.adId && !ad.url && !ad.ctwaClid) return false;
   try {
     if (await db.leadSource.findUnique({ where: { leadId } })) return false;
-    const info = ad.adId && ad.adType !== "post" ? await ads.lookup(ad.adId) : null;
+    const [info, imageUrl] = await Promise.all([
+      ad.adId && ad.adType !== "post" ? ads.lookup(ad.adId) : null,
+      keepAdImage(ad.imageUrl, store),
+    ]);
     await db.leadSource.create({
       data: {
         leadId,
@@ -70,6 +104,8 @@ export async function attachAdSource(leadId: string, ad: AdReferral, ads: AdsApi
         adBody: clip(ad.body),
         adUrl: clip(ad.url, 1000),
         ctwaClid: clip(ad.ctwaClid, 1000),
+        adMediaType: ad.mediaType === "video" ? "video" : imageUrl ? "image" : null,
+        adImageUrl: imageUrl,
         adName: clip(info?.adName, 200),
         adsetName: clip(info?.adsetName, 200),
         campaignId: clip(info?.campaignId, 64),
@@ -82,6 +118,43 @@ export async function attachAdSource(leadId: string, ad: AdReferral, ads: AdsApi
     console.error(`[origen] lead ${leadId}:`, err);
     return false;
   }
+}
+
+/**
+ * Completa la campaña, el conjunto y el anuncio de los leads recientes que llegaron por un anuncio
+ * cuando aún no había token con ads_read (o Meta no respondió). Lo corre un cron cada hora: se
+ * consulta cada anuncio una vez y se completan todos los leads que llegaron por él.
+ */
+export async function fillAdNames(ads: AdsApi = marketingApi, days = 30, maxAds = 25) {
+  const pending = await db.leadSource.groupBy({
+    by: ["adId"],
+    where: {
+      kind: "AD",
+      adId: { not: null },
+      campaignName: null,
+      OR: [{ adType: null }, { adType: { not: "post" } }],
+      createdAt: { gte: new Date(Date.now() - days * 86_400_000) },
+    },
+    _max: { createdAt: true },
+    orderBy: { _max: { createdAt: "desc" } },
+    take: maxAds,
+  });
+  let filled = 0;
+  for (const { adId } of pending) {
+    const info = await ads.lookup(adId!);
+    if (!info?.campaignName) continue;
+    const { count } = await db.leadSource.updateMany({
+      where: { kind: "AD", adId, campaignName: null },
+      data: {
+        adName: clip(info.adName, 200),
+        adsetName: clip(info.adsetName, 200),
+        campaignId: clip(info.campaignId, 64),
+        campaignName: clip(info.campaignName, 200),
+      },
+    });
+    filled += count;
+  }
+  return { ads: pending.length, filled };
 }
 
 // --- Enlaces desde landings ------------------------------------------------------------------
