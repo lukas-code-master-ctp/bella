@@ -735,6 +735,10 @@ model LeadSource {
   adHeadline   String?
   adBody       String?
   adUrl        String?
+  /// "image" o "video": lo que mostraba el anuncio.
+  adMediaType  String?
+  /// Imagen del anuncio (o miniatura del video), copiada al Blob store porque la de Meta vence.
+  adImageUrl   String?
   /// Id del clic en anuncios a WhatsApp: la API de Conversiones lo usa para atribuir la venta.
   ctwaClid     String?
   /// Nombres del anuncio, conjunto y campaña según la API de Marketing (si el token lo permite).

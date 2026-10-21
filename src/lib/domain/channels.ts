@@ -274,8 +274,18 @@ async function receiveWhatsAppMessage(
   if (r) {
     await attachAdSource(
       leadId,
-      { adId: r.source_id, adType: r.source_type, headline: r.headline, body: r.body, url: r.source_url, ctwaClid: r.ctwa_clid },
+      {
+        adId: r.source_id,
+        adType: r.source_type,
+        headline: r.headline,
+        body: r.body,
+        url: r.source_url,
+        ctwaClid: r.ctwa_clid,
+        mediaType: r.media_type,
+        imageUrl: r.image_url ?? r.thumbnail_url,
+      },
       deps.ads,
+      deps.media?.store,
     );
   }
   if (m.type === "audio" && m.audio) {
@@ -415,8 +425,15 @@ async function attachReferral(leadId: string, r: MsgReferral, deps: InboundDeps)
   if (r.ad_id || r.source === "ADS") {
     await attachAdSource(
       leadId,
-      { adId: r.ad_id, adType: "ad", headline: r.ads_context_data?.ad_title },
+      {
+        adId: r.ad_id,
+        adType: "ad",
+        headline: r.ads_context_data?.ad_title,
+        mediaType: r.ads_context_data?.video_url ? "video" : undefined,
+        imageUrl: r.ads_context_data?.photo_url,
+      },
       deps.ads,
+      deps.media?.store,
     );
   } else if (r.ref) {
     await attachLinkSource(leadId, r.ref.trim().toUpperCase());

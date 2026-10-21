@@ -194,6 +194,10 @@ export type WaReferral = {
   headline?: string;
   body?: string;
   ctwa_clid?: string;
+  media_type?: string;
+  image_url?: string;
+  video_url?: string;
+  thumbnail_url?: string;
 };
 
 export type WaStatus = {

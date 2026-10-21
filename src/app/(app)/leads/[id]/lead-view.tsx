@@ -261,6 +261,19 @@ export async function LeadView({
           simulator={lead.contact.channel === "SIMULATOR"}
           blocked={Boolean(lead.contact.blockedAt)}
           isAdmin={user.role === "ADMIN"}
+          ad={
+            lead.source?.kind === "AD"
+              ? {
+                  label: sourceLabel(lead.source),
+                  campaign: lead.source.campaignName ?? null,
+                  headline: lead.source.adHeadline ?? lead.source.adName,
+                  body: lead.source.adBody,
+                  imageUrl: lead.source.adImageUrl,
+                  video: lead.source.adMediaType === "video",
+                  url: lead.source.adUrl,
+                }
+              : null
+          }
           messages={lead.messages.map((m) => ({
             id: m.id,
             author: m.author,
