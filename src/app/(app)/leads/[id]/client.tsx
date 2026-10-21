@@ -13,6 +13,7 @@ import { timeline } from "@/lib/chat-timeline";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 import { FileButton } from "./file-sender";
 import { autoGrow, useQuickReplyMenu, type QuickReplyOption } from "./quick-replies";
+import { hasAiMention, useAiDraft } from "./ai-draft";
 
 export type ChatMessage = {
   id: string;
@@ -583,12 +584,15 @@ function UserComposer({
   const formRef = useRef<HTMLFormElement>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const quick = useQuickReplyMenu(quickReplies, replyRef);
+  const ai = useAiDraft(leadId, replyRef, setError);
 
   const send = async (fd: FormData) => {
     const body = String(fd.get("body") ?? "").trim();
     const audio = fd.get("audio");
     const hasAudio = audio instanceof File && audio.size > 0;
     if (!body && !hasAudio) return;
+    // "@ia" nunca le llega al cliente: con Enviar se redacta, igual que con el botón.
+    if (!hasAudio && hasAiMention(body)) return ai.draft();
     onSend(body, hasAudio ? URL.createObjectURL(audio) : null);
     if (!hasAudio) {
       formRef.current?.reset();
@@ -621,24 +625,30 @@ function UserComposer({
             <label htmlFor="reply" className="sr-only">
               Responder como ejecutivo
             </label>
-            {quick.menu}
+            {quick.menu ?? ai.button}
             <textarea
               ref={replyRef}
               id="reply"
               name="body"
               required
               rows={1}
-              placeholder='Responder como ejecutivo (pausa la IA) · "/" respuestas rápidas'
+              placeholder='Responder como ejecutivo (pausa la IA) · "/" respuestas · "@ia" redactar'
+              readOnly={ai.drafting}
               className={`${inputClass} max-h-40 resize-none`}
               {...quick.ariaProps}
               onInput={(e) => {
                 autoGrow(e.currentTarget);
                 quick.refresh();
+                ai.refresh();
               }}
               onSelect={quick.refresh}
               onBlur={quick.close}
               onKeyDown={(e) => {
-                if (!quick.onKeyDown(e)) submitOnEnter(e);
+                if (quick.onKeyDown(e)) return;
+                if (e.key === "Enter" && !e.shiftKey && hasAiMention(e.currentTarget.value)) {
+                  e.preventDefault();
+                  ai.draft();
+                } else submitOnEnter(e);
               }}
             />
             <FileButton leadId={leadId} windowClosed={windowClosed} disabled={sendingAudio} />
