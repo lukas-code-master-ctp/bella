@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { markAllNotificationsRead, unreadNotificationCount } from "@/lib/domain/notifications";
+import { savePushSubscription } from "@/lib/push";
 import { saveEmailNotificationPrefs, sendTestEmail } from "@/lib/domain/email-notifications";
 
 /** Contador de la campana (la barra lateral lo consulta cada cierto tiempo). */
@@ -24,15 +25,10 @@ const subscriptionSchema = z.object({
   keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
 });
 
-/** Guarda la suscripción Web Push de este navegador para el usuario actual. */
+/** Guarda la suscripción Web Push de este navegador para el usuario actual (también al abrir la app). */
 export async function savePushSubscriptionAction(raw: unknown) {
   const user = await requireUser();
-  const sub = subscriptionSchema.parse(raw);
-  await db.pushSubscription.upsert({
-    where: { endpoint: sub.endpoint },
-    create: { userId: user.id, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-    update: { userId: user.id, p256dh: sub.keys.p256dh, auth: sub.keys.auth },
-  });
+  await savePushSubscription(user.id, subscriptionSchema.parse(raw));
 }
 
 export async function deletePushSubscriptionAction(endpoint: string) {

@@ -31,10 +31,20 @@ export function pickLeastLoaded(candidates: User[], openLeads: Map<string, numbe
   )[0];
 }
 
+/** Quiénes reciben leads: los ejecutivos activos y los admins que también atienden leads. */
+export const LEAD_TAKERS = { active: true, OR: [{ role: "EXECUTIVE" }, { role: "ADMIN", takesLeads: true }] } satisfies Prisma.UserWhereInput;
+
 async function activeExecutives(tx: Tx, rule?: RuleWithExecutives): Promise<User[]> {
   const listed = rule?.executives.filter((u) => u.active) ?? [];
   if (listed.length > 0) return listed;
-  return tx.user.findMany({ where: { role: "EXECUTIVE", active: true } });
+  return tx.user.findMany({ where: LEAD_TAKERS });
+}
+
+/** Deja en el historial que una regla no encontró a quién asignar, para que no pase en silencio. */
+async function logNobodyToAssign(tx: Tx, leadId: string, reason: string) {
+  await tx.leadEvent.create({
+    data: { leadId, type: "ASSIGNMENT_FAILED", actor: "SYSTEM", reason: `${reason}: no hay ejecutivos activos que reciban leads` },
+  });
 }
 
 async function openLeadCounts(tx: Tx, userIds: string[]) {
@@ -98,7 +108,11 @@ export async function applyAssignment(
       rule.strategy === "ROUND_ROBIN"
         ? pickRoundRobin(candidates, await lockLastAssigned(tx, rule.id))
         : pickLeastLoaded(candidates, await openLeadCounts(tx, candidates.map((c) => c.id)));
-    if (!chosen || chosen.id === lead.assigneeId) return null;
+    if (!chosen) {
+      await logNobodyToAssign(tx, leadId, `Regla: ${rule.name}`);
+      return null;
+    }
+    if (chosen.id === lead.assigneeId) return null;
     await tx.assignmentRule.update({ where: { id: rule.id }, data: { lastAssignedUserId: chosen.id } });
     await assign(tx, leadId, chosen, `Regla: ${rule.name}`);
     return chosen;
@@ -109,7 +123,10 @@ export async function applyAssignment(
   if (enteringHumanStage) {
     const candidates = await activeExecutives(tx);
     const chosen = pickLeastLoaded(candidates, await openLeadCounts(tx, candidates.map((c) => c.id)));
-    if (!chosen) return null;
+    if (!chosen) {
+      await logNobodyToAssign(tx, leadId, "Entró a etapa de atención humana");
+      return null;
+    }
     await assign(tx, leadId, chosen, "Entró a etapa de atención humana");
     return chosen;
   }

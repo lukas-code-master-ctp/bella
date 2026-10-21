@@ -1,5 +1,6 @@
 import webpush from "web-push";
-import { db } from "./db";
+import { db, rootDb } from "./db";
+import { currentCompanyId } from "./tenant";
 import { deliverPendingEmails } from "./domain/email-notifications";
 
 /**
@@ -23,6 +24,24 @@ function configure() {
     configured = true;
   }
   return true;
+}
+
+export type PushSubscriptionInput = { endpoint: string; keys: { p256dh: string; auth: string } };
+
+/**
+ * Deja la suscripción de este navegador a nombre de quien tiene la sesión abierta (y de la
+ * empresa en que trabaja). Un navegador tiene una sola suscripción: si antes entró otra cuenta,
+ * deja de recibir los avisos de esa cuenta.
+ */
+export async function savePushSubscription(userId: string, sub: PushSubscriptionInput) {
+  const companyId = await currentCompanyId();
+  // Sin filtro de empresa: la suscripción anterior puede ser de otra empresa.
+  await rootDb.pushSubscription.deleteMany({ where: { endpoint: sub.endpoint, NOT: { userId, companyId } } });
+  await db.pushSubscription.upsert({
+    where: { endpoint: sub.endpoint },
+    create: { userId, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    update: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+  });
 }
 
 export type PushPayload = { title: string; body: string; url: string; tag: string };

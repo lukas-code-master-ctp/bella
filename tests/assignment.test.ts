@@ -75,6 +75,21 @@ describe("asignación automática", () => {
     expect(assigned.map((l) => l.assigneeId).sort()).toEqual([ana.id, beto.id].sort());
   });
 
+  it("un admin que atiende leads entra a la asignación; uno que no, no", async () => {
+    const [, , , human] = await seedFunnel();
+    await db.user.create({ data: { name: "Admin", email: "admin@test.cl", passwordHash: "x", role: "ADMIN" } });
+    const lead = await createLead({ name: "Sin nadie", channel: "SIMULATOR" });
+    await moveStage(lead.id, human.id, { actor: "AI" });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).assigneeId).toBeNull();
+    const failed = await db.leadEvent.findFirstOrThrow({ where: { leadId: lead.id, type: "ASSIGNMENT_FAILED" } });
+    expect(failed.reason).toContain("no hay ejecutivos activos");
+
+    const eva = await db.user.create({ data: { name: "Eva", email: "eva@test.cl", passwordHash: "x", role: "ADMIN", takesLeads: true } });
+    const next = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    await moveStage(next.id, human.id, { actor: "AI" });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: next.id } })).assigneeId).toBe(eva.id);
+  });
+
   it("no reasigna un lead que ya tiene ejecutivo salvo que la regla lo pida", async () => {
     const [, calificado] = await seedFunnel();
     const ana = await executive("Ana");

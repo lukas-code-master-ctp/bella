@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { ArrowRight, Gauge, PauseCircle, Plus, Repeat, Shuffle, Trash2, UserRoundCog } from "lucide-react";
-import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
+import { LEAD_TAKERS, TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Avatar, Badge, Card, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
-import { Chip, ChoiceCard, FieldGroup, Panel, PanelBody, PanelFooter, SwitchSubmit, ToggleRow } from "@/components/settings-ui";
+import { Callout, Chip, ChoiceCard, FieldGroup, Panel, PanelBody, PanelFooter, SwitchSubmit, ToggleRow } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { createRuleAction, deleteRuleAction, toggleRuleAction } from "../actions";
 
@@ -15,7 +16,7 @@ export default async function RulesPage() {
     }),
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
-    db.user.findMany({ where: { role: "EXECUTIVE", active: true }, orderBy: { name: "asc" } }),
+    db.user.findMany({ where: LEAD_TAKERS, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -24,6 +25,13 @@ export default async function RulesPage() {
         title="Asignación automática"
         description="Cuando un lead entra a una etapa, recibe una etiqueta o responde tocando un botón de una plantilla de WhatsApp, se aplica la primera regla activa que coincida (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla aplica, se asigna al ejecutivo con menos leads abiertos."
       />
+
+      {executives.length === 0 && (
+        <Callout tone="warning" title="No hay a quién asignar leads" className="animate-rise">
+          No hay ejecutivos activos ni admins que atiendan leads, así que las reglas no pueden asignar y los leads quedan sin
+          ejecutivo. Crea un ejecutivo o activa &quot;Atiende leads&quot; a un admin en <Link href="/settings/users" className="font-medium text-brand-700 underline">Usuarios</Link>.
+        </Callout>
+      )}
 
       {rules.length === 0 ? (
         <Card className="animate-rise">
@@ -125,7 +133,7 @@ export default async function RulesPage() {
                 <input name="buttonText" placeholder="Ej. Quiero que me llamen" className={inputClass} />
               </Field>
             </div>
-            <FieldGroup title="Ejecutivos" description="Sin selección, se reparte entre todos los ejecutivos activos.">
+            <FieldGroup title="Ejecutivos" description="Sin selección, se reparte entre todos los ejecutivos activos y los admins que atienden leads.">
               {executives.length === 0 ? (
                 <p className="text-sm text-slate-500">No hay ejecutivos activos. Créalos en Usuarios.</p>
               ) : (

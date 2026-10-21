@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Avatar, Badge, PageHeader } from "@/components/ui";
 import { Panel, SwitchSubmit } from "@/components/settings-ui";
-import { toggleUserAction } from "../actions";
+import { setTakesLeadsAction, toggleUserAction } from "../actions";
 import { NewUserForm } from "./form";
 
 export default async function UsersPage() {
@@ -33,6 +33,12 @@ export default async function UsersPage() {
                 <div className="truncate text-slate-600">{u.email}</div>
               </div>
             </div>
+            {u.role === "ADMIN" && (
+              <form action={setTakesLeadsAction.bind(null, u.id, !u.takesLeads)} className="flex items-center gap-2 text-xs text-slate-600">
+                <span title="La asignación automática también le reparte leads, como a un ejecutivo">Atiende leads</span>
+                <SwitchSubmit on={u.takesLeads} label={u.takesLeads ? `${u.name} deja de atender leads` : `${u.name} también atiende leads`} />
+              </form>
+            )}
             <div className="w-36" title={`${openLeads(u.id)} leads abiertos`}>
               <p className="text-right text-xs tabular-nums text-slate-600">{openLeads(u.id)} leads abiertos</p>
               <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
