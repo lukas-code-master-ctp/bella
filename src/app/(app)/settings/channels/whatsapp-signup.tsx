@@ -49,6 +49,7 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
   const [state, setState] = useState<"idle" | "open" | "saving" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [ads, setAds] = useState<{ accounts: number; pixel: boolean } | null>(null);
+  const [page, setPage] = useState<{ name: string; instagram: boolean } | null>(null);
   const got = useRef<{ code?: string; wabaId?: string; phoneNumberId?: string }>({});
 
   async function finishIfReady() {
@@ -65,6 +66,7 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
       return;
     }
     setAds("ads" in res && res.ads ? res.ads : null);
+    setPage("page" in res && res.page ? res.page : null);
     setState("done");
     router.refresh();
   }
@@ -132,6 +134,7 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
       {state === "done" && (
         <FormMessage tone="neutral">
           Listo: WhatsApp quedó conectado. Escríbele al número para probar.
+          {page ? ` También quedó conectada la página ${page.name || "de Facebook"}${page.instagram ? " y su Instagram" : ""}: enciende la IA de esos canales en Canales cuando quieras.` : ""}
           {ads?.accounts ? ` También se conectaron tus anuncios (${ads.accounts === 1 ? "1 cuenta publicitaria" : `${ads.accounts} cuentas publicitarias`})${ads.pixel ? " y el píxel: enciéndelo en Configuración → Píxel de Meta cuando quieras enviar eventos" : ""}.` : ""}
         </FormMessage>
       )}

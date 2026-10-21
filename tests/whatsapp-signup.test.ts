@@ -1,15 +1,18 @@
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { credential, saveCredentials } from "@/lib/credentials";
 import { getPixelSettings, savePixelSettings } from "@/lib/domain/conversions";
-import { completeWhatsAppSignup, signupConfig, type SignupApi } from "@/lib/domain/whatsapp-signup";
+import { completeWhatsAppSignup, signupConfig, type MetaPage, type SignupApi } from "@/lib/domain/whatsapp-signup";
+import { rootDb, db } from "@/lib/db";
+import { receivePlatformWebhook } from "@/lib/webhooks/meta";
+import { seedFunnel } from "./factories";
 import { receiveWebhook } from "@/lib/webhooks/whatsapp";
 import { TEST_COMPANY_ID } from "./company";
 
 const PLATFORM = { META_PLATFORM_APP_ID: "111", META_PLATFORM_APP_SECRET: "secreto-plataforma", META_PLATFORM_CONFIG_ID: "222" };
 
-function fakeApi(adAccounts: string[] = [], pixels: Record<string, string[]> = {}) {
+function fakeApi(adAccounts: string[] = [], pixels: Record<string, string[]> = {}, pages: MetaPage[] = []) {
   const calls: string[] = [];
   const api: SignupApi = {
     async exchangeCode(code) {
@@ -30,6 +33,12 @@ function fakeApi(adAccounts: string[] = [], pixels: Record<string, string[]> = {
     },
     async pixels(_token, account) {
       return pixels[account] ?? [];
+    },
+    async pages() {
+      return pages;
+    },
+    async subscribePage(pageId, pageToken) {
+      calls.push(`subscribePage ${pageId} ${pageToken}`);
     },
   };
   return { api, calls };
@@ -78,13 +87,13 @@ describe("Conectar WhatsApp con Meta (registro integrado)", () => {
 
   it("sin permisos de anuncios no toca el token de anuncios", async () => {
     await saveCredentials({ META_ADS_TOKEN: "token-a-mano" });
-    expect(await completeWhatsAppSignup(input, fakeApi().api)).toEqual({ ads: { accounts: 0, pixel: false } });
+    expect(await completeWhatsAppSignup(input, fakeApi().api)).toEqual({ ads: { accounts: 0, pixel: false }, page: null });
     expect(await credential("META_ADS_TOKEN")).toBe("token-a-mano");
   });
 
   it("con acceso a anuncios guarda el token, las cuentas y el primer píxel, sin encender el envío", async () => {
     const { api } = fakeApi(["1001", "1002"], { "1002": ["555000111"] });
-    expect(await completeWhatsAppSignup(input, api)).toEqual({ ads: { accounts: 2, pixel: true } });
+    expect(await completeWhatsAppSignup(input, api)).toMatchObject({ ads: { accounts: 2, pixel: true } });
     expect(await credential("META_ADS_TOKEN")).toBe("token-empresa");
     expect(await credential("META_AD_ACCOUNT_ID")).toBe("1001,1002");
     expect(await credential("META_CAPI_TOKEN")).toBe("token-empresa");
@@ -97,6 +106,53 @@ describe("Conectar WhatsApp con Meta (registro integrado)", () => {
     await completeWhatsAppSignup(input, fakeApi(["1001"], { "1001": ["555"] }).api);
     expect(await credential("META_CAPI_TOKEN")).toBe("capi-propio");
     expect(await getPixelSettings()).toMatchObject({ enabled: true, datasetId: "999" });
+  });
+
+  it("con acceso a páginas conecta la que tiene Instagram, la suscribe y la anota para sus avisos", async () => {
+    const pages: MetaPage[] = [
+      { id: "700001", name: "Sin Insta", accessToken: "tp-1", instagramId: null },
+      { id: "700002", name: "Mi Empresa", accessToken: "tp-2", instagramId: "178000002" },
+    ];
+    const { api, calls } = fakeApi([], {}, pages);
+    expect(await completeWhatsAppSignup(input, api)).toMatchObject({ page: { name: "Mi Empresa", instagram: true } });
+    expect(calls).toContain("subscribePage 700002 tp-2");
+    expect(await credential("META_PAGE_ID")).toBe("700002");
+    expect(await credential("META_PAGE_ACCESS_TOKEN")).toBe("tp-2");
+    expect(await credential("META_IG_ACCOUNT_ID")).toBe("178000002");
+    expect((await db.metaAccount.findMany({ orderBy: { kind: "asc" } })).map((a) => [a.kind, a.externalId])).toEqual([
+      ["INSTAGRAM", "178000002"],
+      ["PAGE", "700002"],
+    ]);
+
+    // Al reconectar con otra página sin Instagram, la anterior deja de ser de la empresa.
+    await completeWhatsAppSignup(input, fakeApi([], {}, [pages[0]]).api);
+    expect(await credential("META_IG_ACCOUNT_ID")).toBeUndefined();
+    expect((await db.metaAccount.findMany()).map((a) => a.externalId)).toEqual(["700001"]);
+  });
+
+  it("el webhook de la plataforma entrega cada página a su empresa e ignora las que nadie conectó", async () => {
+    await seedFunnel();
+    await saveCredentials({ META_PAGE_ID: "700002", META_PAGE_ACCESS_TOKEN: "tp-2" });
+    await rootDb.metaAccount.create({ data: { externalId: "700002", companyId: TEST_COMPANY_ID, kind: "PAGE" } });
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 400 }));
+    try {
+      const msg = (page: string, mid: string) => ({
+        id: page,
+        messaging: [{ sender: { id: `user-${mid}` }, recipient: { id: page }, message: { mid, text: "Hola" } }],
+      });
+      const body = JSON.stringify({ object: "page", entry: [msg("700002", "m.1"), msg("799999", "m.2")] });
+      const sign = (secret: string) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+      const post = (secret: string) =>
+        receivePlatformWebhook(
+          new NextRequest("https://bella.test/api/webhooks/meta/platform", { method: "POST", body, headers: { "x-hub-signature-256": sign(secret) } }),
+        );
+      expect((await post("otro")).status).toBe(401);
+      expect((await post("secreto-plataforma")).status).toBe(200);
+      expect((await db.message.findMany()).map((m) => m.body)).toEqual(["Hola"]);
+      expect(await db.contact.findFirstOrThrow()).toMatchObject({ channel: "FACEBOOK", externalId: "user-m.1" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rechaza ids que no vienen de Meta antes de llamar a Meta", async () => {

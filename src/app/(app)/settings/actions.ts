@@ -341,19 +341,19 @@ export async function completeWhatsAppSignupAction(input: {
   code: string;
   wabaId: string;
   phoneNumberId: string;
-}): Promise<{ error?: string; ads?: { accounts: number; pixel: boolean } }> {
+}): Promise<{ error?: string; ads?: { accounts: number; pixel: boolean }; page?: { name: string; instagram: boolean } | null }> {
   await requireAdmin();
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
-  let ads: { accounts: number; pixel: boolean };
+  let result: Awaited<ReturnType<typeof completeWhatsAppSignup>>;
   try {
-    ({ ads } = await completeWhatsAppSignup({ ...input, origin }));
+    result = await completeWhatsAppSignup({ ...input, origin });
   } catch (err) {
     if (err instanceof DomainError) return { error: err.message };
     throw err;
   }
   revalidatePath("/settings", "layout");
-  return { ads };
+  return result;
 }
 
 export async function saveLegalAction(form: FormData) {
