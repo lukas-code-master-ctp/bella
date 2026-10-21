@@ -16,6 +16,21 @@ export function fileKind(mimeType: string | null): FileKind | "audio" {
   return "document";
 }
 
+/** Cómo se muestra un archivo en el chat: cualquier imagen o video se ve ahí mismo (ej. stickers WebP). */
+export function previewKind(mimeType: string | null): FileKind | "audio" {
+  const mime = (mimeType ?? "").split(";")[0].trim().toLowerCase();
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  return "document";
+}
+
+/**
+ * Tope de una foto, video o documento que manda el cliente: se descarga desde Meta en el servidor
+ * (no pasa por el límite de 4,5 MB de un cuerpo). Uno más pesado queda solo como texto en el chat.
+ */
+export const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
 /** Tope de una nota de voz: Vercel no acepta cuerpos de más de 4,5 MB en una función. */
 export const AUDIO_MAX_BYTES = 4 * 1024 * 1024;
 

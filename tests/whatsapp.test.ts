@@ -168,6 +168,44 @@ describe("WhatsApp: mensajes entrantes", () => {
     expect(bodies).toEqual(["[Imagen] esta casa", "Quiero más info"]);
   });
 
+  it("guarda las fotos, documentos y stickers del cliente para verlos en el chat", async () => {
+    await seedFunnel();
+    const files: Record<string, { bytes: Uint8Array; mimeType: string }> = {
+      m1: { bytes: new Uint8Array([1]), mimeType: "image/jpeg" },
+      m2: { bytes: new Uint8Array([2]), mimeType: "application/pdf" },
+      m3: { bytes: new Uint8Array([3]), mimeType: "image/webp" },
+    };
+    const asked: { id: string; max?: number }[] = [];
+    const api: WhatsAppApi = {
+      ...fakeApi().api,
+      downloadMedia: async (id, max) => {
+        asked.push({ id, max });
+        if (!files[id]) throw new Error("no existe");
+        return files[id];
+      },
+    };
+    const store: MediaStore = async (file, folder) => `https://blob.test/${folder}/${file.fileName}`;
+    await receiveWhatsApp(
+      webhook([
+        { from: "56911112222", id: "wamid.i", type: "image", image: { id: "m1", caption: "esta casa" } },
+        { from: "56911112222", id: "wamid.d", type: "document", document: { id: "m2", filename: "carnet.pdf" } },
+        { from: "56911112222", id: "wamid.s", type: "sticker", sticker: { id: "m3" } },
+        { from: "56911112222", id: "wamid.v", type: "video", video: { id: "m9" } },
+      ]),
+      { api, media: { store } },
+    );
+    const lead = await db.lead.findFirstOrThrow();
+    const rows = await db.message.findMany({ orderBy: { externalId: "asc" } });
+    expect(rows.map((m) => [m.body, m.mediaType, m.mediaName, m.mediaUrl])).toEqual([
+      ["[Documento: carnet.pdf]", "application/pdf", "carnet.pdf", `https://blob.test/leads/${lead.id}/carnet.pdf`],
+      ["[Imagen] esta casa", "image/jpeg", "foto.jpeg", `https://blob.test/leads/${lead.id}/foto.jpeg`],
+      ["[Sticker]", "image/webp", "foto.webp", `https://blob.test/leads/${lead.id}/foto.webp`],
+      // No se pudo descargar: queda el texto.
+      ["[Video]", null, null, null],
+    ]);
+    expect(asked.every((a) => a.max === 25 * 1024 * 1024)).toBe(true);
+  });
+
   it("descarga y transcribe las notas de voz", async () => {
     await seedFunnel();
     const { api } = fakeApi();

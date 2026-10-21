@@ -130,6 +130,61 @@ describe("Instagram y Messenger: mensajes entrantes", () => {
   });
 });
 
+describe("Instagram y Messenger: fotos y archivos del cliente", () => {
+  it("guarda cada foto o archivo como un mensaje con su archivo para verlo en el chat", async () => {
+    await seedFunnel();
+    const urls: string[] = [];
+    const api: MessengerApi = {
+      ...fakeMessenger().api,
+      download: async (url) => {
+        urls.push(url);
+        return { bytes: new Uint8Array([1, 2]), mimeType: url.includes(".pdf") ? "application/pdf" : "image/jpeg" };
+      },
+    };
+    const store: MediaStore = async (file, folder) => `https://blob.test/${folder}/${file.fileName}`;
+    const event: MsgEvent = {
+      sender: { id: "user-1" },
+      recipient: { id: IG_ID },
+      message: {
+        mid: "mid.f",
+        attachments: [
+          { type: "image", payload: { url: "https://scontent.cdninstagram.com/foto?x=1" } },
+          { type: "file", payload: { url: "https://cdn.fbsbx.com/v/t59/Cotizaci%C3%B3n%20lote.pdf?dl=1" } },
+        ],
+      },
+    };
+    await receiveMessenger(webhook("INSTAGRAM", [event]), { messenger: api, media: { store } });
+    await receiveMessenger(webhook("INSTAGRAM", [event]), { messenger: api, media: { store } });
+
+    const lead = await db.lead.findFirstOrThrow();
+    const messages = await db.message.findMany({ orderBy: { externalId: "asc" } });
+    expect(messages.map((m) => [m.externalId, m.body, m.mediaType, m.mediaName, m.mediaUrl])).toEqual([
+      ["mid.f", "[Imagen]", "image/jpeg", "foto.jpeg", `https://blob.test/leads/${lead.id}/foto.jpeg`],
+      ["mid.f#2", "[Archivo]", "application/pdf", "Cotización lote.pdf", `https://blob.test/leads/${lead.id}/Cotización lote.pdf`],
+    ]);
+    // El reintento de Meta no vuelve a descargar.
+    expect(urls).toHaveLength(2);
+  });
+
+  it("si no se puede descargar, el mensaje queda como texto", async () => {
+    await seedFunnel();
+    const api: MessengerApi = {
+      ...fakeMessenger().api,
+      download: async () => {
+        throw new Error("HTTP 403");
+      },
+    };
+    await receiveMessenger(
+      webhook("FACEBOOK", [
+        { sender: { id: "user-1" }, recipient: { id: PAGE_ID }, message: { mid: "mid.v", attachments: [{ type: "video", payload: { url: "https://video.fbcdn.net/v.mp4" } }] } },
+      ]),
+      { messenger: api },
+    );
+    const m = await db.message.findFirstOrThrow();
+    expect([m.body, m.mediaUrl]).toEqual(["[Video]", null]);
+  });
+});
+
 describe("Instagram y Messenger: envío", () => {
   async function igLead() {
     await seedFunnel();

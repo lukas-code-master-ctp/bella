@@ -83,7 +83,7 @@ export async function refreshLeadInsights(
       .reverse()
       .map((m) => {
         const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : `Ejecutivo (${m.user?.name ?? "equipo"})`;
-        const text = m.mediaUrl ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"} ${m.body}`.trim() : m.body;
+        const text = m.mediaType?.startsWith("audio/") ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"} ${m.body}`.trim() : m.body;
         return `${who}: ${text.slice(0, MAX_CHARS_PER_MESSAGE)}`;
       })
       .join("\n");

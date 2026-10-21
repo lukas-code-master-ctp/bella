@@ -143,7 +143,7 @@ async function buildInput(from: Date, to: Date) {
   for (const [i, l] of leads.entries()) {
     const tags = l.contact.tags.map((ct) => `${ct.tag.category}: ${ct.tag.name}`).join(", ");
     const said = l.messages
-      .map((m) => (m.mediaUrl ? (m.transcript ?? "") : m.body).replace(/\s+/g, " ").trim().slice(0, MAX_CHARS_PER_MESSAGE))
+      .map((m) => (m.transcript ?? m.body).replace(/\s+/g, " ").trim().slice(0, MAX_CHARS_PER_MESSAGE))
       .filter(Boolean)
       .map((s) => `  - "${s}"`);
     lines.push(
