@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { GRAPH_VERSION } from "../channels/whatsapp";
 import { companyUrls } from "../company-urls";
 import { credential, saveCredentials } from "../credentials";
+import { db, rootDb } from "../db";
 import { currentCompanyId } from "../tenant";
 import { getPixelSettings, savePixelSettings } from "./conversions";
 import { DomainError } from "./leads";
@@ -16,7 +17,9 @@ import { DomainError } from "./leads";
  *   de esa app, con el tipo de registro integrado de WhatsApp.
  * Si la configuración pide además permisos de anuncios (ads_read, ads_management), el mismo token
  * queda como token de anuncios (y de la API de Conversiones si no había uno), con las cuentas publicitarias y el
- * píxel que la empresa eligió en la ventana.
+ * píxel que la empresa eligió en la ventana. Con permisos de páginas e Instagram, conecta también
+ * la página (Messenger y comentarios) y su cuenta de Instagram: sus avisos llegan a la URL de la
+ * plataforma (/api/webhooks/meta/platform), que los reparte por la tabla MetaAccount.
  */
 export function platformApp() {
   const appId = process.env.META_PLATFORM_APP_ID;
@@ -43,7 +46,13 @@ export type SignupApi = {
   adAccounts(token: string): Promise<string[]>;
   /** Píxeles (datasets) de una cuenta publicitaria. */
   pixels(token: string, adAccountId: string): Promise<string[]>;
+  /** Páginas que ve el token, con su token de página y su cuenta de Instagram; vacío sin permisos. */
+  pages(token: string): Promise<MetaPage[]>;
+  /** Suscribe la app de la plataforma a los mensajes y comentarios de la página. */
+  subscribePage(pageId: string, pageToken: string): Promise<void>;
 };
+
+export type MetaPage = { id: string; name: string; accessToken: string; instagramId: string | null };
 
 async function graph(path: string, init: RequestInit, what: string): Promise<unknown> {
   const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, init);
@@ -89,6 +98,25 @@ export const metaSignupApi: SignupApi = {
     };
     return (json.data ?? []).map((p) => p.id ?? "").filter((id) => META_ID.test(id));
   },
+  async pages(token) {
+    const json = (await graph(
+      "me/accounts?fields=id,name,access_token,instagram_business_account&limit=50",
+      { headers: { Authorization: `Bearer ${token}` } },
+      "las páginas",
+    )) as { data?: { id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string } }[] };
+    return (json.data ?? [])
+      .filter((p) => p.id && META_ID.test(p.id) && p.access_token)
+      .map((p) => ({
+        id: p.id!,
+        name: p.name ?? "",
+        accessToken: p.access_token!,
+        instagramId: p.instagram_business_account?.id && META_ID.test(p.instagram_business_account.id) ? p.instagram_business_account.id : null,
+      }));
+  },
+  async subscribePage(pageId, pageToken) {
+    const fields = "messages,messaging_postbacks,messaging_referrals,feed";
+    await graph(`${pageId}/subscribed_apps?subscribed_fields=${fields}`, post(pageToken, {}), "la suscripción de la página");
+  },
 };
 
 const META_ID = /^\d{5,25}$/;
@@ -122,7 +150,48 @@ export async function completeWhatsAppSignup(
   // Al suscribir, Meta verifica la URL con el token de verificación: ya tiene que estar guardado.
   const urls = companyUrls(input.origin, await currentCompanyId());
   await api.subscribe(input.wabaId, token, urls.whatsappWebhook, verifyToken);
-  return { ads: await connectAds(token, api) };
+  return { ads: await connectAds(token, api), page: await connectPage(token, api) };
+}
+
+/**
+ * Si la empresa también dio acceso a su página de Facebook, la conecta (Messenger y comentarios)
+ * junto con su cuenta de Instagram, y la anota en MetaAccount para recibir sus avisos. Con varias
+ * páginas toma la primera que tenga Instagram, o la primera. Sin permisos no cambia nada.
+ */
+async function connectPage(token: string, api: SignupApi): Promise<{ name: string; instagram: boolean } | null> {
+  let pages: MetaPage[];
+  try {
+    pages = await api.pages(token);
+  } catch {
+    return null;
+  }
+  const page = pages.find((p) => p.instagramId) ?? pages[0];
+  if (!page) return null;
+  try {
+    await api.subscribePage(page.id, page.accessToken);
+  } catch {
+    return null;
+  }
+  await saveCredentials(
+    { META_PAGE_ID: page.id, META_PAGE_ACCESS_TOKEN: page.accessToken, META_IG_ACCOUNT_ID: page.instagramId ?? "" },
+    page.instagramId ? [] : ["META_IG_ACCOUNT_ID"],
+  );
+  const companyId = await currentCompanyId();
+  const accounts = [
+    { externalId: page.id, kind: "PAGE", name: page.name || null },
+    ...(page.instagramId ? [{ externalId: page.instagramId, kind: "INSTAGRAM", name: page.name || null }] : []),
+  ];
+  // La página que la empresa tenía antes deja de ser suya. Si otra empresa tenía esta, pasa a esta:
+  // solo puede conectarla quien la administra en Meta.
+  await db.metaAccount.deleteMany({ where: { externalId: { notIn: accounts.map((a) => a.externalId) } } });
+  for (const a of accounts) {
+    await rootDb.metaAccount.upsert({
+      where: { externalId: a.externalId },
+      create: { ...a, companyId },
+      update: { ...a, companyId },
+    });
+  }
+  return { name: page.name, instagram: Boolean(page.instagramId) };
 }
 
 /**

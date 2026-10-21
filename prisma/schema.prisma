@@ -188,6 +188,21 @@ model WhatsAppNumber {
   @@index([companyId])
 }
 
+/// Página de Facebook o cuenta de Instagram conectada con "Conectar con Meta". Los avisos de la
+/// app de la plataforma llegan todos a una misma URL: con esta tabla se sabe de qué empresa son.
+model MetaAccount {
+  /// Id de la página o de la cuenta de Instagram (el `entry.id` del webhook).
+  externalId String   @id
+  /// Empresa dueña del dato (ver src/lib/tenant.ts).
+  companyId  String   @default("default")
+  /// PAGE o INSTAGRAM.
+  kind       String
+  name       String?
+  createdAt  DateTime @default(now())
+
+  @@index([companyId])
+}
+
 /// Etiqueta de contacto agrupada por categoría (ej. "Producto" / "Interés").
 model Tag {
   id        String @id @default(cuid())
