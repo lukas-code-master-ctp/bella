@@ -13,6 +13,7 @@ import { blockContact, optBackIn, unblockContact } from "@/lib/domain/contacts";
 import { findDuplicatesOf, mergeContacts } from "@/lib/domain/contact-import";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
+import { draftExecutiveReply } from "@/lib/ai/draft-reply";
 import { loadRunView } from "@/lib/ai/trace";
 import { setContactFields } from "@/lib/domain/fields";
 import { createLesson, draftLesson, type LessonDraft } from "@/lib/domain/ai-lessons";
@@ -324,4 +325,20 @@ export async function mergeIntoLeadAction(leadId: string, otherIds: string[]): P
   done(leadId);
   revalidatePath("/settings/contacts");
   return null;
+}
+
+export type DraftReplyResult = { draft: string; error?: undefined } | { draft?: undefined; error: string };
+
+/** "@ia" en el chat: la IA redacta el próximo mensaje del ejecutivo; vuelve al campo sin enviarse. */
+export async function draftReplyAction(leadId: string, hint: string): Promise<DraftReplyResult> {
+  const { user } = await authorize(leadId);
+  const missing = await missingKeyMessage((await getAiConfig()).provider);
+  if (missing) return { error: missing };
+  try {
+    return { draft: await draftExecutiveReply(leadId, user.name, hint) };
+  } catch (e) {
+    if (e instanceof DomainError) return { error: e.message };
+    console.error("[redactar] lead", leadId, e);
+    return { error: "La IA no pudo redactar la respuesta. Intenta de nuevo en un momento." };
+  }
 }
