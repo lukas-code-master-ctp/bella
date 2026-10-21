@@ -48,6 +48,7 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
   const router = useRouter();
   const [state, setState] = useState<"idle" | "open" | "saving" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [ads, setAds] = useState<{ accounts: number; pixel: boolean } | null>(null);
   const got = useRef<{ code?: string; wabaId?: string; phoneNumberId?: string }>({});
 
   async function finishIfReady() {
@@ -63,6 +64,7 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
       setState("idle");
       return;
     }
+    setAds("ads" in res && res.ads ? res.ads : null);
     setState("done");
     router.refresh();
   }
@@ -127,7 +129,12 @@ export function WhatsAppSignup({ config, connected }: { config: Config; connecte
         {state === "saving" ? <LoaderCircle aria-hidden className="animate-spin" /> : <Plug aria-hidden />}
         {state === "saving" ? "Conectando…" : connected ? "Conectar otro número con Meta" : "Conectar con Meta"}
       </Button>
-      {state === "done" && <FormMessage tone="neutral">Listo: WhatsApp quedó conectado. Escríbele al número para probar.</FormMessage>}
+      {state === "done" && (
+        <FormMessage tone="neutral">
+          Listo: WhatsApp quedó conectado. Escríbele al número para probar.
+          {ads?.accounts ? ` También se conectaron tus anuncios (${ads.accounts === 1 ? "1 cuenta publicitaria" : `${ads.accounts} cuentas publicitarias`})${ads.pixel ? " y el píxel: enciéndelo en Configuración → Píxel de Meta cuando quieras enviar eventos" : ""}.` : ""}
+        </FormMessage>
+      )}
       {error && <FormMessage>{error}</FormMessage>}
     </div>
   );
