@@ -11,6 +11,7 @@ import { ActivityPanel } from "./activity-panel";
 import { CorrectionDialog } from "./correction-dialog";
 import { timeline } from "@/lib/chat-timeline";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
+import { autoGrow, useQuickReplyMenu, type QuickReplyOption } from "./quick-replies";
 
 export type ChatMessage = {
   id: string;
@@ -77,6 +78,7 @@ export function LeadChat({
   simulator,
   blocked = false,
   isAdmin = false,
+  quickReplies = [],
 }: {
   leadId: string;
   messages: ChatMessage[];
@@ -88,6 +90,8 @@ export function LeadChat({
   /** Contacto bloqueado: no se le escribe ni se simula que escribe. */
   blocked?: boolean;
   isAdmin?: boolean;
+  /** Respuestas rápidas del usuario, que busca escribiendo "/". */
+  quickReplies?: QuickReplyOption[];
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
@@ -153,6 +157,7 @@ export function LeadChat({
         )}
         <UserComposer
           leadId={leadId}
+          quickReplies={quickReplies}
           onSend={(body, audioUrl) => {
             if (audioUrl) addPending(pending("USER", "", { url: audioUrl, transcript: null }));
             if (body) addPending(pending("USER", body));
@@ -496,15 +501,19 @@ function ContactComposer({
 
 function UserComposer({
   leadId,
+  quickReplies,
   onSend,
 }: {
   leadId: string;
+  quickReplies: QuickReplyOption[];
   onSend: (body: string, audioUrl: string | null) => void;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [sendingAudio, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const quick = useQuickReplyMenu(quickReplies, replyRef);
 
   const send = async (fd: FormData) => {
     const body = String(fd.get("body") ?? "").trim();
@@ -512,7 +521,10 @@ function UserComposer({
     const hasAudio = audio instanceof File && audio.size > 0;
     if (!body && !hasAudio) return;
     onSend(body, hasAudio ? URL.createObjectURL(audio) : null);
-    if (!hasAudio) formRef.current?.reset();
+    if (!hasAudio) {
+      formRef.current?.reset();
+      autoGrow(replyRef.current);
+    }
     setError(null);
     try {
       setError(await sendAsUserAction(leadId, fd));
@@ -532,7 +544,7 @@ function UserComposer({
 
   return (
     <div className="space-y-2">
-      <form ref={formRef} action={send} className="flex gap-2">
+      <form ref={formRef} action={send} className="relative flex items-end gap-2">
         {recorder.recording ? (
           <RecordingBar recorder={recorder} />
         ) : (
@@ -540,7 +552,26 @@ function UserComposer({
             <label htmlFor="reply" className="sr-only">
               Responder como ejecutivo
             </label>
-            <input id="reply" name="body" required placeholder="Responder como ejecutivo (pausa la IA)" className={inputClass} />
+            {quick.menu}
+            <textarea
+              ref={replyRef}
+              id="reply"
+              name="body"
+              required
+              rows={1}
+              placeholder='Responder como ejecutivo (pausa la IA) · "/" respuestas rápidas'
+              className={`${inputClass} max-h-40 resize-none`}
+              {...quick.ariaProps}
+              onInput={(e) => {
+                autoGrow(e.currentTarget);
+                quick.refresh();
+              }}
+              onSelect={quick.refresh}
+              onBlur={quick.close}
+              onKeyDown={(e) => {
+                if (!quick.onKeyDown(e)) submitOnEnter(e);
+              }}
+            />
             <MicButton recorder={recorder} disabled={sendingAudio} label="Grabar nota de voz" />
             <SubmitButton pendingText="Enviando…">
               <Send aria-hidden />
