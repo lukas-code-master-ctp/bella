@@ -140,10 +140,12 @@ export default async function FunnelPage({
             ]}
           />
         </div>
-        <Link href="/chats/simulator" className={buttonClass("secondary", "sm", "ml-auto")}>
-          <FlaskConical aria-hidden />
-          Probar en simulador
-        </Link>
+        {user.role === "ADMIN" && (
+          <Link href="/chats/simulator" className={buttonClass("secondary", "sm", "ml-auto")}>
+            <FlaskConical aria-hidden />
+            Probar en simulador
+          </Link>
+        )}
       </div>
 
       {stages.length === 0 ? (
