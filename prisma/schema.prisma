@@ -89,6 +89,8 @@ model User {
   sessionsRevokedAt  DateTime?
   /// Avisos que la persona quiere recibir también por correo (ver src/lib/domain/email-notifications.ts).
   emailNotifications String[]  @default([])
+  /// Admin que además atiende leads: entra a la asignación automática como un ejecutivo más.
+  takesLeads         Boolean   @default(false)
 
   leads        Lead[]           @relation("Assignee")
   messages     Message[]

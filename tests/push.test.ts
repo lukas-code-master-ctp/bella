@@ -4,7 +4,7 @@ const sendNotification = vi.fn();
 vi.mock("web-push", () => ({ default: { setVapidDetails: vi.fn(), sendNotification } }));
 
 const { db } = await import("@/lib/db");
-const { deliverPendingPush } = await import("@/lib/push");
+const { deliverPendingPush, savePushSubscription } = await import("@/lib/push");
 const { createLead, moveStage } = await import("@/lib/domain/leads");
 const { executive, seedFunnel } = await import("./factories");
 
@@ -43,5 +43,14 @@ describe("Web Push", () => {
     // Ya enviado: no se repite.
     await deliverPendingPush();
     expect(sendNotification).toHaveBeenCalledTimes(2);
+  });
+
+  it("la suscripción del navegador pasa a la cuenta que abrió la app", async () => {
+    const ana = await executive("Ana");
+    const beto = await executive("Beto");
+    const sub = { endpoint: "https://push.example/chrome", keys: { p256dh: "k", auth: "a" } };
+    await savePushSubscription(ana.id, sub);
+    await savePushSubscription(beto.id, sub);
+    expect(await db.pushSubscription.findMany({ select: { userId: true } })).toEqual([{ userId: beto.id }]);
   });
 });

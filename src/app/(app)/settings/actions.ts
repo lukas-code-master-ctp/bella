@@ -478,6 +478,14 @@ export async function toggleUserAction(id: string, active: boolean) {
   revalidatePath("/settings/users");
 }
 
+/** Un admin que además atiende leads entra a la asignación automática como un ejecutivo más. */
+export async function setTakesLeadsAction(id: string, takesLeads: boolean) {
+  await requireAdmin();
+  await db.user.update({ where: { id, role: "ADMIN" }, data: { takesLeads } });
+  revalidatePath("/settings/users");
+  revalidatePath("/settings/rules");
+}
+
 // Origen de leads
 
 export async function saveAttributionAction(form: FormData) {

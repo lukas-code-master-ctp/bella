@@ -21,6 +21,7 @@ import { NewInsightBadge } from "./metrics/new-insight-badge";
 import { Logo } from "@/components/logo";
 import { unreadNotificationCount } from "@/lib/domain/notifications";
 import { UnreadBadge } from "./notifications/unread-badge";
+import { PushClaim } from "./notifications/push-claim";
 
 const countBadge = (n: number, tone: string, label: string) => (
   <span key={n} className={`animate-pop rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white ${tone}`}>
@@ -87,6 +88,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       data-compact={compact}
       className="group/shell min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:data-[compact=true]:grid-cols-[72px_minmax(0,1fr)]"
     >
+      <PushClaim />
       <a
         href="#contenido"
         className="sr-only z-50 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-700 shadow-lg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
