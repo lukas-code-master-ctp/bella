@@ -1,4 +1,4 @@
-import { fileKind } from "@/lib/media";
+import { previewKind } from "@/lib/media";
 import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
@@ -281,10 +281,11 @@ export async function LeadView({
             author: m.author,
             authorName:
               m.author === "CONTACT" ? lead.contact.name : m.author === "AI" ? "Asistente IA" : (m.user?.name ?? "Ejecutivo"),
-            body: m.body,
-            ...(m.mediaUrl && fileKind(m.mediaType) === "audio" ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
-            ...(m.mediaUrl && fileKind(m.mediaType) !== "audio"
-              ? { file: { url: m.mediaUrl, name: m.mediaName ?? "Archivo", kind: fileKind(m.mediaType) } }
+            // Con el archivo a la vista, sobra la etiqueta "[Imagen]" del cliente: queda solo el pie de foto.
+            body: m.author === "CONTACT" && m.mediaUrl ? m.body.replace(/^\[[^\]]*\]\s*/, "") : m.body,
+            ...(m.mediaUrl && previewKind(m.mediaType) === "audio" ? { audio: { url: m.mediaUrl, transcript: m.transcript } } : {}),
+            ...(m.mediaUrl && previewKind(m.mediaType) !== "audio"
+              ? { file: { url: m.mediaUrl, name: m.mediaName ?? "Archivo", kind: previewKind(m.mediaType) } }
               : {}),
             ...(m.deliveryStatus ? { delivery: { status: m.deliveryStatus, error: m.deliveryError } } : {}),
             time: time(m.createdAt),

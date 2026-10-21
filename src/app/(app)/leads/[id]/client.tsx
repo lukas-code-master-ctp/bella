@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, ExternalLink, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, Play, RefreshCw, Send, Target } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, Download, ExternalLink, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, Play, RefreshCw, Send, Target } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
@@ -19,7 +19,7 @@ export type ChatMessage = {
   body: string;
   /** Nota de voz: archivo y transcripción (null si no se pudo transcribir). */
   audio?: { url: string; transcript: string | null };
-  /** Imagen, video o documento enviado por la IA. */
+  /** Imagen, video o documento (enviado por la IA o por el cliente). */
   file?: { url: string; name: string; kind: "image" | "video" | "document" | "audio" };
   /** Hora ya formateada en el servidor (evita diferencias de zona horaria al hidratar). */
   time: string;
@@ -364,31 +364,93 @@ function TypingBubble() {
   );
 }
 
-/** Archivo enviado: la imagen o el video se ven en el chat; un documento, como enlace. */
+/** Archivo del mensaje: la imagen (ampliable) o el video se ven en el chat; un documento, con su nombre y botón para descargarlo. */
 function Attachment({ file, light }: { file: NonNullable<ChatMessage["file"]>; light: boolean }) {
-  if (file.kind === "image") {
-    return (
-      <a href={file.url} target="_blank" rel="noreferrer" className="mb-1 block" onClick={(e) => e.stopPropagation()}>
-        <img src={file.url} alt={file.name} loading="lazy" className="max-h-64 w-64 max-w-full rounded-lg bg-white/10 object-cover" />
-      </a>
-    );
-  }
+  if (file.kind === "image") return <ImagePreview file={file} />;
   if (file.kind === "video") {
-    return <video controls preload="none" src={file.url} className="mb-1 max-h-64 w-64 max-w-full rounded-lg" />;
+    return <video controls preload="metadata" src={file.url} className="mb-1 max-h-64 w-64 max-w-full rounded-lg bg-black" />;
   }
+  const tone = light ? "bg-slate-50 text-slate-800 hover:bg-slate-100" : "bg-white/15 text-white hover:bg-white/25";
   return (
-    <a
-      href={file.url}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      className={`mb-1 flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] font-medium ${
-        light ? "bg-slate-50 text-slate-800 hover:bg-slate-100" : "bg-white/15 text-white hover:bg-white/25"
-      }`}
-    >
-      <FileText aria-hidden className="size-4 shrink-0" />
-      <span className="min-w-0 truncate">{file.name}</span>
-    </a>
+    <span className="mb-1 flex items-stretch gap-1">
+      <a
+        href={file.url}
+        target="_blank"
+        rel="noreferrer"
+        title="Abrir"
+        onClick={(e) => e.stopPropagation()}
+        className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] font-medium ${tone}`}
+      >
+        <FileText aria-hidden className="size-4 shrink-0" />
+        <span className="min-w-0 truncate">{file.name}</span>
+      </a>
+      <a
+        href={downloadUrl(file.url)}
+        title="Descargar"
+        onClick={(e) => e.stopPropagation()}
+        className={`flex shrink-0 items-center rounded-lg px-2 ${tone}`}
+      >
+        <Download aria-hidden className="size-4" />
+        <span className="sr-only">Descargar {file.name}</span>
+      </a>
+    </span>
+  );
+}
+
+/** Enlace de Vercel Blob que descarga el archivo en vez de abrirlo. */
+const downloadUrl = (url: string) => `${url}${url.includes("?") ? "&" : "?"}download=1`;
+
+/** Miniatura de una imagen; al tocarla se ve en grande, con opción de abrirla o descargarla. */
+function ImagePreview({ file }: { file: NonNullable<ChatMessage["file"]> }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  return (
+    <>
+      {/* span y no button: la burbuja de la IA ya es un botón (ver actividad). */}
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={`Ver en grande: ${file.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          ref.current?.showModal();
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          e.stopPropagation();
+          ref.current?.showModal();
+        }}
+        className="mb-1 block cursor-zoom-in"
+      >
+        <img src={file.url} alt={file.name} loading="lazy" className="max-h-64 w-64 max-w-full rounded-lg bg-white/10 object-cover" />
+      </span>
+      <dialog
+        ref={ref}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.target === e.currentTarget) ref.current?.close();
+        }}
+        aria-label={file.name}
+        className="m-auto max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] bg-transparent p-0 backdrop:bg-slate-900/80 open:animate-pop"
+      >
+        <img src={file.url} alt={file.name} className="max-h-[calc(100dvh-6rem)] max-w-full rounded-lg object-contain" />
+        <span className="mt-2 flex justify-center gap-2">
+          <a href={downloadUrl(file.url)} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-slate-800 hover:bg-slate-100">
+            <Download aria-hidden className="size-4" />
+            Descargar
+          </a>
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={() => ref.current?.close()}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && ref.current?.close()}
+            className="cursor-pointer rounded-lg bg-white px-3 py-1.5 text-[13px] font-medium text-slate-800 hover:bg-slate-100"
+          >
+            Cerrar
+          </span>
+        </span>
+      </dialog>
+    </>
   );
 }
 

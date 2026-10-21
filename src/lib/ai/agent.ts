@@ -195,9 +195,12 @@ export function stageRules(stages: Stage[]): string[] {
   ];
 }
 
-/** Texto del cliente tal como lo ve la IA. Las notas de voz llegan transcritas. */
+/**
+ * Texto del cliente tal como lo ve la IA. Las notas de voz llegan transcritas; una foto o un
+ * documento llega con su descripción ("[Imagen] pie de foto").
+ */
 function contactText(m: Message) {
-  if (!m.mediaUrl) return `Cliente: ${m.body}`;
+  if (!m.mediaUrl || !m.mediaType?.startsWith("audio/")) return `Cliente: ${m.body}`;
   const caption = m.body ? `\n${m.body}` : "";
   return m.transcript
     ? `Cliente (nota de voz, transcrita): ${m.transcript}${caption}`

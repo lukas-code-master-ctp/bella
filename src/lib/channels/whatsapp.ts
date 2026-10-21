@@ -35,7 +35,8 @@ export type WhatsAppApi = {
   sendAudio(to: string, url: string, from?: string): Promise<string>;
   /** Imagen, video o documento por URL pública; `caption` va como texto del archivo. */
   sendFile(to: string, file: { kind: FileKind; url: string; fileName?: string; caption?: string }, from?: string): Promise<string>;
-  downloadMedia(mediaId: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
+  /** Descarga un archivo que mandó el cliente; falla si pesa más de `maxBytes`. */
+  downloadMedia(mediaId: string, maxBytes?: number): Promise<{ bytes: Uint8Array; mimeType: string }>;
   /**
    * Plantilla aprobada en Meta; `params` llena las variables del cuerpo ({{1}}, {{2}}…), `header`
    * el archivo del encabezado y `buttons` la parte variable de los botones de enlace.
@@ -140,8 +141,11 @@ export const cloudApi: WhatsAppApi = {
     const components = templateComponents(t);
     return send(to, { type: "template", template: { name: t.name, language: { code: t.language }, ...(components.length ? { components } : {}) } }, from);
   },
-  async downloadMedia(mediaId) {
-    const meta = await graph<{ url: string; mime_type: string }>(mediaId);
+  async downloadMedia(mediaId, maxBytes) {
+    const meta = await graph<{ url: string; mime_type: string; file_size?: number }>(mediaId);
+    if (maxBytes && Number(meta.file_size) > maxBytes) {
+      throw new Error(`El archivo de WhatsApp pesa más de ${maxBytes / 1024 / 1024} MB.`);
+    }
     const res = await fetch(meta.url, { headers: { Authorization: `Bearer ${await credential("WHATSAPP_TOKEN")}` } });
     if (!res.ok) throw new Error(`No se pudo descargar el archivo de WhatsApp (HTTP ${res.status}).`);
     return { bytes: new Uint8Array(await res.arrayBuffer()), mimeType: meta.mime_type };
