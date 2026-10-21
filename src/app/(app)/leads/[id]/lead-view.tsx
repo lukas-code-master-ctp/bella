@@ -15,6 +15,7 @@ import { formatAgo, formatLocal, startOfLocalDay, TIME_ZONE, toLocalInput } from
 import { attentionOf } from "@/lib/domain/attention";
 import { markLeadNotificationsRead } from "@/lib/domain/notifications";
 import { awaitingAmountStageIds } from "@/lib/domain/leads";
+import { listQuickReplies } from "@/lib/domain/quick-replies";
 import { Avatar, Badge, Card, inputClass, TagPill } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { LinkPending } from "@/components/link-pending";
@@ -148,7 +149,7 @@ export async function LeadView({
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages] = await Promise.all([
+  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages, quickReplies] = await Promise.all([
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -161,6 +162,7 @@ export async function LeadView({
       ? db.whatsAppNumber.findUnique({ where: { phoneNumberId: lead.contact.waPhoneNumberId }, select: { label: true } })
       : null,
     awaitingAmountStageIds(),
+    listQuickReplies(user.id),
     markLeadNotificationsRead(user.id, lead.id),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
@@ -263,6 +265,7 @@ export async function LeadView({
           simulator={lead.contact.channel === "SIMULATOR"}
           blocked={Boolean(lead.contact.blockedAt)}
           isAdmin={user.role === "ADMIN"}
+          quickReplies={quickReplies}
           ad={
             lead.source?.kind === "AD"
               ? {

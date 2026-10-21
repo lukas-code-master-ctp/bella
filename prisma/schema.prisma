@@ -105,6 +105,7 @@ model User {
   pushSubscriptions PushSubscription[]
   comments          SocialComment[]
   passwordResets    PasswordResetToken[]
+  quickReplies      QuickReply[]
 
   @@index([companyId])
 }
@@ -1093,4 +1094,21 @@ model AiLesson {
   updatedAt    DateTime       @updatedAt
 
   @@index([companyId, status])
+}
+
+/// Respuesta rápida de un ejecutivo: texto pre-hecho que busca escribiendo "/" en el chat del lead.
+/// Es personal: cada usuario ve y edita solo las suyas (Mi perfil → Respuestas rápidas).
+model QuickReply {
+  id        String   @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String   @default("default")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Nombre con que se busca después de "/".
+  name      String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, userId])
 }
