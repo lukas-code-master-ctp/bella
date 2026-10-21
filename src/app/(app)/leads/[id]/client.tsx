@@ -3,12 +3,13 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, FileText, FlaskConical, MessageCircle, Mic, PencilLine, RefreshCw, Send } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, RefreshCw, Send } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
 import { ActivityPanel } from "./activity-panel";
 import { CorrectionDialog } from "./correction-dialog";
+import { timeline } from "@/lib/chat-timeline";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 
 export type ChatMessage = {
@@ -22,9 +23,25 @@ export type ChatMessage = {
   file?: { url: string; name: string; kind: "image" | "video" | "document" | "audio" };
   /** Hora ya formateada en el servidor (evita diferencias de zona horaria al hidratar). */
   time: string;
+  /** Momento del mensaje (ms), para intercalarlo con los eventos del lead. */
+  at?: number;
   pending?: boolean;
   /** Entrega por WhatsApp de un mensaje enviado (no existe en el simulador). */
   delivery?: { status: string; error: string | null };
+};
+
+/** Algo que le pasó al lead (cambio de etapa, asignación, IA pausada…), intercalado en la conversación. */
+export type ChatEvent = {
+  id: string;
+  /** Momento del evento (ms). */
+  at: number;
+  /** Texto ya armado en el servidor, p. ej. "Cambio de etapa: Nuevo → Calificado". */
+  text: string;
+  /** Quién lo hizo: nombre del ejecutivo, "IA" o "Sistema". */
+  actor: string;
+  reason: string | null;
+  time: string;
+  tone: "neutral" | "success" | "danger";
 };
 
 /** Enter envía el formulario; Shift+Enter agrega una línea. */
@@ -41,6 +58,7 @@ function submitOnEnter(e: React.KeyboardEvent<HTMLTextAreaElement | HTMLInputEle
 export function LeadChat({
   leadId,
   messages,
+  events = [],
   contactName,
   userName,
   simulator,
@@ -49,6 +67,7 @@ export function LeadChat({
 }: {
   leadId: string;
   messages: ChatMessage[];
+  events?: ChatEvent[];
   contactName: string;
   userName: string;
   simulator: boolean;
@@ -82,17 +101,21 @@ export function LeadChat({
             Cuando el cliente escriba, la conversación aparecerá aquí.
           </EmptyState>
         )}
-        {shown.map((m) => (
-          <Bubble
-            key={m.id}
-            message={m}
-            animate={entersAnimated(m)}
-            onInspect={m.author === "AI" && !m.pending ? () => setInspected(m) : undefined}
-            onCorrect={m.author === "AI" && !m.pending && m.body ? () => setCorrecting(m) : undefined}
-          />
-        ))}
+        {timeline(shown, events).map((item) =>
+          "text" in item ? (
+            <EventNote key={item.id} event={item} />
+          ) : (
+            <Bubble
+              key={item.id}
+              message={item}
+              animate={entersAnimated(item)}
+              onInspect={item.author === "AI" && !item.pending ? () => setInspected(item) : undefined}
+              onCorrect={item.author === "AI" && !item.pending && item.body ? () => setCorrecting(item) : undefined}
+            />
+          ),
+        )}
         {typing && <TypingBubble />}
-        <ScrollToBottom dep={shown.length + (typing ? 1 : 0)} />
+        <ScrollToBottom dep={shown.length + events.length + (typing ? 1 : 0)} />
       </div>
 
       {blocked ? (
@@ -126,6 +149,30 @@ export function LeadChat({
       <ActivityPanel leadId={leadId} message={inspected} onClose={closeInspector} />
       <CorrectionDialog leadId={leadId} message={correcting} isAdmin={isAdmin} onClose={closeCorrection} />
     </>
+  );
+}
+
+const EVENT_TONE: Record<ChatEvent["tone"], string> = {
+  neutral: "border-slate-200 bg-white text-slate-600",
+  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  danger: "border-rose-200 bg-rose-50 text-rose-800",
+};
+
+/** Nota discreta al centro del chat con un evento del lead; el motivo queda en el tooltip. */
+function EventNote({ event }: { event: ChatEvent }) {
+  return (
+    <div className="flex justify-center py-0.5">
+      <p
+        title={event.reason ?? undefined}
+        className={`inline-flex max-w-[92%] flex-wrap items-center justify-center gap-x-1.5 rounded-full border px-3 py-1 text-center text-[11px] leading-snug ${EVENT_TONE[event.tone]}`}
+      >
+        <Flag aria-hidden className="size-3 shrink-0 opacity-70" />
+        <span className="font-medium">{event.text}</span>
+        <span className="opacity-75">
+          {[event.actor, event.time].filter(Boolean).join(" · ")}
+        </span>
+      </p>
+    </div>
   );
 }
 
