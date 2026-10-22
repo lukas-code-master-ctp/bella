@@ -10,7 +10,7 @@ import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient, ProviderClients } from "@/lib/ai/providers";
 import { openRouterSpeech, recordSpeechCost, synthesizeVoiceNote, type SpeechClient, type SpeechUsage } from "@/lib/ai/speech";
 import { cloudApi } from "@/lib/channels/whatsapp";
-import { DEFAULT_VOICE_NOTES, saveVoiceNoteSettings, shouldSpeak, speakable, type VoiceNoteSettings } from "@/lib/domain/voice-notes";
+import { DEFAULT_VOICE_NOTES, saveVoiceNoteSettings, shouldSpeak, speakable, voiceTurnHint, type VoiceNoteSettings } from "@/lib/domain/voice-notes";
 import { decodePcm, encodeOggOpus, mp3ToVoiceNote } from "@/lib/voice-note";
 import { seedFunnel } from "./factories";
 
@@ -85,6 +85,14 @@ describe("cuándo la IA habla", () => {
     expect(shouldSpeak({ ...on, mode: "always" }, "Hola", { channel: "WHATSAPP", lastFromContact: text })).toBe(true);
     expect(shouldSpeak({ ...on, mode: "always" }, "Hola", { channel: "SIMULATOR", lastFromContact: null })).toBe(true);
   });
+
+  it("le avisa a la IA cuando su respuesta saldrá como nota de voz, para que no use listas ni links", () => {
+    expect(voiceTurnHint(DEFAULT_VOICE_NOTES, { channel: "WHATSAPP", lastFromContact: audio })).toBeNull();
+    expect(voiceTurnHint(on, { channel: "WHATSAPP", lastFromContact: text })).toBeNull();
+    expect(voiceTurnHint(on, { channel: "INSTAGRAM", lastFromContact: audio })).toBeNull();
+    expect(voiceTurnHint(on, { channel: "WHATSAPP", lastFromContact: audio })).toMatch(/nota de voz.*sin viñetas.*600/s);
+    expect(voiceTurnHint({ ...on, mode: "always" }, { channel: "WHATSAPP", lastFromContact: null })).toContain("nota de voz");
+  });
 });
 
 function fakeOpenRouter(reply: string): ChatClient {
@@ -138,7 +146,13 @@ describe("la IA responde con nota de voz", () => {
     await saveVoiceNoteSettings({ ...DEFAULT_VOICE_NOTES, enabled: true });
     const lead = await leadWithMessage({ body: "hola, ¿tienen parcelas?", audio: true });
     const { voice, spoken, costs } = fakeVoice();
-    await runAgent(lead.id, { openrouter: fakeOpenRouter("¡Sí! Tenemos varias, ¿en qué zona buscas?"), voice });
+    const firstTurn: string[] = [];
+    const chat = fakeOpenRouter("¡Sí! Tenemos varias, ¿en qué zona buscas?");
+    await runAgent(lead.id, {
+      openrouter: { complete: async (body) => (firstTurn.push(JSON.stringify(body)), chat.complete(body)) },
+      voice,
+    });
+    expect(firstTurn[0]).toContain("se enviará como nota de voz");
 
     const reply = await db.message.findFirstOrThrow({ where: { leadId: lead.id, author: "AI" } });
     expect(reply).toMatchObject({

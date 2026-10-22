@@ -25,7 +25,7 @@ import { deliverPendingWebhooks } from "../domain/webhooks";
 import { deliverPendingPush } from "../push";
 import { applyVariant } from "../domain/ab-tests";
 import { activeLessons, lessonsPrompt, type LessonForPrompt } from "../domain/ai-lessons";
-import { getVoiceNoteSettings, shouldSpeak } from "../domain/voice-notes";
+import { getVoiceNoteSettings, shouldSpeak, voiceTurnHint } from "../domain/voice-notes";
 import { getAiConfig } from "./config";
 import { providerFor, TransientAiError, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
@@ -413,6 +413,10 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     const last = await db.message.findFirst({ where: { leadId }, orderBy: { createdAt: "desc" } });
     blocks.push(followUpBlock(followUp, followUps, startedAt.getTime() - (last?.createdAt ?? startedAt).getTime()));
   }
+  const lastFromContact = followUp ? null : (pending.filter((m) => m.author === "CONTACT").at(-1) ?? null);
+  const voiceNotes = await getVoiceNoteSettings();
+  const voiceHint = voiceTurnHint(voiceNotes, { channel: lead.contact.channel, lastFromContact });
+  if (voiceHint) blocks.push(voiceHint);
   const context = blocks.join("\n\n");
   const messages: TranscriptMessage[] = [...history, provider.userTurn(context)];
   const [knowledge, files, lessons] = await Promise.all([knowledgeForPrompt(), filesForPrompt(), activeLessons()]);
@@ -514,8 +518,7 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
   const agendaChanged = trace.some((t) => t.type === "tool" && t.name === "schedule_follow_up" && !t.isError);
   // Nota de voz: si la empresa la activó y la respuesta se puede escuchar, sale como audio con su
   // texto como transcripción. Si la voz falla, la respuesta sale igual en texto.
-  const voiceSettings = reply && !handedOff ? await getVoiceNoteSettings() : null;
-  const lastFromContact = followUp ? null : (pending.filter((m) => m.author === "CONTACT").at(-1) ?? null);
+  const voiceSettings = reply && !handedOff ? voiceNotes : null;
   const voice =
     voiceSettings && shouldSpeak(voiceSettings, reply, { channel: lead.contact.channel, lastFromContact })
       ? await voiceNoteFor(leadId, reply, voiceSettings, clients.voice)

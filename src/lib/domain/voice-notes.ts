@@ -56,6 +56,24 @@ export function speakable(reply: string, maxChars: number): boolean {
 }
 
 /**
+ * Si la próxima respuesta de la IA saldría como nota de voz (antes de saber qué va a decir): se le
+ * avisa en el turno para que la escriba hablada, sin listas ni links, que la dejarían en texto.
+ */
+export function voiceTurnHint(
+  s: VoiceNoteSettings,
+  { channel, lastFromContact }: { channel: Channel; lastFromContact: Pick<Message, "mediaUrl" | "mediaType"> | null },
+): string | null {
+  if (!s.enabled || !VOICE_CHANNELS.includes(channel)) return null;
+  if (s.mode !== "always" && !(lastFromContact && isVoiceNote(lastFromContact))) return null;
+  return (
+    `(Tu respuesta se enviará como nota de voz${s.mode === "always" ? "" : " porque el cliente mandó un audio"}. ` +
+    "Escríbela como se diría hablando: frases corridas, sin viñetas, listas numeradas, links ni correos, " +
+    `y en menos de ${s.maxChars} caracteres. Si de verdad necesitas mandar un link o una lista, ` +
+    "esa respuesta saldrá en texto.)"
+  );
+}
+
+/**
  * Si la respuesta de la IA sale como nota de voz. `lastFromContact`: el último mensaje del cliente
  * que se está respondiendo (null en un seguimiento).
  */
