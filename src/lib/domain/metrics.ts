@@ -1,7 +1,7 @@
 import type { Channel } from "@prisma/client";
 import { db } from "../db";
 import type { CampaignSpend } from "../channels/ads";
-import { campaignOf } from "./attribution";
+import { campaignOf, originOf, type LeadOrigin } from "./attribution";
 
 /**
  * Panel de métricas. Todo se calcula sobre los leads que entraron en el período (una cohorte):
@@ -9,8 +9,18 @@ import { campaignOf } from "./attribution";
  * cómo terminaron. Los leads del simulador no cuentan.
  */
 
-/** Con `funnelId`, solo los leads de ese embudo (y el gráfico de embudo con sus etapas). */
-export type MetricsFilter = { from: Date; to: Date; assigneeId?: string; funnelId?: string };
+/**
+ * Con `funnelId`, solo los leads de ese embudo (y el gráfico de embudo con sus etapas); con
+ * `channel` u `origin`, solo los que llegaron por ese canal o desde ese origen (ver originOf).
+ */
+export type MetricsFilter = {
+  from: Date;
+  to: Date;
+  assigneeId?: string;
+  funnelId?: string;
+  channel?: Exclude<Channel, "SIMULATOR">;
+  origin?: LeadOrigin;
+};
 
 export type Row = { key: string; label: string; leads: number; won: number; lost: number; amount: number };
 export type ExecRow = Row & { firstReplyMs: number | null };
@@ -30,7 +40,7 @@ export type Metrics = {
   lostReasons: { reason: string; count: number }[];
 };
 
-const CHANNEL_ORDER: Channel[] = ["WHATSAPP", "INSTAGRAM", "FACEBOOK"];
+const CHANNEL_ORDER: Channel[] = ["WHATSAPP", "INSTAGRAM", "FACEBOOK", "WEB"];
 
 function percentile(sorted: number[], p: number): number | null {
   if (!sorted.length) return null;
@@ -66,11 +76,11 @@ const rows = (map: Map<string, Tally>): Row[] =>
 export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
   const where = {
     createdAt: { gte: filter.from, lt: filter.to },
-    contact: { channel: { not: "SIMULATOR" as const } },
+    contact: { channel: filter.channel ?? { not: "SIMULATOR" as const } },
     ...(filter.assigneeId ? { assigneeId: filter.assigneeId } : {}),
     ...(filter.funnelId ? { stage: { funnelId: filter.funnelId } } : {}),
   };
-  const [leads, stages] = await Promise.all([
+  const [all, stages] = await Promise.all([
     db.lead.findMany({
       where,
       select: {
@@ -82,12 +92,15 @@ export async function getMetrics(filter: MetricsFilter): Promise<Metrics> {
         assigneeId: true,
         assignee: { select: { name: true } },
         contact: { select: { channel: true } },
-        source: { select: { kind: true, campaignName: true, utmCampaign: true, adHeadline: true, adId: true } },
+        source: {
+          select: { kind: true, campaignName: true, utmCampaign: true, adHeadline: true, adId: true, utmSource: true, utmMedium: true, gclid: true },
+        },
         events: { where: { type: { in: ["CREATED", "STAGE_CHANGED"] } }, select: { data: true } },
       },
     }),
     db.stage.findMany({ where: filter.funnelId ? { funnelId: filter.funnelId } : {}, orderBy: { position: "asc" } }),
   ]);
+  const leads = filter.origin ? all.filter((l) => originOf(l.source) === filter.origin) : all;
   const ids = leads.map((l) => l.id);
   // Por lead, solo las tres fechas que importan: el primer mensaje del cliente y la primera
   // respuesta (de cualquiera y del equipo) desde ahí.

@@ -774,6 +774,8 @@ model LeadSource {
   utmCampaign  String?
   utmContent   String?
   utmTerm      String?
+  /// Id del clic de Google Ads (gclid), si el enlace lo traía.
+  gclid        String?
   /// Página desde donde la persona hizo clic.
   landingUrl   String?
   createdAt    DateTime @default(now())
@@ -794,6 +796,8 @@ model SourceLink {
   utmCampaign String?
   utmContent  String?
   utmTerm     String?
+  /// Id del clic de Google Ads (gclid): marca el origen como Google Ads aunque no venga con UTM.
+  gclid       String?
   landingUrl  String?
   createdAt   DateTime @default(now())
   /// Lead que llegó con este código (el primero).

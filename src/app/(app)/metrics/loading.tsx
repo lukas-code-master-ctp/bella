@@ -6,7 +6,7 @@ export default function MetricsLoading() {
       <PageHeaderSkeleton />
       <div className="mb-6 flex gap-2">
         <Skeleton className="h-10 flex-1 sm:w-44 sm:flex-none" />
-        <Skeleton className="h-10 w-16" />
+        <Skeleton className="h-10 flex-1 sm:w-44 sm:flex-none" />
       </div>
       <div className="space-y-6">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

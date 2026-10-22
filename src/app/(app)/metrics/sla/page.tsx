@@ -7,6 +7,7 @@ import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration } from "@/lib/domain/metrics";
 import { getSlaReport, getSlaSettings, type SlaStats } from "@/lib/domain/sla";
 import { Badge, buttonClass, Card, CardHeader, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
+import { AutoSubmitSelect } from "@/components/auto-submit-select";
 
 const RANGES = [
   ["7", "Últimos 7 días"],
@@ -58,29 +59,28 @@ export default async function SlaPage({ searchParams }: { searchParams: Promise<
         <label htmlFor="d" className="sr-only">
           Período
         </label>
-        <select id="d" name="d" defaultValue={String(days)} className={`${inputClass} sm:w-44`}>
+        <AutoSubmitSelect id="d" name="d" defaultValue={String(days)} className={`${inputClass} sm:w-44`}>
           {RANGES.map(([v, label]) => (
             <option key={v} value={v}>
               {label}
             </option>
           ))}
-        </select>
+        </AutoSubmitSelect>
         {funnels.length > 1 && (
           <>
             <label htmlFor="funnel" className="sr-only">
               Embudo
             </label>
-            <select id="funnel" name="funnel" defaultValue={funnelId ?? ""} className={`${inputClass} sm:w-44`}>
+            <AutoSubmitSelect id="funnel" name="funnel" defaultValue={funnelId ?? ""} className={`${inputClass} sm:w-44`}>
               <option value="">Todos los embudos</option>
               {funnels.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
                 </option>
               ))}
-            </select>
+            </AutoSubmitSelect>
           </>
         )}
-        <button className={buttonClass("secondary")}>Ver</button>
       </FilterBar>
 
       <div className="stagger space-y-6">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { closeLead, createLead, moveStage } from "@/lib/domain/leads";
 import { formatDuration, getMetrics } from "@/lib/domain/metrics";
+import { originOf, utmFromParams } from "@/lib/domain/attribution";
 import { executive, seedFunnel } from "./factories";
 
 const MIN = 60_000;
@@ -71,6 +72,29 @@ describe("Métricas", () => {
 
     const own = await getMetrics({ from: new Date(Date.now() - 86_400_000), to: new Date(), assigneeId: ana.id });
     expect(own.totals.leads).toBe(1);
+
+    const range = { from: new Date(Date.now() - 86_400_000), to: new Date() };
+    const instagram = await getMetrics({ ...range, channel: "INSTAGRAM" });
+    expect(instagram.byChannel.map((r) => [r.key, r.leads])).toEqual([["INSTAGRAM", 1]]);
+    const byOrigin = await Promise.all(
+      (["meta", "google", "link", "organic"] as const).map(async (origin) => (await getMetrics({ ...range, origin })).totals.leads),
+    );
+    // A vino de un anuncio, B de un enlace de google sin cpc (no es Google Ads) y C sin origen.
+    expect(byOrigin).toEqual([1, 0, 1, 1]);
+  });
+
+  it("clasifica el origen del lead", () => {
+    const link = (utmSource: string | null, utmMedium: string | null = null, gclid: string | null = null) => ({ kind: "LINK", utmSource, utmMedium, gclid });
+    expect(originOf(null)).toBe("organic");
+    expect(originOf({ kind: "AD", utmSource: null, utmMedium: null, gclid: null })).toBe("meta");
+    expect(originOf(link("Facebook", "paid_social"))).toBe("meta");
+    expect(originOf(link("ig"))).toBe("meta");
+    expect(originOf(link("google", "cpc"))).toBe("google");
+    expect(originOf(link("google_ads"))).toBe("google");
+    expect(originOf(link(null, null, "Cj0KCQ"))).toBe("google");
+    expect(originOf(link("google", "organic"))).toBe("link");
+    expect(originOf(link("newsletter", "email"))).toBe("link");
+    expect(utmFromParams(new URLSearchParams("gclid=abc&x=1"))).toMatchObject({ gclid: "abc", utmSource: null });
   });
 
   it("formatea duraciones", () => {
