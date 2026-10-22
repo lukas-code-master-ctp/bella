@@ -8,10 +8,10 @@ import { setSetting } from "@/lib/settings";
 import { runAgent } from "@/lib/ai/agent";
 import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient, ProviderClients } from "@/lib/ai/providers";
-import { recordSpeechCost, type SpeechClient, type SpeechUsage } from "@/lib/ai/speech";
+import { openRouterSpeech, recordSpeechCost, synthesizeVoiceNote, type SpeechClient, type SpeechUsage } from "@/lib/ai/speech";
 import { cloudApi } from "@/lib/channels/whatsapp";
 import { DEFAULT_VOICE_NOTES, saveVoiceNoteSettings, shouldSpeak, speakable, type VoiceNoteSettings } from "@/lib/domain/voice-notes";
-import { encodeOggOpus, mp3ToVoiceNote } from "@/lib/voice-note";
+import { decodePcm, encodeOggOpus, mp3ToVoiceNote } from "@/lib/voice-note";
 import { seedFunnel } from "./factories";
 
 const MP3 = new Uint8Array(readFileSync(path.join(__dirname, "fixtures/voz.mp3")));
@@ -97,7 +97,7 @@ function fakeVoice({ fail = false } = {}) {
   const speak: SpeechClient = async (req) => {
     spoken.push(req.text);
     if (fail) throw new Error("OpenRouter 503");
-    return { mp3: MP3, generationId: "gen-1" };
+    return { audio: MP3, format: "mp3" as const, generationId: "gen-1" };
   };
   const voice: ProviderClients["voice"] = {
     speak,
@@ -229,5 +229,65 @@ describe("consumo de la voz", () => {
     await recordSpeechCost({ model: "google/gemini-3.8-flash-tts", generationId: "gen-9", chars: 120, seconds: 8 });
     expect(urls).toEqual(["https://openrouter.ai/api/v1/generation?id=gen-9"]);
     expect(await db.aiUsage.findFirstOrThrow()).toMatchObject({ model: "google/gemini-3.8-flash-tts", cost: 0.0042 });
+  });
+});
+
+/** Medio segundo de PCM de 16 bits a 24 kHz, como lo entrega Gemini. */
+function pcm(seconds = 0.5, rate = 24_000) {
+  const buf = Buffer.alloc(Math.round(seconds * rate) * 2);
+  for (let i = 0; i < buf.length / 2; i++) buf.writeInt16LE(Math.round(8000 * Math.sin((2 * Math.PI * 440 * i) / rate)), i * 2);
+  return buf;
+}
+
+describe("audio PCM (Gemini)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("lee PCM crudo a 24 kHz y también con cabecera WAV", () => {
+    expect(decodePcm(pcm(0.5))).toMatchObject({ sampleRate: 24_000 });
+    expect(decodePcm(pcm(0.5)).samples.length).toBe(12_000);
+    const data = pcm(0.25, 16_000);
+    const header = Buffer.alloc(44);
+    header.write("RIFF", 0, "ascii");
+    header.writeUInt32LE(36 + data.length, 4);
+    header.write("WAVEfmt ", 8, "ascii");
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(1, 22);
+    header.writeUInt32LE(16_000, 24);
+    header.writeUInt32LE(32_000, 28);
+    header.writeUInt16LE(2, 32);
+    header.writeUInt16LE(16, 34);
+    header.write("data", 36, "ascii");
+    header.writeUInt32LE(data.length, 40);
+    const wav = decodePcm(Buffer.concat([header, data]));
+    expect(wav.sampleRate).toBe(16_000);
+    expect(wav.samples.length).toBe(4_000);
+  });
+
+  it("a Gemini le pide PCM, y si un modelo rechaza MP3 reintenta en PCM", async () => {
+    await saveCredentials({ OPENROUTER_API_KEY: "sk-or-test" });
+    const formats: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const { response_format } = JSON.parse(String(init.body));
+        formats.push(response_format);
+        if (response_format === "mp3") {
+          return new Response(JSON.stringify({ error: { message: 'Gemini TTS only supports response_format="pcm". Got "mp3".' } }), { status: 400 });
+        }
+        return new Response(pcm(), { status: 200, headers: { "x-generation-id": "gen-pcm" } });
+      }),
+    );
+    const req = { voice: "Kore", instructions: "", text: "Hola" };
+    const gemini = await synthesizeVoiceNote({ ...req, model: "google/gemini-3.8-flash-tts" }, openRouterSpeech);
+    expect(formats).toEqual(["pcm"]);
+    expect(gemini.seconds).toBeCloseTo(0.5);
+    expect(oggPages(gemini.bytes)[0].body.toString("ascii", 0, 8)).toBe("OpusHead");
+
+    formats.length = 0;
+    await synthesizeVoiceNote({ ...req, model: "otro/modelo-tts" }, openRouterSpeech);
+    expect(formats).toEqual(["mp3", "pcm"]);
   });
 });
