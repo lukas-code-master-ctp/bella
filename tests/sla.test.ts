@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { parseLocalDateTime } from "@/lib/dates";
 import { createLead, moveStage, setAiEnabled, setAssignee } from "@/lib/domain/leads";
-import { businessMs, DEFAULT_SLA, getSlaReport, lateLeads, notifyLateWaits, pendingWaits, saveSlaSettings, waitsOf, type LeadHistory, type SlaSettings } from "@/lib/domain/sla";
+import { businessMs, DEFAULT_SLA, getSlaReport, lateLeads, notifyLateWaits, pendingWaits, reassignLateWaits, saveSlaSettings, waitsOf, type LeadHistory, type SlaSettings } from "@/lib/domain/sla";
 import { executive, seedFunnel } from "./factories";
 
 const MIN = 60_000;
@@ -62,7 +62,7 @@ describe("SLA de ejecutivos", () => {
       msg("CONTACT", 12),
       ev("AI_PAUSED", 20, {}, "AI"),
     ];
-    expect(waitsOf(history(items), HUMAN)).toEqual([{ leadId: "L", kind: "first", startedAt: at(20), answeredAt: null, assigneeId: null }]);
+    expect(waitsOf(history(items), HUMAN)).toEqual([{ leadId: "L", kind: "first", startedAt: at(20), answeredAt: null, reassignedAt: null, assigneeId: null }]);
     expect(waitsOf(history(items, { status: "LOST" }), HUMAN)).toEqual([]);
   });
 
@@ -158,5 +158,56 @@ describe("SLA de ejecutivos", () => {
     await saveSlaSettings({ alerts: false });
     await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "?", createdAt: new Date(now + 41 * MIN) } });
     expect(await notifyLateWaits(new Date(now + 200 * MIN))).toEqual({ notified: 0 });
+  });
+
+  it("al reasignar sin respuesta, la espera cuenta para quien lo tenía y parte de cero para el nuevo", () => {
+    const waits = waitsOf(
+      history([
+        ev("CREATED", 0, { stage: "Nuevo" }),
+        ev("ASSIGNED", 0, { assigneeId: "ana" }),
+        ev("AI_PAUSED", 5, {}, "AI"),
+        ev("ASSIGNED", 65, { assigneeId: "beto" }),
+        msg("USER", 70, "beto"),
+      ]),
+      HUMAN,
+    );
+    expect(waits.map((w) => [w.kind, w.startedAt, w.answeredAt, w.reassignedAt, w.assigneeId])).toEqual([
+      ["first", at(5), null, at(65), "ana"],
+      ["first", at(65), at(70), null, "beto"],
+    ]);
+  });
+
+  it("reasigna al ejecutivo con menos carga si no responde en el plazo, solo si está activado", async () => {
+    const [, , , human] = await seedFunnel();
+    await saveSlaSettings({ hoursEnabled: false, alerts: false, reassignMinutes: 60 });
+    const ana = await executive("Ana");
+    const beto = await executive("Beto");
+    const lead = await createLead({ name: "Cliente", channel: "WHATSAPP", externalId: "1" });
+    await setAssignee(lead.id, ana.id, { actor: "SYSTEM" });
+    await moveStage(lead.id, human.id, { actor: "AI" });
+    const now = Date.now();
+    const assignee = async () => (await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).assigneeId;
+
+    expect(await reassignLateWaits(new Date(now + 90 * MIN))).toEqual({ reassigned: 0 });
+    await saveSlaSettings({ reassign: true });
+    expect(await reassignLateWaits(new Date(now + 30 * MIN))).toEqual({ reassigned: 0 });
+    expect(await reassignLateWaits(new Date(now + 61 * MIN))).toEqual({ reassigned: 1 });
+    expect(await assignee()).toBe(beto.id);
+    const event = await db.leadEvent.findFirstOrThrow({ where: { leadId: lead.id, type: "ASSIGNED" }, orderBy: { createdAt: "desc" } });
+    expect(event.reason).toBe("Sin primera respuesta en 1 h de Ana");
+    // El cron corrió a los 61 minutos.
+    await db.leadEvent.update({ where: { id: event.id }, data: { createdAt: new Date(now + 61 * MIN) } });
+
+    // Beto acaba de recibirlo: su plazo parte ahora. Después no queda nadie que no lo haya tenido.
+    expect(await reassignLateWaits(new Date(now + 62 * MIN))).toEqual({ reassigned: 0 });
+    expect(await reassignLateWaits(new Date(now + 130 * MIN))).toEqual({ reassigned: 0 });
+    expect(await assignee()).toBe(beto.id);
+
+    // En el SLA, a Ana le cuenta como fuera de meta y Beto sigue esperando.
+    const report = await getSlaReport({ from: new Date(now - MIN), to: new Date(now + 120 * MIN) }, { ...allDay, reassign: true }, new Date(now + 70 * MIN));
+    expect(report.byExecutive.map((r) => [r.label, r.first.count, r.first.met, r.reassigned, r.waiting])).toEqual([
+      ["Ana", 1, 0, 1, 0],
+      ["Beto", 0, 0, 0, 1],
+    ]);
   });
 });
