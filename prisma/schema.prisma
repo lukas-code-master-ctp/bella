@@ -138,6 +138,9 @@ model Stage {
   /// Etapas que atiende la IA: cuándo debe sacar al lead de esta etapa y hacia cuál. Texto libre
   /// que la asistente recibe en <crm_state>; sin destino nombrado, avanza a la siguiente.
   exitCriteria  String?
+  /// Etapas de atención humana: cuándo la IA debe derivar al lead aquí, desde cualquier etapa.
+  /// Prevalece sobre los criterios generales de derivación de la asistente.
+  entryCriteria String?
 
   funnel   Funnel           @relation(fields: [funnelId], references: [id])
   leads    Lead[]

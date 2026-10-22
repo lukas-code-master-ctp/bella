@@ -45,6 +45,17 @@ describe("varios embudos", () => {
     expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).stageId).toBe(humano.id);
   });
 
+  it("la IA deriva a la etapa humana que nombra; si no existe, a la primera", async () => {
+    const { funnel, humano } = await onlineFunnel();
+    const postventa = await db.stage.create({ data: { funnelId: funnel.id, name: "Postventa", position: 2, requiresHuman: true } });
+    const a = await createLead({ name: "Ana", channel: "SIMULATOR" }, { funnelId: funnel.id });
+    const b = await createLead({ name: "Beto", channel: "SIMULATOR" }, { funnelId: funnel.id });
+    await executeTool(a.id, "handoff_to_human", { stage: "postventa", reason: "reclamo" });
+    await executeTool(b.id, "handoff_to_human", { stage: "No existe", reason: "x" });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: a.id } })).stageId).toBe(postventa.id);
+    expect((await db.lead.findUniqueOrThrow({ where: { id: b.id } })).stageId).toBe(humano.id);
+  });
+
   it("cada embudo puede tener su asistente", async () => {
     const { funnel } = await onlineFunnel();
     const prompt = buildSystemPrompt(assistantFor(DEFAULT_ASSISTANT, funnel));

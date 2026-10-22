@@ -131,7 +131,13 @@ export const AGENT_TOOLS: Tool[] = [
     "Deriva la conversación a un ejecutivo humano y te pausa. Úsala cuando el cliente pida hablar " +
       "con una persona, esté listo para comprar o cerrar, esté molesto, o pregunte algo que no " +
       "puedes responder con la base de conocimiento.",
-    { reason: text("Motivo de la derivación, en una frase") },
+    {
+      stage: text(
+        "Nombre exacto de la etapa de atención humana cuyo criterio de derivación se cumple; " +
+          "vacío para la primera etapa de atención humana",
+      ),
+      reason: text("Motivo de la derivación, en una frase"),
+    },
   ),
   tool(
     "block_contact",
@@ -292,7 +298,7 @@ export async function executeTool(
       }
     }
     case "handoff_to_human": {
-      const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason")));
+      const stage = await db.$transaction((tx) => handoffToHumanTx(tx, leadId, str("reason"), str("stage")));
       await deliverPendingPush();
       await deliverPendingConversions();
       await deliverPendingWebhooks();

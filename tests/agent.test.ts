@@ -126,6 +126,24 @@ describe("asistente IA (Anthropic)", () => {
     expect(state).not.toContain("No debería aparecer");
   });
 
+  it("recibe cuándo derivar a cada etapa de atención humana", async () => {
+    const [nuevo, , , humana] = await seedFunnel();
+    await db.stage.update({ where: { id: humana.id }, data: { entryCriteria: " Cuando quiera agendar una visita. " } });
+    // En una etapa que atiende la IA el criterio de entrada no aplica.
+    await db.stage.update({ where: { id: nuevo.id }, data: { entryCriteria: "No debería aparecer" } });
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await inbound(lead.id, "Hola");
+
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(lead.id, client);
+
+    const state = (requests[0].messages[0].content as { text: string }[])[0].text;
+    expect(state).toContain("Cuándo derivar a atención humana");
+    expect(state).toContain(`- A "${humana.name}": Cuando quiera agendar una visita.`);
+    expect(state).not.toContain("Reglas de avance");
+    expect(state).not.toContain("No debería aparecer");
+  });
+
   it("sin reglas de avance no agrega la sección al estado del CRM", async () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
