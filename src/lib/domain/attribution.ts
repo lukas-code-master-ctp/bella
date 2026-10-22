@@ -165,6 +165,7 @@ export type Utm = {
   utmCampaign?: string | null;
   utmContent?: string | null;
   utmTerm?: string | null;
+  gclid?: string | null;
   landingUrl?: string | null;
 };
 
@@ -177,10 +178,11 @@ export function utmFromParams(params: URLSearchParams): Utm {
     utmCampaign: get("utm_campaign"),
     utmContent: get("utm_content"),
     utmTerm: get("utm_term"),
+    gclid: get("gclid"),
   };
 }
 
-const hasUtm = (u: Utm) => Boolean(u.utmSource || u.utmMedium || u.utmCampaign || u.utmContent || u.utmTerm);
+const hasUtm = (u: Utm) => Boolean(u.utmSource || u.utmMedium || u.utmCampaign || u.utmContent || u.utmTerm || u.gclid);
 
 // Sin 0/O ni 1/I/L para que nadie los confunda si reescribe el mensaje.
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -233,6 +235,7 @@ export async function attachLinkSource(leadId: string, code: string): Promise<bo
         utmCampaign: link.utmCampaign,
         utmContent: link.utmContent,
         utmTerm: link.utmTerm,
+        gclid: link.gclid,
         landingUrl: link.landingUrl,
       },
     });
@@ -259,6 +262,34 @@ export async function takeRefCode(leadId: string, body: string): Promise<string>
 /** Campaña con que se agrupa el lead en las métricas: la de Meta o el utm_campaign. */
 export function campaignOf(s: Pick<LeadSource, "campaignName" | "utmCampaign" | "adHeadline" | "adId"> | null): string | null {
   return s?.campaignName ?? s?.utmCampaign ?? s?.adHeadline ?? (s?.adId ? `Anuncio ${s.adId}` : null);
+}
+
+export const LEAD_ORIGINS = ["meta", "google", "link", "organic"] as const;
+export type LeadOrigin = (typeof LEAD_ORIGINS)[number];
+export const ORIGIN_LABEL: Record<LeadOrigin, string> = {
+  meta: "Meta",
+  google: "Google Ads",
+  link: "Otros enlaces",
+  organic: "Orgánico / directo",
+};
+
+const GOOGLE_SOURCE = /google|adwords|gads/;
+const PAID_MEDIUM = /cpc|ppc|paid|sem|ads?\b/;
+const META_SOURCE = /facebook|instagram|messenger|meta|^fb$|^ig$/;
+
+/**
+ * De dónde vino el lead, para filtrar las métricas: un anuncio de Meta (o un enlace con
+ * utm_source de Meta), Google Ads (gclid, o utm_source de Google pagado), otro enlace con UTM
+ * o sin origen registrado (orgánico o directo).
+ */
+export function originOf(s: Pick<LeadSource, "kind" | "utmSource" | "utmMedium" | "gclid"> | null): LeadOrigin {
+  if (!s) return "organic";
+  if (s.kind === "AD") return "meta";
+  const source = s.utmSource?.trim().toLowerCase() ?? "";
+  const medium = s.utmMedium?.trim().toLowerCase() ?? "";
+  if (s.gclid || (GOOGLE_SOURCE.test(source) && (PAID_MEDIUM.test(medium) || /adwords|ads/.test(source)))) return "google";
+  if (META_SOURCE.test(source)) return "meta";
+  return "link";
 }
 
 /** Resumen corto del origen, para la tarjeta del lead. */

@@ -8,9 +8,11 @@ import { campaignSpend } from "@/lib/channels/ads";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
 import { countActiveCampaignAlerts } from "@/lib/domain/campaign-alerts";
+import { LEAD_ORIGINS, ORIGIN_LABEL, type LeadOrigin } from "@/lib/domain/attribution";
 import { listFunnels } from "@/lib/domain/funnels";
 import { adReturns, formatDuration, getMetrics, type AdReturns, type Metrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
 import { buttonClass, Card, CardHeader, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
+import { AutoSubmitSelect } from "@/components/auto-submit-select";
 
 const RANGES = [
   ["7", "Últimos 7 días"],
@@ -19,6 +21,15 @@ const RANGES = [
   ["365", "Último año"],
 ] as const;
 
+/** Canales que se pueden filtrar, con el nombre que ve el equipo. */
+const CHANNELS = [
+  ["WHATSAPP", "WhatsApp"],
+  ["INSTAGRAM", "Instagram"],
+  ["FACEBOOK", "Messenger"],
+  ["WEB", "Widget web"],
+] as const;
+type FilterChannel = (typeof CHANNELS)[number][0];
+
 const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : "—");
 const money = (n: number) => `$${n.toLocaleString("es-CL")}`;
 const int = (n: number) => n.toLocaleString("es-CL");
@@ -26,7 +37,7 @@ const int = (n: number) => n.toLocaleString("es-CL");
 const roas = (amount: number, spend: number) => (spend ? `×${(amount / spend).toLocaleString("es-CL", { maximumFractionDigits: 1 })}` : "—");
 const per = (spend: number, n: number) => (n ? money(Math.round(spend / n)) : "—");
 
-export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ d?: string; executive?: string; funnel?: string }> }) {
+export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ d?: string; executive?: string; funnel?: string; channel?: string; origin?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const isAdmin = user.role === "ADMIN";
@@ -37,11 +48,14 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   // Con varios embudos, las métricas son de uno a la vez (las etapas de cada uno son distintas).
   const funnels = await listFunnels();
   const funnelId = funnels.length > 1 ? (funnels.find((f) => f.id === params.funnel) ?? funnels[0]).id : undefined;
+  const channel = CHANNELS.find(([v]) => v === params.channel)?.[0] as FilterChannel | undefined;
+  const origin = LEAD_ORIGINS.find((o) => o === params.origin) as LeadOrigin | undefined;
   const from = startOfLocalDay(now, -(days - 1));
-  // El gasto es de la empresa entera: se cruza solo cuando el admin mira a todo el equipo.
-  const withSpend = isAdmin && !assigneeId;
+  // El gasto es de la empresa entera y de Meta: se cruza solo cuando el admin mira a todo el
+  // equipo, todos los canales y los orígenes que pueden incluir anuncios de Meta.
+  const withSpend = isAdmin && !assigneeId && !channel && (!origin || origin === "meta");
   const [m, executives, newInsight, spends, campaignAlerts] = await Promise.all([
-    getMetrics({ from, to: now, assigneeId, funnelId }),
+    getMetrics({ from, to: now, assigneeId, funnelId, channel, origin }),
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     isAdmin && hasUnseenInsight(user.id),
     withSpend ? campaignSpend(toLocalInput(from).slice(0, 10), toLocalInput(now).slice(0, 10)) : null,
@@ -91,43 +105,64 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         <label htmlFor="d" className="sr-only">
           Período
         </label>
-        <select id="d" name="d" defaultValue={String(days)} className={`${inputClass} sm:w-44`}>
+        <AutoSubmitSelect id="d" name="d" defaultValue={String(days)} className={`${inputClass} sm:w-44`}>
           {RANGES.map(([v, label]) => (
             <option key={v} value={v}>
               {label}
             </option>
           ))}
-        </select>
+        </AutoSubmitSelect>
         {funnelId && (
           <>
             <label htmlFor="funnel" className="sr-only">
               Embudo
             </label>
-            <select id="funnel" name="funnel" defaultValue={funnelId} className={`${inputClass} sm:w-44`}>
+            <AutoSubmitSelect id="funnel" name="funnel" defaultValue={funnelId} className={`${inputClass} sm:w-44`}>
               {funnels.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
                 </option>
               ))}
-            </select>
+            </AutoSubmitSelect>
           </>
         )}
+        <label htmlFor="channel" className="sr-only">
+          Canal
+        </label>
+        <AutoSubmitSelect id="channel" name="channel" defaultValue={channel ?? ""} className={`${inputClass} sm:w-44`}>
+          <option value="">Canal: todos</option>
+          {CHANNELS.map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
+            </option>
+          ))}
+        </AutoSubmitSelect>
+        <label htmlFor="origin" className="sr-only">
+          Origen
+        </label>
+        <AutoSubmitSelect id="origin" name="origin" defaultValue={origin ?? ""} className={`${inputClass} sm:w-48`}>
+          <option value="">Origen: todos</option>
+          {LEAD_ORIGINS.map((o) => (
+            <option key={o} value={o}>
+              {ORIGIN_LABEL[o]}
+            </option>
+          ))}
+        </AutoSubmitSelect>
         {isAdmin && (
           <>
             <label htmlFor="executive" className="sr-only">
               Ejecutivo
             </label>
-            <select id="executive" name="executive" defaultValue={assigneeId ?? ""} className={`${inputClass} sm:w-48`}>
+            <AutoSubmitSelect id="executive" name="executive" defaultValue={assigneeId ?? ""} className={`${inputClass} sm:w-48`}>
               <option value="">Todo el equipo</option>
               {executives.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.name}
                 </option>
               ))}
-            </select>
+            </AutoSubmitSelect>
           </>
         )}
-        <button className={buttonClass("secondary")}>Ver</button>
       </FilterBar>
 
       {campaignAlerts > 0 && (
@@ -147,8 +182,10 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
       {t.leads === 0 ? (
         <Card>
-          <EmptyState icon={<ChartNoAxesColumn />} title="Sin leads en este período">
-            Cuando lleguen leads por WhatsApp, Instagram o Messenger, aquí verás de dónde vienen y cómo avanzan.
+          <EmptyState icon={<ChartNoAxesColumn />} title={channel || origin ? "Sin leads con estos filtros" : "Sin leads en este período"}>
+            {channel || origin
+              ? "Prueba con otro canal, origen o período."
+              : "Cuando lleguen leads por WhatsApp, Instagram o Messenger, aquí verás de dónde vienen y cómo avanzan."}
           </EmptyState>
         </Card>
       ) : (
