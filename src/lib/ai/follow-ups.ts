@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { getAiOperation } from "../domain/ai-operation";
 import { aiChannels } from "../domain/channels";
+import { companyActive } from "../domain/companies";
 import {
   getFollowUpSettings,
   nextFollowUpAt,
@@ -161,7 +162,8 @@ async function sendTemplateFollowUp(leadId: string, s: FollowUpSettings, api: Wh
 export async function runDueFollowUpsIfStale(now = new Date()) {
   try {
     const { enabled } = await getFollowUpSettings();
-    if (!enabled) return;
+    // El dueño de Beliapp puede estar mirando una empresa suspendida: no se le envía nada.
+    if (!enabled || !(await companyActive())) return;
     const state = await getSetting<{ lastCheckAt?: string }>("followUpRunner", {});
     if (state.lastCheckAt && now.getTime() - new Date(state.lastCheckAt).getTime() < FOLLOW_UP_CHECK_MS) return;
     await setSetting("followUpRunner", { lastCheckAt: now.toISOString() });

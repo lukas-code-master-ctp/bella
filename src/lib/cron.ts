@@ -13,7 +13,12 @@ export function cronRoute(job: () => Promise<object>) {
     if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     }
-    const companies = await rootDb.company.findMany({ select: { id: true }, orderBy: { createdAt: "asc" } });
+    // Las empresas suspendidas o eliminadas no reciben trabajo automático.
+    const companies = await rootDb.company.findMany({
+      where: { suspendedAt: null, deletedAt: null },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
     const results: Record<string, object> = {};
     let failed = false;
     for (const { id } of companies) {

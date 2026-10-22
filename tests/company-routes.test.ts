@@ -51,11 +51,34 @@ describe("Webhooks por empresa", () => {
     expect((await verify(challenge("token-a"), params("empresa-b"))).status).toBe(403);
     expect((await verify(challenge("token-a"), params("no-existe"))).status).toBe(404);
   });
+
+  it("una empresa suspendida sigue verificando pero ignora los avisos; una eliminada no existe", async () => {
+    await withCompany("empresa-a", () => saveCredentials({ META_VERIFY_TOKEN: "token-a" }));
+    await rootDb.company.update({ where: { id: "empresa-a" }, data: { suspendedAt: new Date() } });
+    expect((await verify(challenge("token-a"), params("empresa-a"))).status).toBe(200);
+    let handled = false;
+    const receive = companyRoute(async () => {
+      handled = true;
+      return new Response("ok");
+    });
+    const post = () => new NextRequest("https://bella.app/x", { method: "POST", body: "{}" });
+    const res = await receive(post(), params("empresa-a"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, ignored: "empresa suspendida" });
+    expect(handled).toBe(false);
+    // Las solicitudes de eliminación de datos se atienden igual.
+    await companyRoute(async () => ((handled = true), new Response("ok")), { evenSuspended: true })(post(), params("empresa-a"));
+    expect(handled).toBe(true);
+
+    await rootDb.company.update({ where: { id: "empresa-a" }, data: { deletedAt: new Date() } });
+    expect(await publicCompanyId("empresa-a")).toBeNull();
+  });
 });
 
 describe("Cron", () => {
-  it("corre una vez por empresa, cada una en la suya, y sigue si una falla", async () => {
+  it("corre una vez por empresa activa, cada una en la suya, y sigue si una falla", async () => {
     process.env.CRON_SECRET = "secreto";
+    await rootDb.company.create({ data: { id: "empresa-c", name: "C", suspendedAt: new Date() } });
     const route = cronRoute(async () => {
       const id = await currentCompanyId();
       if (id === "empresa-b") throw new Error("falló B");

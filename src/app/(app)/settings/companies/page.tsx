@@ -1,5 +1,6 @@
 import { Building2, LogIn } from "lucide-react";
 import { requireSuperadmin } from "@/lib/auth";
+import { CompanyMenu } from "./company-menu";
 import { listCompanies } from "@/lib/domain/companies";
 import { currentCompanyId } from "@/lib/tenant";
 import { Badge, PageHeader } from "@/components/ui";
@@ -9,7 +10,7 @@ import { enterCompanyAction } from "./actions";
 import { NewCompanyForm } from "./form";
 
 export default async function CompaniesPage() {
-  await requireSuperadmin();
+  const user = await requireSuperadmin();
   const [companies, current] = await Promise.all([listCompanies(), currentCompanyId()]);
 
   return (
@@ -28,9 +29,11 @@ export default async function CompaniesPage() {
               <div className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
                 {c.name}
                 {c.id === current && <Badge tone="brand">Estás aquí</Badge>}
+                {c.suspendedAt && <Badge tone="warning">Suspendida</Badge>}
               </div>
               <div className="text-slate-600 tabular-nums">
                 {c.users} {c.users === 1 ? "usuario" : "usuarios"} · {c.openLeads} {c.openLeads === 1 ? "lead abierto" : "leads abiertos"}
+                {c.suspendedAt && " · su equipo no entra y nada automático corre"}
               </div>
             </div>
             {c.id !== current && (
@@ -40,6 +43,10 @@ export default async function CompaniesPage() {
                   Entrar
                 </SubmitButton>
               </form>
+            )}
+            {/* Tu propia empresa no se suspende ni se elimina. */}
+            {c.id !== user.companyId && (
+              <CompanyMenu company={{ id: c.id, name: c.name, suspended: Boolean(c.suspendedAt) }} canDelete={c.id !== current} />
             )}
           </li>
         ))}

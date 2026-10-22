@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { rootDb } from "./db";
-import { canWorkIn } from "./domain/companies";
+import { canWorkIn, companyActive } from "./domain/companies";
 import { clearLoginFailures, loginBlocked, recordLoginFailure } from "./domain/login-attempts";
 import { DEFAULT_COMPANY_ID } from "./tenant";
 import {
@@ -26,7 +26,12 @@ export async function hashPassword(password: string) {
  * `remember`: la sesión sobrevive al cierre del navegador por 30 días ("Recordarme").
  * `ip`: de quien intenta entrar, para el límite de intentos (login-attempts.ts).
  */
-export async function login(email: string, password: string, remember = false, ip: string | null = null): Promise<"ok" | "wrong" | "blocked"> {
+export async function login(
+  email: string,
+  password: string,
+  remember = false,
+  ip: string | null = null,
+): Promise<"ok" | "wrong" | "blocked" | "suspended"> {
   email = email.trim().toLowerCase();
   if (await loginBlocked(email, ip)) return "blocked";
   // El correo es único entre todas las empresas: se busca sin filtro y la sesión lleva la empresa.
@@ -36,6 +41,8 @@ export async function login(email: string, password: string, remember = false, i
     return "wrong";
   }
   await clearLoginFailures(email);
+  // Empresa suspendida o eliminada: su equipo no entra (el dueño de Beliapp, siempre).
+  if (!user.superadmin && !(await companyActive(user.companyId))) return "suspended";
   const jar = await cookies();
   const maxAge = remember ? REMEMBER_MAX_AGE_SECONDS : SHORT_MAX_AGE_SECONDS;
   jar.set(SESSION_COOKIE, await signSession(user.id, maxAge, user.companyId), sessionCookieOptions(remember));
@@ -59,7 +66,10 @@ export const currentUser = cache(async function currentUser(): Promise<User | nu
   const user = await rootDb.user.findUnique({ where: { id: session.userId } });
   if (!user?.active || sessionStale(session.issuedAt, user.passwordChangedAt)) return null;
   if (sessionStale(session.issuedAt, user.sessionsRevokedAt)) return null;
-  if (!canWorkIn(user, session.companyId ?? DEFAULT_COMPANY_ID)) return null;
+  const companyId = session.companyId ?? DEFAULT_COMPANY_ID;
+  if (!canWorkIn(user, companyId)) return null;
+  // Al suspender una empresa, las sesiones abiertas de su equipo dejan de valer al tiro.
+  if (!user.superadmin && !(await companyActive(companyId))) return null;
   return user;
 });
 
