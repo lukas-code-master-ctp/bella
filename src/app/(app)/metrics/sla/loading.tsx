@@ -2,7 +2,7 @@ import { LoadingScreen, PageHeaderSkeleton, Skeleton } from "@/components/ui";
 
 export default function SlaLoading() {
   return (
-    <LoadingScreen label="Cargando el SLA de ejecutivos…">
+    <LoadingScreen label="Cargando el SLA…">
       <PageHeaderSkeleton />
       <div className="mb-6 flex gap-2">
         <Skeleton className="h-10 flex-1 sm:w-44 sm:flex-none" />

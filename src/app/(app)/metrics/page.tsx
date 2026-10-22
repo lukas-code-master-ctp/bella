@@ -80,7 +80,7 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         <PageActions>
           <Link href="/metrics/sla" className={buttonClass("secondary")}>
             <Timer aria-hidden />
-            SLA de ejecutivos
+            {isAdmin ? "SLA de ejecutivos" : "Mis SLA"}
           </Link>
           {isAdmin && (
             <Link href="/metrics/campaigns" className={buttonClass("secondary")}>
