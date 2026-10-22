@@ -612,7 +612,7 @@ model Notification {
   companyId String    @default("default")
   userId    String
   leadId    String
-  /// HUMAN_STAGE, ASSIGNED, CONTACT_MESSAGE o TASK_DUE.
+  /// HUMAN_STAGE, ASSIGNED, CONTACT_MESSAGE, TASK_DUE o SLA_LATE.
   type      String
   title     String
   body      String

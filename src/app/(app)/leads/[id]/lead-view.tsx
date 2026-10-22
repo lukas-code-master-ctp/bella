@@ -65,6 +65,7 @@ const EVENT_LABEL: Record<string, string> = {
   TASK_DONE: "Tarea cumplida:",
   TASK_REOPENED: "Tarea pendiente otra vez:",
   TASK_DELETED: "Tarea eliminada:",
+  SLA_LATE: "Pasó la meta de respuesta",
 };
 
 /**

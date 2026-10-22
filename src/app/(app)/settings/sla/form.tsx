@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
-import { CalendarClock, Timer } from "lucide-react";
+import { BellRing, CalendarClock, Timer } from "lucide-react";
 import type { SlaSettings } from "@/lib/domain/sla";
 import { Field, FormMessage, inputClass } from "@/components/ui";
-import { Callout, Chip, FieldGroup, HourSelect, Panel, PanelBody, SaveBar } from "@/components/settings-ui";
+import { Callout, Chip, FieldGroup, HourSelect, Panel, PanelBody, SaveBar, ToggleRow } from "@/components/settings-ui";
 import { ToggleSection } from "@/components/toggle-section";
 import { SubmitButton } from "@/components/submit-button";
 import { isSaved, savedToast, withToast } from "@/components/toast";
@@ -17,7 +17,7 @@ export function SlaForm({ settings: s, hoursStatus }: { settings: SlaSettings; h
   const [message, action] = useActionState(withToast(saveSlaAction, savedToast), null);
   return (
     <form action={action} className="space-y-6">
-      <Panel icon={<Timer />} title="Metas de respuesta" description="Cuánto puede esperar un cliente cuando lo atiende una persona del equipo.">
+      <Panel icon={<Timer />} title="Metas de respuesta" description="Cuánto puede esperar un cliente cuando lo atiende una persona del equipo. Al pasarla, el lead se marca como Atrasado en Chats y en el Funnel.">
         <PanelBody>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Primera respuesta (minutos)" hint="Desde que la IA o una regla deriva el lead a un ejecutivo.">
@@ -27,6 +27,23 @@ export function SlaForm({ settings: s, hoursStatus }: { settings: SlaSettings; h
               <input name="replyMinutes" type="number" min={1} max={10080} required defaultValue={s.replyMinutes} className={inputClass} />
             </Field>
           </div>
+        </PanelBody>
+      </Panel>
+
+      <Panel icon={<BellRing />} title="Avisos de atraso" description="Se revisa cada 5 minutos. Llegan como push en Avisos y, si cada persona lo elige, por correo.">
+        <PanelBody>
+          <ToggleRow
+            name="alerts"
+            defaultChecked={s.alerts}
+            title="Avisar al ejecutivo cuando un lead pasa la meta"
+            description="Si el lead no tiene ejecutivo, el aviso va a los administradores."
+          />
+          <ToggleRow
+            name="escalate"
+            defaultChecked={s.escalate}
+            title="Avisar a los administradores al doble de la meta"
+            description="Por ejemplo, con una meta de 15 minutos, los admins se enteran a los 30 si nadie ha respondido."
+          />
         </PanelBody>
       </Panel>
 

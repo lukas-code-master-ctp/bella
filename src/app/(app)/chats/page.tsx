@@ -6,6 +6,8 @@ import { chatFilterOptions, listChats, type ChatItem } from "@/lib/domain/chats"
 import { chatFiltersToParams, countActiveFilters, parseChatFilters } from "@/lib/domain/chat-filters";
 import { Avatar, Badge, buttonClass, EmptyState } from "@/components/ui";
 import { ScoreBadge } from "@/components/score-badge";
+import { LateBadge } from "@/components/late-badge";
+import { formatDuration } from "@/lib/domain/metrics";
 import { LinkPending } from "@/components/link-pending";
 import { CHANNEL_OPTIONS } from "./channels";
 import { ChatsShell } from "./filters";
@@ -158,6 +160,7 @@ function ChatRow({ chat: c, now, href, selected }: { chat: ChatItem; now: Date; 
                 <span className="sr-only">Asignado a {c.assignee}</span>
               </span>
             ) : null}
+            {c.lateMs !== null && <LateBadge late={formatDuration(c.lateMs)} />}
             {c.status === "OPEN" && <AttentionBadge attention={c.attention} />}
           </span>
         </span>

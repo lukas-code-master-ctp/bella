@@ -12,6 +12,7 @@ export const EMAIL_NOTIFICATION_TYPES = [
   { type: "HUMAN_STAGE", label: "Un lead mío necesita atención humana", adminOnly: false },
   { type: "CONTACT_MESSAGE", label: "Me escribe un lead que atiendo yo", adminOnly: false },
   { type: "TASK_DUE", label: "Una tarea mía está por vencer", adminOnly: false },
+  { type: "SLA_LATE", label: "Un lead pasó la meta de tiempo de respuesta", adminOnly: false },
   { type: "CAMPAIGN_ALERT", label: "Una campaña pierde casi todos sus leads", adminOnly: true },
 ] as const;
 

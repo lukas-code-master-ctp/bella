@@ -9,6 +9,7 @@ import type { TaskBucket } from "@/lib/domain/tasks";
 import { Avatar, Badge, TagPill } from "@/components/ui";
 import { LinkPending } from "@/components/link-pending";
 import { ScoreBadge } from "@/components/score-badge";
+import { LateBadge } from "@/components/late-badge";
 import { moveLeadAction } from "./actions";
 
 export type BoardLead = {
@@ -23,6 +24,8 @@ export type BoardLead = {
   attention: Attention;
   /** Si está sin atender, hace cuánto escribió el cliente ("hace 5 min"). */
   waitingFor: string | null;
+  /** Si pasó la meta de respuesta del equipo (SLA), cuánto lleva esperando ("1 h 5 min"). */
+  late: string | null;
   lastMessage: string | null;
   /** Resumen de una línea hecho por la IA; si aún no hay, se muestra el último mensaje. */
   summary: string | null;
@@ -141,7 +144,7 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
                       setOver(null);
                     }}
                     className={`group relative block cursor-grab overflow-hidden rounded-lg border bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
-                      lead.attention === "waiting" ? "border-amber-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-amber-400" : "border-slate-200"
+                      lead.late ? "border-rose-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-rose-500" : lead.attention === "waiting" ? "border-amber-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-amber-400" : "border-slate-200"
                     } ${dragging === lead.id ? "scale-[0.97] opacity-50" : ""}`}
                   >
                     <div className="flex items-start gap-2">
@@ -150,7 +153,10 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
                         <span className="w-full truncate font-semibold leading-snug text-slate-900 group-hover:text-brand-700" title={lead.name}>
                           {lead.name}
                         </span>
-                        <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
+                        <span className="flex w-full min-w-0 flex-wrap gap-1">
+                          <AttentionBadge attention={lead.attention} waitingFor={lead.waitingFor} />
+                          {lead.late && <LateBadge late={lead.late} />}
+                        </span>
                       </div>
                     </div>
                     {lead.summary ? (

@@ -4,7 +4,7 @@ import { deliverPendingPush } from "../push";
 
 type Tx = Prisma.TransactionClient;
 
-export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE";
+export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE" | "SLA_LATE";
 
 /**
  * Destinatarios de un aviso del lead: su ejecutivo asignado o, si no tiene (o está
@@ -97,6 +97,15 @@ export async function notifyTaskDueTx(
   const owner = task.assigneeId ? await tx.user.findFirst({ where: { id: task.assigneeId, active: true } }) : null;
   const userIds = owner ? [owner.id] : await recipients(tx, lead);
   await upsertNotifications(tx, task.leadId, userIds, { type: "TASK_DUE", body });
+}
+
+/**
+ * Un lead pasó la meta de respuesta (ver sla.ts). Sin `userIds`, avisa a quien corresponde un aviso
+ * del lead (su ejecutivo o, si no tiene, los admins).
+ */
+export async function notifySlaLateTx(tx: Tx, leadId: string, body: string, userIds?: string[]) {
+  const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
+  await upsertNotifications(tx, leadId, userIds ?? (await recipients(tx, lead)), { type: "SLA_LATE", body });
 }
 
 /** Avisos de la página Avisos: solo el más reciente de cada lead. */
