@@ -134,6 +134,17 @@ export async function applyAssignment(
 }
 
 /**
+ * Reasignación automática por SLA (ver sla.ts): pasa el lead al ejecutivo con menos carga, sin
+ * contar a `exclude` (quienes ya lo tuvieron sin responder). Devuelve null si no queda nadie.
+ */
+export async function reassignTx(tx: Tx, leadId: string, exclude: string[], reason: string): Promise<User | null> {
+  const candidates = (await activeExecutives(tx)).filter((u) => !exclude.includes(u.id));
+  const chosen = pickLeastLoaded(candidates, await openLeadCounts(tx, candidates.map((c) => c.id)));
+  if (chosen) await assign(tx, leadId, chosen, reason);
+  return chosen;
+}
+
+/**
  * El cliente tocó un botón de una plantilla de WhatsApp: aplica la primera regla activa de
  * "Responde a un botón de plantilla" que calce con el texto del botón.
  */

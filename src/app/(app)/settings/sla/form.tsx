@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { BellRing, CalendarClock, Timer } from "lucide-react";
+import { BellRing, CalendarClock, Shuffle, Timer } from "lucide-react";
 import type { SlaSettings } from "@/lib/domain/sla";
 import { Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, Chip, FieldGroup, HourSelect, Panel, PanelBody, SaveBar, ToggleRow } from "@/components/settings-ui";
@@ -44,6 +44,21 @@ export function SlaForm({ settings: s, hoursStatus }: { settings: SlaSettings; h
             title="Avisar a los administradores al doble de la meta"
             description="Por ejemplo, con una meta de 15 minutos, los admins se enteran a los 30 si nadie ha respondido."
           />
+        </PanelBody>
+      </Panel>
+
+      <Panel icon={<Shuffle />} title="Reasignación automática" description="Apagada por defecto.">
+        <PanelBody>
+          <ToggleSection
+            name="reassign"
+            defaultChecked={s.reassign}
+            title="Pasar el lead a otro ejecutivo si no responde a tiempo"
+            description="Solo para la primera respuesta: si quien recibió el lead no le escribe al cliente en el plazo, pasa al ejecutivo con menos leads abiertos que aún no lo haya tenido. Los leads sin ejecutivo se asignan apenas haya alguien que atienda leads."
+          >
+            <Field label="Plazo para responder (minutos)" hint="Se cuenta desde que el ejecutivo recibe el lead, en horario laboral. Conviene que sea mayor que la meta.">
+              <input name="reassignMinutes" type="number" min={1} max={10080} required defaultValue={s.reassignMinutes} className={`${inputClass} sm:max-w-xs`} />
+            </Field>
+          </ToggleSection>
         </PanelBody>
       </Panel>
 

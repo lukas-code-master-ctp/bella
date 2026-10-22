@@ -4,6 +4,7 @@ import { deliverPendingPush } from "../push";
 import { getSetting, setSetting } from "../settings";
 import { withinBusinessHours, type WeeklyHours } from "./ai-operation";
 import { formatDuration } from "./metrics";
+import { reassignTx } from "./assignment";
 import { notifySlaLateTx } from "./notifications";
 
 /**
@@ -30,6 +31,9 @@ export type SlaSettings = WeeklyHours & {
   alerts: boolean;
   /** Avisar también a los admins cuando la espera llega al doble de la meta. */
   escalate: boolean;
+  /** Pasar el lead a otro ejecutivo si no da la primera respuesta en `reassignMinutes` (apagado por defecto). */
+  reassign: boolean;
+  reassignMinutes: number;
 };
 
 export const DEFAULT_SLA: SlaSettings = {
@@ -37,6 +41,8 @@ export const DEFAULT_SLA: SlaSettings = {
   replyMinutes: 30,
   alerts: true,
   escalate: true,
+  reassign: false,
+  reassignMinutes: 60,
   hoursEnabled: true,
   days: [1, 2, 3, 4, 5],
   from: 9,
@@ -82,7 +88,12 @@ export type Wait = {
   startedAt: Date;
   /** Primer mensaje del equipo que la respondió; null si sigue esperando. */
   answeredAt: Date | null;
-  /** El ejecutivo a cargo cuando se respondió (o ahora, si sigue esperando). */
+  /**
+   * Se le quitó el lead al ejecutivo sin que respondiera (a mano o por la reasignación automática):
+   * cuenta como fuera de meta para él, y para el nuevo ejecutivo empieza otra espera.
+   */
+  reassignedAt: Date | null;
+  /** El ejecutivo a cargo cuando se respondió o reasignó (o ahora, si sigue esperando). */
   assigneeId: string | null;
 };
 
@@ -124,7 +135,7 @@ export function waitsOf(lead: LeadHistory, humanStages: Set<string>): Wait[] {
       } else {
         contactPending = false;
         if (m.author === "USER" && open) {
-          waits.push({ leadId: lead.id, ...open, answeredAt: m.createdAt, assigneeId: assigneeId ?? m.userId });
+          waits.push({ leadId: lead.id, ...open, answeredAt: m.createdAt, reassignedAt: null, assigneeId: assigneeId ?? m.userId });
           open = null;
         }
       }
@@ -133,7 +144,14 @@ export function waitsOf(lead: LeadHistory, humanStages: Set<string>): Wait[] {
     const e = item.event;
     const data = (e.data ?? {}) as { stage?: string; to?: string; assigneeId?: string };
     const wasHuman = !aiEnabled || inHumanStage;
-    if (e.type === "ASSIGNED") assigneeId = data.assigneeId ?? assigneeId;
+    if (e.type === "ASSIGNED") {
+      const next: string | null = data.assigneeId ?? assigneeId;
+      if (open && assigneeId && next !== assigneeId) {
+        waits.push({ leadId: lead.id, ...open, answeredAt: null, reassignedAt: e.createdAt, assigneeId });
+        open = { kind: open.kind, startedAt: e.createdAt };
+      }
+      assigneeId = next;
+    }
     else if (e.type === "UNASSIGNED") assigneeId = null;
     else if (e.type === "AI_PAUSED") aiEnabled = false;
     else if (e.type === "AI_RESUMED") aiEnabled = true;
@@ -151,7 +169,7 @@ export function waitsOf(lead: LeadHistory, humanStages: Set<string>): Wait[] {
       else if (contactPending) open = { kind: "reply", startedAt: e.createdAt };
     }
   }
-  if (open && lead.status === "OPEN") waits.push({ leadId: lead.id, ...open, answeredAt: null, assigneeId: lead.assigneeId });
+  if (open && lead.status === "OPEN") waits.push({ leadId: lead.id, ...open, answeredAt: null, reassignedAt: null, assigneeId: lead.assigneeId });
   return waits;
 }
 
@@ -164,7 +182,7 @@ const historySelect = {
   id: true,
   status: true,
   assigneeId: true,
-  events: { where: { type: { in: SLA_EVENTS } }, select: { type: true, actor: true, data: true, createdAt: true } },
+  events: { where: { type: { in: SLA_EVENTS } }, orderBy: { createdAt: "asc" }, select: { type: true, actor: true, data: true, createdAt: true } },
   messages: { select: { author: true, userId: true, createdAt: true } },
 } as const;
 
@@ -212,7 +230,7 @@ async function pendingWaitsWhere(where: Prisma.LeadWhereInput, settings: SlaSett
   return leads
     .flatMap((l) =>
       waitsOf(l, names)
-        .filter((w) => !w.answeredAt)
+        .filter((w) => !w.answeredAt && !w.reassignedAt)
         .map((w) => ({
           ...w,
           contactName: l.contact.name,
@@ -237,7 +255,16 @@ export async function lateLeads(leadIds: string[], now = new Date()): Promise<Ma
 }
 
 export type SlaStats = { count: number; met: number; medianMs: number | null; maxMs: number | null };
-export type SlaRow = { key: string; label: string; first: SlaStats; reply: SlaStats; waiting: number; overdue: number };
+export type SlaRow = {
+  key: string;
+  label: string;
+  first: SlaStats;
+  reply: SlaStats;
+  /** Leads que se le quitaron por no responder a tiempo. */
+  reassigned: number;
+  waiting: number;
+  overdue: number;
+};
 export type SlaReport = { first: SlaStats; reply: SlaStats; byExecutive: SlaRow[]; waiting: PendingWait[] };
 
 function stats(times: number[], goal: number): SlaStats {
@@ -264,11 +291,14 @@ export async function getSlaReport(filter: SlaFilter, s?: SlaSettings, now = new
     db.user.findMany({ select: { id: true, name: true } }),
   ]);
   const mine = (w: Wait) => !filter.assigneeId || w.assigneeId === filter.assigneeId;
-  const answered = past.filter((w) => w.answeredAt && mine(w));
+  // Respondidas o reasignadas sin respuesta (estas nunca quedan en meta).
+  const answered = past.filter((w) => (w.answeredAt || w.reassignedAt) && mine(w));
   const waiting = pending.filter(mine);
 
-  const times = (list: Wait[], kind: WaitKind) =>
-    list.filter((w) => w.kind === kind).map((w) => businessMs(settings, w.startedAt, w.answeredAt!));
+  const ms = (w: Wait) => businessMs(settings, w.startedAt, (w.answeredAt ?? w.reassignedAt)!);
+  // Una reasignación antes de la meta no cuenta (pudo ser por otro motivo); después, es una meta fallida.
+  const counted = (w: Wait) => !w.reassignedAt || ms(w) > goalMs(settings, w.kind);
+  const times = (list: Wait[], kind: WaitKind) => list.filter((w) => w.kind === kind && counted(w)).map(ms);
   const groups = new Map<string, { answered: Wait[]; waiting: PendingWait[] }>();
   const group = (key: string) => groups.get(key) ?? (groups.set(key, { answered: [], waiting: [] }).get(key)!);
   for (const w of answered) group(w.assigneeId ?? "none").answered.push(w);
@@ -280,6 +310,7 @@ export async function getSlaReport(filter: SlaFilter, s?: SlaSettings, now = new
       label: key === "none" ? "Sin asignar" : (names.get(key) ?? "Usuario eliminado"),
       first: stats(times(g.answered, "first"), goalMs(settings, "first")),
       reply: stats(times(g.answered, "reply"), goalMs(settings, "reply")),
+      reassigned: g.answered.filter((w) => w.reassignedAt && counted(w)).length,
       waiting: g.waiting.length,
       overdue: g.waiting.filter((w) => w.elapsedMs > w.goalMs).length,
     }))
@@ -332,4 +363,37 @@ export async function notifyLateWaits(now = new Date()): Promise<{ notified: num
   }
   if (notified) await deliverPendingPush();
   return { notified };
+}
+
+/**
+ * Reasignación automática (corre con los avisos): si el ejecutivo no da la primera respuesta en
+ * `reassignMinutes` de horario laboral desde que recibió el lead, pasa al ejecutivo con menos carga
+ * que no lo haya tenido en esta espera. Un lead sin ejecutivo se asigna apenas haya alguien.
+ */
+export async function reassignLateWaits(now = new Date()): Promise<{ reassigned: number }> {
+  const s = await getSlaSettings();
+  if (!s.reassign) return { reassigned: 0 };
+  const since = now.getTime() - ALERT_MAX_AGE_MS;
+  const waits = (await pendingWaits(s, now)).filter((w) => w.kind === "first" && w.startedAt.getTime() >= since);
+  let reassigned = 0;
+  for (const w of waits) {
+    // Quienes tuvieron el lead desde la última respuesta del equipo no vuelven a recibirlo.
+    const lastReply = await db.message.findFirst({ where: { leadId: w.leadId, author: "USER" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+    const assignments = await db.leadEvent.findMany({
+      where: { leadId: w.leadId, type: "ASSIGNED", ...(lastReply ? { createdAt: { gt: lastReply.createdAt } } : {}) },
+      orderBy: { createdAt: "asc" },
+      select: { data: true, createdAt: true },
+    });
+    const last = assignments.at(-1)?.createdAt;
+    const holder = last && last > w.startedAt ? last : w.startedAt;
+    if (w.assigneeId && businessMs(s, holder, now) < s.reassignMinutes * 60_000) continue;
+    const tried = [...assignments.map((a) => (a.data as { assigneeId?: string }).assigneeId ?? ""), w.assigneeId ?? ""].filter(Boolean);
+    const reason = w.assigneeId
+      ? `Sin primera respuesta en ${formatDuration(s.reassignMinutes * 60_000)}${w.assigneeName ? ` de ${w.assigneeName}` : ""}`
+      : "Esperaba ejecutivo";
+    const chosen = await db.$transaction((tx) => reassignTx(tx, w.leadId, tried, reason));
+    if (chosen) reassigned++;
+  }
+  if (reassigned) await deliverPendingPush();
+  return { reassigned };
 }

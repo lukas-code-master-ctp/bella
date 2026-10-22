@@ -101,7 +101,7 @@ export default async function SlaPage({ searchParams }: { searchParams: Promise<
               <CardHeader icon={<UserRound />} title="Por ejecutivo" description="Respuestas del período, en tiempo laboral. Cuenta para quien tenía el lead asignado." />
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[44rem] text-sm">
+              <table className="w-full min-w-[50rem] text-sm">
                 <thead>
                   <tr className="border-y border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                     <th className="px-5 py-2.5">Ejecutivo</th>
@@ -110,6 +110,9 @@ export default async function SlaPage({ searchParams }: { searchParams: Promise<
                     <th className="px-3 py-2.5 text-right">Siguientes en meta</th>
                     <th className="px-3 py-2.5 text-right">Siguientes mediana</th>
                     <th className="px-3 py-2.5 text-right">Peor caso</th>
+                    <th className="px-3 py-2.5 text-right" title="Leads que se le quitaron por no responder a tiempo">
+                      Reasignados
+                    </th>
                     <th className="px-5 py-2.5 text-right">Esperando</th>
                   </tr>
                 </thead>
@@ -128,6 +131,7 @@ export default async function SlaPage({ searchParams }: { searchParams: Promise<
                       <td className="px-3 py-2.5 text-right tabular-nums">
                         {formatDuration(worst(r.first, r.reply))}
                       </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">{r.reassigned ? int(r.reassigned) : "—"}</td>
                       <td className="whitespace-nowrap px-5 py-2.5 text-right tabular-nums">
                         {int(r.waiting)}
                         {r.overdue > 0 && (
