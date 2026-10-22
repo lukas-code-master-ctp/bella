@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Ellipsis, Headset, Pencil, Power, PowerOff, Save, ShieldCheck, Trash2, X } from "lucide-react";
+import { Ellipsis, Headset, Mail, Pencil, Power, PowerOff, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { Dropdown } from "@/components/dropdown";
 import { dropdownItemClass, Field, FormMessage, inputClass } from "@/components/ui";
 import { ChoiceCard } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
-import { deleteUserAction, toggleUserAction, updateUserAction } from "../actions";
+import { deleteUserAction, resendInvitationAction, toggleUserAction, updateUserAction } from "../actions";
 
 type User = { id: string; name: string; email: string; role: "ADMIN" | "EXECUTIVE"; active: boolean };
 
@@ -27,6 +27,13 @@ export function UserMenu({ user, isMe }: { user: User; isMe: boolean }) {
     start(async () => {
       const error = await deleteUserAction(user.id);
       toast(error ?? `${user.name} eliminado`, error ? "error" : undefined);
+    });
+  }
+
+  function invite() {
+    start(async () => {
+      const error = await resendInvitationAction(user.id);
+      toast(error ?? `Le mandamos a ${user.name} un correo para crear su contraseña`, error ? "error" : undefined);
     });
   }
 
@@ -51,6 +58,12 @@ export function UserMenu({ user, isMe }: { user: User; isMe: boolean }) {
         </button>
         {!isMe && (
           <>
+            {user.active && (
+              <button type="button" role="menuitem" tabIndex={-1} onClick={invite} className={dropdownItemClass()}>
+                <Mail aria-hidden />
+                Reenviar invitación
+              </button>
+            )}
             <button type="button" role="menuitem" tabIndex={-1} onClick={toggle} className={dropdownItemClass()}>
               {user.active ? <PowerOff aria-hidden /> : <Power aria-hidden />}
               {user.active ? "Desactivar" : "Activar"}

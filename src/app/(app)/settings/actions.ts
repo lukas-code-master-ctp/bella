@@ -22,7 +22,7 @@ import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conve
 import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
 import { DomainError } from "@/lib/domain/leads";
-import { createUser, deleteUser, updateUser } from "@/lib/domain/users";
+import { createUser, deleteUser, resendInvitation, updateUser } from "@/lib/domain/users";
 import { completeWhatsAppSignup } from "@/lib/domain/whatsapp-signup";
 import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
@@ -470,12 +470,17 @@ export async function runFollowUpsNowAction(_prev: string | null): Promise<strin
 export async function createUserAction(_prev: string | null, form: FormData): Promise<string | null> {
   const admin = await requireAdmin();
   const r = await createUser(
-    { name: str(form, "name"), email: str(form, "email"), password: str(form, "password"), role: (str(form, "role") as Role) || "EXECUTIVE" },
+    { name: str(form, "name"), email: str(form, "email"), role: (str(form, "role") as Role) || "EXECUTIVE" },
     admin,
   );
   if ("error" in r) return r.error;
   revalidatePath("/settings/users");
-  return r.emailed ? null : "Usuario creado, pero no se pudo mandar el correo de bienvenida. Avísale tú cómo entrar.";
+  return r.emailed ? null : "Usuario creado, pero no se pudo mandar el correo para crear su contraseña. Reenvíalo desde su menú ⋯.";
+}
+
+export async function resendInvitationAction(id: string): Promise<string | null> {
+  const admin = await requireAdmin();
+  return resendInvitation(id, admin);
 }
 
 export async function toggleUserAction(id: string, active: boolean) {
