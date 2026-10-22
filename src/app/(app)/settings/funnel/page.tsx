@@ -96,7 +96,7 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
                   </button>
                 </form>
               </div>
-              <form action={updateStageAction.bind(null, s.id)} className="min-w-0 flex-1 space-y-3">
+              <form action={updateStageAction.bind(null, s.id)} className="group/stage min-w-0 flex-1 space-y-3">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <input type="color" name="color" aria-label="Color" defaultValue={s.color} className={colorInputClass} />
                   <input name="name" aria-label="Nombre de la etapa" defaultValue={s.name} className={`${inputClass} min-w-40 flex-1 font-semibold sm:max-w-xs`} />
@@ -110,39 +110,37 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
                     </SubmitButton>
                   </span>
                 </div>
-                {s.requiresHuman ? (
-                  <div className="space-y-2">
-                    <p className="flex items-center gap-1.5 text-xs text-slate-600">
-                      <UserRound aria-hidden className="size-3.5" />
-                      La IA se pausa y un ejecutivo toma la conversación.
-                    </p>
-                    <label className="block text-sm text-slate-700">
-                      <span className="mb-1 block text-xs font-medium text-slate-600">Cuándo la IA deriva un lead a esta etapa</span>
-                      <textarea
-                        name="entryCriteria"
-                        rows={2}
-                        defaultValue={s.entryCriteria ?? ""}
-                        placeholder="Ej.: cuando el cliente quiera visitar o reservar, pida un descuento o tenga un reclamo. Vale desde cualquier etapa. Si lo dejas vacío, la IA deriva cuando el cliente pide una persona, quiere comprar, está molesto o pregunta algo que no sabe."
-                        className={inputClass}
-                      />
-                    </label>
-                  </div>
-                ) : (
+                {/* Se muestran los dos campos y el switch elige cuál se ve, sin esperar a guardar. */}
+                <div className="hidden space-y-2 group-has-[input[name=requiresHuman]:checked]/stage:block">
+                  <p className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <UserRound aria-hidden className="size-3.5" />
+                    La IA se pausa y un ejecutivo toma la conversación.
+                  </p>
                   <label className="block text-sm text-slate-700">
-                    <span className="mb-1 block text-xs font-medium text-slate-600">Cuándo la IA saca al lead de esta etapa</span>
+                    <span className="mb-1 block text-xs font-medium text-slate-600">Cuándo la IA deriva un lead a esta etapa</span>
                     <textarea
-                      name="exitCriteria"
-                      rows={2}
-                      defaultValue={s.exitCriteria ?? ""}
-                      placeholder={
-                        stages[i + 1]
-                          ? `Ej.: cuando el cliente entregue su nombre y diga para qué lo quiere, mover a "${stages[i + 1].name}". Si pide hablar con alguien, derivar a un ejecutivo.`
-                          : "Ej.: cuando el cliente pida hablar con alguien, derivar a un ejecutivo."
-                      }
+                      name="entryCriteria"
+                      rows={3}
+                      defaultValue={s.entryCriteria ?? ""}
+                      placeholder="Ej.: cuando quiera visitar o reservar, pida un descuento o tenga un reclamo. Vale desde cualquier etapa. Vacío: deriva si el cliente pide una persona, quiere comprar, está molesto o pregunta algo que la IA no sabe."
                       className={inputClass}
                     />
                   </label>
-                )}
+                </div>
+                <label className="block text-sm text-slate-700 group-has-[input[name=requiresHuman]:checked]/stage:hidden">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Cuándo la IA saca al lead de esta etapa</span>
+                  <textarea
+                    name="exitCriteria"
+                    rows={2}
+                    defaultValue={s.exitCriteria ?? ""}
+                    placeholder={
+                      stages[i + 1]
+                        ? `Ej.: cuando el cliente entregue su nombre y diga para qué lo quiere, mover a "${stages[i + 1].name}". Si pide hablar con alguien, derivar a un ejecutivo.`
+                        : "Ej.: cuando el cliente pida hablar con alguien, derivar a un ejecutivo."
+                    }
+                    className={inputClass}
+                  />
+                </label>
               </form>
               <form action={deleteStageAction.bind(null, s.id)} className="self-start">
                 <SubmitButton toast="Etapa borrada"
