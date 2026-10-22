@@ -114,6 +114,8 @@ export async function draftLesson(
   if (!message || message.author !== "AI") throw new DomainError("Solo se pueden corregir mensajes de la IA.");
 
   const settings = await assistantForLead(message.leadId);
+  // Una nota de voz de la IA guarda lo que dijo en la transcripción.
+  const said = message.body || message.transcript || "";
   const [conversation, lessons] = await Promise.all([conversationBefore(message, settings.assistantName), activeLessons()]);
   const input = [
     "<instrucciones>",
@@ -126,7 +128,7 @@ export async function draftLesson(
     conversation || "(sin mensajes anteriores)",
     "</conversacion>",
     "<respuesta_de_la_asistente>",
-    message.body,
+    said,
     "</respuesta_de_la_asistente>",
     "<correccion>",
     text,
@@ -140,7 +142,7 @@ export async function draftLesson(
     // Si la IA no respondió en JSON, la regla parte siendo la corrección tal cual.
     rule: str(parsed?.regla) || text,
     goodExample: str(parsed?.ejemplo_bueno),
-    badExample: message.body,
+    badExample: said,
     conflict: str(parsed?.choque),
     conversation,
     leadId: message.leadId,

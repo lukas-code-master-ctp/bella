@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Bot, Cpu, Sparkles, Wallet } from "lucide-react";
+import { AudioLines, Bot, Cpu, Sparkles, Wallet } from "lucide-react";
 import { getAssistantSettings } from "@/lib/settings";
 import { credentials } from "@/lib/credentials";
 import { DEFAULT_MODEL, DEFAULT_SUMMARY_MODEL, getAiConfig } from "@/lib/ai/config";
-import { getOpenRouterKeyInfo, listOpenRouterModels } from "@/lib/ai/models";
+import { getOpenRouterKeyInfo, listOpenRouterModels, listSpeechModels } from "@/lib/ai/models";
+import { getVoiceNoteSettings, VOICE_MAX_CHARS_LIMIT } from "@/lib/domain/voice-notes";
 import { Avatar, buttonClass, Field, inputClass, PageHeader } from "@/components/ui";
 import { Panel, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -11,15 +12,18 @@ import { saveAssistantAction } from "../actions";
 import { aiSpendSummary } from "@/lib/domain/ai-usage";
 import { AiForm } from "./ai-form";
 import { AiSpend } from "./ai-spend";
+import { VoiceForm } from "./voice-form";
 
 export default async function AssistantSettingsPage() {
-  const [s, config, models, keyInfo, spend, creds] = await Promise.all([
+  const [s, config, models, keyInfo, spend, creds, voice, speechModels] = await Promise.all([
     getAssistantSettings(),
     getAiConfig(),
     listOpenRouterModels(),
     getOpenRouterKeyInfo(),
     aiSpendSummary(),
     credentials(),
+    getVoiceNoteSettings(),
+    listSpeechModels(),
   ]);
   const keys = {
     openrouter: Boolean(creds.OPENROUTER_API_KEY),
@@ -77,6 +81,14 @@ export default async function AssistantSettingsPage() {
           keys={keys}
           keyInfo={keyInfo}
         />
+      </Panel>
+
+      <Panel
+        icon={<AudioLines />}
+        title="Notas de voz"
+        description="La asistente puede responder con audios en WhatsApp. Apagado hasta que lo actives."
+      >
+        <VoiceForm settings={voice} models={speechModels} hasKey={keys.openrouter} assistantName={s.assistantName} maxCharsLimit={VOICE_MAX_CHARS_LIMIT} />
       </Panel>
 
       <Panel icon={<Wallet />} title="Consumo" description="Gasto en IA por período, comparado con el período anterior equivalente.">

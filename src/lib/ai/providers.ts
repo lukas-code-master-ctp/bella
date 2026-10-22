@@ -4,6 +4,7 @@ import type { AiConfig } from "./config";
 import { recordAiUsage } from "../domain/ai-usage";
 import { credential } from "../credentials";
 import { AGENT_TOOLS } from "./tools";
+import type { VoiceDeps } from "./speech";
 
 /**
  * Cada proveedor guarda el historial en su propio formato de API. El ciclo del agente
@@ -153,7 +154,7 @@ export type ChatResponse = {
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
 /** URL con que OpenRouter identifica a Beliapp en Logs y Apps; sin HTTP-Referer la app no aparece. */
-const APP_URL =
+export const APP_URL =
   process.env.APP_URL ??
   (process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
@@ -308,7 +309,8 @@ export function openRouterProvider(config: AiConfig, client: ChatClient = openRo
   };
 }
 
-export type ProviderClients = { anthropic?: AnthropicClient; openrouter?: ChatClient };
+/** `voice`: modelo de voz y almacenamiento de las notas de voz de la IA (se reemplazan en pruebas). */
+export type ProviderClients = { anthropic?: AnthropicClient; openrouter?: ChatClient; voice?: VoiceDeps };
 
 export function providerFor(config: AiConfig, clients: ProviderClients = {}): Provider {
   return config.provider === "anthropic"
