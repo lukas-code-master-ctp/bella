@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
+import { decodeCsv } from "@/lib/csv-text";
 import { importContactsCsv, mergeContacts, type ImportResult } from "@/lib/domain/contact-import";
 import { DomainError } from "@/lib/domain/leads";
 
@@ -15,7 +16,7 @@ export async function importContactsAction(_prev: ImportState, form: FormData): 
   if (!(file instanceof File) || file.size === 0) return { error: "Elige un archivo CSV." };
   if (file.size > MAX_BYTES) return { error: "El archivo pesa más de 5 MB: divídelo en partes." };
   try {
-    const result = await importContactsCsv(await file.text(), { actor: "USER", userId: user.id }, {
+    const result = await importContactsCsv(decodeCsv(await file.arrayBuffer()), { actor: "USER", userId: user.id }, {
       defaultCountryCode: String(form.get("countryCode") ?? "").trim(),
     });
     revalidatePath("/funnel");

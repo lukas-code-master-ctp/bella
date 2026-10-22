@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import { CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardList, FileSpreadsheet, FlaskConical, LoaderCircle, Plus, Repeat, Send, Split, SquareKanban, Zap } from "lucide-react";
 import type { ApprovedTemplate } from "@/lib/channels/whatsapp";
 import type { BroadcastInput } from "@/lib/domain/broadcasts";
+import { decodeCsv } from "@/lib/csv-text";
 import { normalize } from "@/lib/text";
 import { Button, Card, Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, PanelBody, PanelFooter } from "@/components/settings-ui";
@@ -126,10 +127,16 @@ export function BroadcastWizard({
     if (t && !name) setName(t.name.replaceAll("_", " "));
   }
 
-  function readFile(file: File | undefined) {
+  async function readFile(file: File | undefined) {
     if (!file) return;
     setFileName(file.name);
-    Papa.parse<Row>(file, {
+    let text: string;
+    try {
+      text = decodeCsv(await file.arrayBuffer());
+    } catch {
+      return setError("No se pudo leer el archivo. Revisa que sea un CSV con nombres de columna en la primera fila.");
+    }
+    Papa.parse<Row>(text, {
       header: true,
       skipEmptyLines: "greedy",
       complete: (res) => {
