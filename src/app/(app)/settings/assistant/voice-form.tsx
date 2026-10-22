@@ -2,7 +2,7 @@
 
 import { useActionState, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { AudioLines, Play } from "lucide-react";
+import { AudioLines, ExternalLink, Play } from "lucide-react";
 import type { SpeechModelOption } from "@/lib/ai/models";
 import type { VoiceNoteSettings } from "@/lib/domain/voice-notes";
 import { Button, Field, FormMessage, inputClass } from "@/components/ui";
@@ -97,6 +97,15 @@ export function VoiceForm({
             />
           </Field>
         </div>
+        <a
+          href="https://openrouter.ai/models?output_modalities=speech"
+          target="_blank"
+          rel="noreferrer"
+          className="-mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:underline"
+        >
+          <ExternalLink aria-hidden className="size-3.5" />
+          Ver modelos de voz y escuchar ejemplos en OpenRouter
+        </a>
         {models && (
           <datalist id="speech-models">
             {models.map((m) => (
