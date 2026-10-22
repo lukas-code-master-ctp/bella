@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { db, rootDb } from "@/lib/db";
-import { canWorkIn, createCompany, listCompanies } from "@/lib/domain/companies";
+import {
+  activeCompanyIds,
+  canWorkIn,
+  companyActive,
+  companyOptions,
+  companyStatus,
+  createCompany,
+  deleteCompany,
+  listCompanies,
+  reactivateCompany,
+  suspendCompany,
+} from "@/lib/domain/companies";
 import { primaryFunnelIdFor } from "@/lib/domain/default-funnel";
 import { readSession, signSession } from "@/lib/session-token";
 import { getAssistantSettings } from "@/lib/settings";
@@ -69,5 +80,44 @@ describe("Empresas", () => {
     expect(canWorkIn({ ...user, superadmin: true }, "empresa-b")).toBe(true);
     const session = await readSession(await signSession("u1", 60, "empresa-b"));
     expect(session?.companyId).toBe("empresa-b");
+  });
+});
+
+describe("Suspender y eliminar empresas", () => {
+  const owner = { companyId: TEST_COMPANY_ID };
+  async function newCompany() {
+    const result = await createCompany(input);
+    if ("error" in result) throw new Error(result.error);
+    return result.id;
+  }
+
+  it("suspende y reactiva; la propia empresa no se toca", async () => {
+    const id = await newCompany();
+    expect(await suspendCompany(owner, TEST_COMPANY_ID)).toBe("No puedes suspender tu propia empresa.");
+    expect(await suspendCompany(owner, id)).toBeNull();
+    expect(await companyStatus(id)).toBe("suspended");
+    expect(await companyActive(id)).toBe(false);
+    expect(await activeCompanyIds()).not.toContain(id);
+    expect(await suspendCompany(owner, id)).toBe("La empresa ya está suspendida.");
+    expect(await reactivateCompany(id)).toBeNull();
+    expect(await companyActive(id)).toBe(true);
+    expect(await reactivateCompany(id)).toBe("La empresa no está suspendida.");
+  });
+
+  it("elimina solo una suspendida, confirmando su nombre, y la oculta sin borrar sus datos", async () => {
+    const id = await newCompany();
+    expect(await deleteCompany(owner, id, "Motos del Sur", TEST_COMPANY_ID)).toBe("Primero suspende la empresa.");
+    await suspendCompany(owner, id);
+    expect(await deleteCompany(owner, id, "Motos", TEST_COMPANY_ID)).toBe("El nombre no coincide.");
+    expect(await deleteCompany(owner, id, "Motos del Sur", id)).toBe("Sal de la empresa antes de eliminarla.");
+    expect(await deleteCompany(owner, TEST_COMPANY_ID, "x", "otra")).toBe("No puedes eliminar tu propia empresa.");
+    expect(await deleteCompany(owner, id, "  motos  del sur ", TEST_COMPANY_ID)).toBeNull();
+    expect(await companyStatus(id)).toBe("deleted");
+    expect(await companyActive(id)).toBe(false);
+    expect((await listCompanies()).map((c) => c.id)).toEqual([TEST_COMPANY_ID]);
+    expect((await companyOptions()).map((c) => c.id)).toEqual([TEST_COMPANY_ID]);
+    expect(await reactivateCompany(id)).toBe("La empresa no está suspendida.");
+    // Los datos siguen en la base.
+    expect(await rootDb.user.count({ where: { companyId: id } })).toBe(1);
   });
 });

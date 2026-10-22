@@ -3,4 +3,5 @@ import { requestDataDeletion } from "@/lib/webhooks/data-deletion";
 
 export const dynamic = "force-dynamic";
 
-export const POST = defaultCompanyRoute(requestDataDeletion);
+// Una empresa suspendida igual debe cumplir las solicitudes de eliminación de datos.
+export const POST = defaultCompanyRoute(requestDataDeletion, { evenSuspended: true });

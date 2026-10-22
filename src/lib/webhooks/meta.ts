@@ -3,6 +3,7 @@ import { credential } from "@/lib/credentials";
 import { afterInCompany } from "@/lib/company-request";
 import { rootDb } from "@/lib/db";
 import { withCompany } from "@/lib/tenant";
+import { activeCompanyIds } from "@/lib/domain/companies";
 import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import type { MessengerWebhook } from "@/lib/channels/messenger";
 import { validSignature } from "@/lib/channels/whatsapp";
@@ -73,7 +74,8 @@ export async function receivePlatformWebhook(request: NextRequest) {
   }
   const entries = payload.entry ?? [];
   const owners = await rootDb.metaAccount.findMany({
-    where: { externalId: { in: entries.map((e) => e.id).filter(Boolean) } },
+    // Las páginas de una empresa suspendida o eliminada se ignoran como si no estuvieran conectadas.
+    where: { externalId: { in: entries.map((e) => e.id).filter(Boolean) }, companyId: { in: await activeCompanyIds() } },
     select: { externalId: true, companyId: true },
   });
   const companyOf = new Map(owners.map((o) => [o.externalId, o.companyId]));

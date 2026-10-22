@@ -4,6 +4,7 @@ import { withCompany } from "@/lib/tenant";
 import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import { receiveWeb } from "@/lib/domain/channels";
 import { DomainError } from "@/lib/domain/leads";
+import { companyActive } from "@/lib/domain/companies";
 import { getWebWidgetSettings, originAllowed, publicWidgetConfig, validVisitorId, webConversation } from "@/lib/domain/web-widget";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,8 @@ async function inWidget(request: NextRequest, { params }: Params, fn: () => Prom
   const origin = request.headers.get("origin");
   const companyId = await publicCompanyId((await params).companyId);
   if (!companyId) return cors(origin, NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 }));
+  // Empresa suspendida: el chat queda como apagado.
+  if (!(await companyActive(companyId))) return cors(origin, NextResponse.json({ error: "El chat no está activo" }, { status: 404 }));
   return withCompany(companyId, async () => {
     const s = await getWebWidgetSettings();
     if (!s.enabled) return cors(origin, NextResponse.json({ error: "El chat no está activo" }, { status: 404 }));

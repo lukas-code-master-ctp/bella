@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { db, rootDb } from "../db";
 import { DEFAULT_ASSISTANT, setSetting, type AssistantSettings } from "../settings";
-import { withCompany } from "../tenant";
+import { currentCompanyId, withCompany } from "../tenant";
 import { ensureDefaultFunnel } from "./default-funnel";
 
 /**
@@ -56,12 +56,19 @@ export async function createCompany(input: NewCompany): Promise<{ error: string 
   return { id: company.id };
 }
 
-export type CompanySummary = { id: string; name: string; createdAt: Date; users: number; openLeads: number };
+export type CompanySummary = {
+  id: string;
+  name: string;
+  createdAt: Date;
+  suspendedAt: Date | null;
+  users: number;
+  openLeads: number;
+};
 
-/** Todas las empresas con sus usuarios activos y leads abiertos. */
+/** Todas las empresas no eliminadas con sus usuarios activos y leads abiertos. */
 export async function listCompanies(): Promise<CompanySummary[]> {
   const [companies, users, leads] = await Promise.all([
-    rootDb.company.findMany({ orderBy: { createdAt: "asc" } }),
+    rootDb.company.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, createdAt: true, suspendedAt: true } }),
     rootDb.user.groupBy({ by: ["companyId"], where: { active: true }, _count: { _all: true } }),
     rootDb.lead.groupBy({ by: ["companyId"], where: { status: "OPEN" }, _count: { _all: true } }),
   ]);
@@ -72,11 +79,71 @@ export async function listCompanies(): Promise<CompanySummary[]> {
 
 /** Nombres de todas las empresas, para el selector del dueño de Beliapp en la barra superior. */
 export async function companyOptions(): Promise<{ id: string; name: string }[]> {
-  return rootDb.company.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
+  return rootDb.company.findMany({ where: { deletedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } });
 }
 
 export async function companyName(id: string): Promise<string | null> {
   return (await rootDb.company.findUnique({ where: { id }, select: { name: true } }))?.name ?? null;
+}
+
+export type CompanyStatus = "active" | "suspended" | "deleted";
+
+/** Estado de una empresa; null si no existe. */
+export async function companyStatus(id: string): Promise<CompanyStatus | null> {
+  const company = await rootDb.company.findUnique({ where: { id }, select: { suspendedAt: true, deletedAt: true } });
+  if (!company) return null;
+  return company.deletedAt ? "deleted" : company.suspendedAt ? "suspended" : "active";
+}
+
+/**
+ * La empresa en curso puede trabajar: no está suspendida ni eliminada. Lo revisan la IA y los
+ * envíos automáticos, además de los webhooks y los cron, que ni siquiera la atienden. Una
+ * empresa sin fila (instalaciones antiguas, pruebas) cuenta como activa.
+ */
+export async function companyActive(id?: string): Promise<boolean> {
+  const status = await companyStatus(id ?? (await currentCompanyId()));
+  return status === null || status === "active";
+}
+
+/** Ids de las empresas que pueden trabajar (para repartir trabajo entre varias). */
+export async function activeCompanyIds(): Promise<string[]> {
+  const rows = await rootDb.company.findMany({ where: { suspendedAt: null, deletedAt: null }, select: { id: true } });
+  return rows.map((r) => r.id);
+}
+
+type Actor = Pick<User, "companyId">;
+
+/** Suspende la empresa: su equipo no entra y nada automático corre para ella. Reversible. */
+export async function suspendCompany(actor: Actor, id: string): Promise<string | null> {
+  if (id === actor.companyId) return "No puedes suspender tu propia empresa.";
+  const status = await companyStatus(id);
+  if (status !== "active") return status === "suspended" ? "La empresa ya está suspendida." : "La empresa no existe.";
+  await rootDb.company.update({ where: { id }, data: { suspendedAt: new Date() } });
+  return null;
+}
+
+/** Vuelve a activar una empresa suspendida. */
+export async function reactivateCompany(id: string): Promise<string | null> {
+  if ((await companyStatus(id)) !== "suspended") return "La empresa no está suspendida.";
+  await rootDb.company.update({ where: { id }, data: { suspendedAt: null } });
+  return null;
+}
+
+/**
+ * Elimina la empresa. Solo una suspendida, nunca la propia ni en la que se está trabajando, y
+ * confirmando con su nombre. Es un borrado lógico: deja de aparecer y de funcionar, pero sus
+ * datos quedan en la base por si hay que recuperarla.
+ */
+export async function deleteCompany(actor: Actor, id: string, confirmName: string, currentId: string): Promise<string | null> {
+  if (id === actor.companyId) return "No puedes eliminar tu propia empresa.";
+  if (id === currentId) return "Sal de la empresa antes de eliminarla.";
+  const company = await rootDb.company.findUnique({ where: { id } });
+  if (!company || company.deletedAt) return "La empresa no existe.";
+  if (!company.suspendedAt) return "Primero suspende la empresa.";
+  const normalize = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  if (normalize(confirmName) !== normalize(company.name)) return "El nombre no coincide.";
+  await rootDb.company.update({ where: { id }, data: { deletedAt: new Date() } });
+  return null;
 }
 
 /** Un usuario trabaja en su empresa; el dueño de Beliapp, además, en cualquiera. */

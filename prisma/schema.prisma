@@ -66,9 +66,14 @@ enum AssignStrategy {
 
 /// Empresa que usa Beliapp. Todos los datos llevan su companyId; "default" es la primera.
 model Company {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  name        String
+  createdAt   DateTime  @default(now())
+  /// Suspendida por el dueño de Beliapp: su equipo no entra y la IA, los envíos automáticos,
+  /// los webhooks y los cron no trabajan para ella. Se puede reactivar.
+  suspendedAt DateTime?
+  /// Eliminada: queda oculta y sin funcionar, pero sus datos se conservan (borrado lógico).
+  deletedAt   DateTime?
 }
 
 model User {

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { currentCompanyId } from "../tenant";
 import { aiBlocked, getAiOperation } from "../domain/ai-operation";
+import { companyActive } from "../domain/companies";
 import { aiChannels, getChannelSettings, MAX_REPLY_DELAY_SECONDS } from "../domain/channels";
 import { runAgent } from "./agent";
 import { refreshLeadInsights } from "./insights";
@@ -47,6 +48,8 @@ export async function withLeadClaim<T>(leadId: string, fn: () => Promise<T>): Pr
 export async function answerLead(leadId: string, clients: ProviderClients = {}) {
   // Con la IA apagada en toda la plataforma no hay respuesta (ni resumen) en los canales reales.
   if ((await getAiOperation()).paused) return;
+  // Empresa suspendida: la IA no le responde a nadie.
+  if (!(await companyActive())) return;
   for (let attempt = 0; attempt < 2; attempt++) {
     const ran = await withLeadClaim(leadId, async () => {
       try {

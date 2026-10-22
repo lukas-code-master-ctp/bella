@@ -22,6 +22,9 @@ export async function loginAction(_prev: LoginState, form: FormData): Promise<Lo
     return { error: loginErrorMessage(err), email, remember };
   }
   if (result === "blocked") return { error: "Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.", email, remember };
+  if (result === "suspended") {
+    return { error: "El acceso de tu empresa a Beliapp está suspendido. Si crees que es un error, escríbenos.", email, remember };
+  }
   if (result === "wrong") return { error: "Correo o contraseña incorrectos.", email, remember };
   redirect("/funnel");
 }
