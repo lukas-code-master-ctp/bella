@@ -6,7 +6,7 @@ import { describeHours } from "@/lib/domain/ai-operation";
 import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration } from "@/lib/domain/metrics";
 import { getSlaReport, getSlaSettings, type SlaStats } from "@/lib/domain/sla";
-import { Badge, buttonClass, Card, CardHeader, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
+import { Badge, buttonClass, Card, CardHeader, ClearFilters, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
 
 const RANGES = [
@@ -81,6 +81,7 @@ export default async function SlaPage({ searchParams }: { searchParams: Promise<
             </AutoSubmitSelect>
           </>
         )}
+        {(days !== 30 || funnelId) && <ClearFilters href="/metrics/sla" />}
       </FilterBar>
 
       <div className="stagger space-y-6">
