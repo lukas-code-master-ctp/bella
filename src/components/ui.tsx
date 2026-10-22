@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
-import { X } from "lucide-react";
+import Link from "next/link";
+import { Eraser, X } from "lucide-react";
 
 // Altura mínima 40px y texto de 16px en móvil (evita el zoom automático de iOS).
 export const inputClass =
@@ -82,6 +83,22 @@ export function FilterBar({ className = "", ...props }: ComponentProps<"form">) 
       className={`mb-6 flex flex-wrap items-center gap-2 [&>button]:flex-1 [&>select]:flex-1 [&>select]:basis-40 sm:[&>button]:flex-none sm:[&>select]:flex-none sm:[&>select]:basis-auto ${className}`}
       {...props}
     />
+  );
+}
+
+/** "Limpiar": vuelve a la vista sin filtros. Se muestra solo cuando hay alguno aplicado. */
+export function ClearFilters({ href, compact = false }: { href: string; compact?: boolean }) {
+  // compact: misma altura (36px) que los selectores del encabezado del funnel.
+  const size = compact ? "h-9 px-3 text-sm" : "min-h-10 px-4 py-2 text-sm";
+  return (
+    <Link
+      href={href}
+      scroll={false}
+      className={`inline-flex shrink-0 animate-fade-in items-center justify-center gap-2 rounded-lg font-semibold text-brand-700 transition-colors duration-150 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 [&_svg]:size-4 ${size}`}
+    >
+      <Eraser aria-hidden />
+      Limpiar
+    </Link>
   );
 }
 

@@ -11,7 +11,7 @@ import { countActiveCampaignAlerts } from "@/lib/domain/campaign-alerts";
 import { LEAD_ORIGINS, ORIGIN_LABEL, type LeadOrigin } from "@/lib/domain/attribution";
 import { listFunnels } from "@/lib/domain/funnels";
 import { adReturns, formatDuration, getMetrics, type AdReturns, type Metrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
-import { buttonClass, Card, CardHeader, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
+import { buttonClass, Card, CardHeader, ClearFilters, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
 
 const RANGES = [
@@ -162,6 +162,9 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
               ))}
             </AutoSubmitSelect>
           </>
+        )}
+        {(days !== 30 || channel || origin || (isAdmin && assigneeId)) && (
+          <ClearFilters href={funnelId && funnelId !== funnels[0].id ? `/metrics?funnel=${funnelId}` : "/metrics"} />
         )}
       </FilterBar>
 

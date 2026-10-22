@@ -12,7 +12,7 @@ import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration } from "@/lib/domain/metrics";
 import { lateLeads } from "@/lib/domain/sla";
 import { CHANNEL_LABEL } from "@/lib/labels";
-import { buttonClass, Card, EmptyState } from "@/components/ui";
+import { buttonClass, Card, ClearFilters, EmptyState } from "@/components/ui";
 import { ParamSelect } from "./filters";
 import { LeadDrawer } from "./lead-drawer";
 import { LeadView } from "../leads/[id]/lead-view";
@@ -44,7 +44,8 @@ export default async function FunnelPage({
   const funnels = await listFunnels();
   const funnel = funnels.find((f) => f.id === funnelParam) ?? funnels[0];
   // Los ejecutivos parten con "Sin atender primero" (su trabajo es responder); los admins, con "Más recientes".
-  const order = sort || (user.role === "ADMIN" ? "recent" : "waiting");
+  const defaultOrder = user.role === "ADMIN" ? "recent" : "waiting";
+  const order = sort || defaultOrder;
   const byScore = order === "score";
   const waitingFirst = order === "waiting";
   const scope: Prisma.LeadWhereInput = {
@@ -93,6 +94,8 @@ export default async function FunnelPage({
   }
   const waiting = cards.filter((c) => c.attention === "waiting").length;
   const late = await lateLeads(leads.map((l) => l.id), now);
+  // El embudo elegido no cuenta como filtro: "Limpiar" lo mantiene.
+  const filtered = onlyWaiting || (user.role === "ADMIN" && Boolean(executive)) || order !== defaultOrder;
   const shown = onlyWaiting ? cards.filter((c) => c.attention === "waiting") : cards;
 
   return (
@@ -144,6 +147,7 @@ export default async function FunnelPage({
               { value: "waiting", label: "Sin atender primero" },
             ]}
           />
+          {filtered && <ClearFilters href={hrefWith({ executive: null, ver: null, sort: null })} compact />}
         </div>
         {user.role === "ADMIN" && (
           <Link href="/chats/simulator" className={buttonClass("secondary", "sm", "ml-auto")}>
