@@ -36,7 +36,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     hrefWith({ vista: "calendario", ...(offset ? { mes: toMonthParam(startOfLocalMonth(monthStart, offset)) } : {}) });
 
   const list = (items: TaskWithLead[]) => (
-    <ul className="stagger divide-y divide-slate-100 px-4">
+    <ul className="stagger space-y-2 p-3">
       {items.map((t) => (
         <TaskItem
           key={t.id}

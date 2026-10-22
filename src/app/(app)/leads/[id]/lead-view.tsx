@@ -545,7 +545,7 @@ export async function LeadView({
                   {lead.tasks.length === 0 ? (
                     <p className="mb-3 text-sm text-slate-500">Sin tareas.</p>
                   ) : (
-                    <ul className="mb-3 divide-y divide-slate-100">
+                    <ul className="mb-3 space-y-2">
                       {lead.tasks.map((t) => (
                         <TaskItem
                           key={t.id}
