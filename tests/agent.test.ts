@@ -194,6 +194,25 @@ describe("asistente IA (Anthropic)", () => {
     expect((requests[1].messages[0].content as { text: string }[])[0].text).not.toContain("Origen del lead");
   });
 
+  it("distingue las etiquetas de conversaciones anteriores del contacto", async () => {
+    await seedFunnel();
+    const vieja = await db.tag.create({ data: { category: "Proyecto", name: "Norte" } });
+    const nueva = await db.tag.create({ data: { category: "Interés", name: "Alto" } });
+    const first = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await db.contactTag.create({
+      data: { contactId: first.contactId, tagId: vieja.id, addedBy: "AI", createdAt: new Date(Date.now() - 86_400_000) },
+    });
+    await db.contactTag.create({ data: { contactId: first.contactId, tagId: nueva.id, addedBy: "AI", createdAt: new Date(Date.now() + 1000) } });
+    await inbound(first.id, "Hola");
+
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(first.id, client);
+
+    const state = (requests[0].messages[0].content as { text: string }[])[0].text;
+    expect(state).toContain("Etiquetas actuales: Interés: Alto");
+    expect(state).toContain("Etiquetas de conversaciones anteriores del contacto: Proyecto: Norte.");
+  });
+
   it("sin reglas de avance no agrega la sección al estado del CRM", async () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });

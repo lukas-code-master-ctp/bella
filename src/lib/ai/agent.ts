@@ -152,7 +152,10 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
   ]);
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
-  const currentTags = lead.contact.tags.map((ct) => `${ct.tag.category}: ${ct.tag.name}`);
+  // Las etiquetas son del contacto: las puestas antes de este lead vienen de otra conversación.
+  const tagLabel = (ct: (typeof lead.contact.tags)[number]) => `${ct.tag.category}: ${ct.tag.name}`;
+  const currentTags = lead.contact.tags.filter((ct) => ct.createdAt >= lead.createdAt).map(tagLabel);
+  const earlierTags = lead.contact.tags.filter((ct) => ct.createdAt < lead.createdAt).map(tagLabel);
   const agenda = agendaLine(lead);
   return [
     "<crm_state>",
@@ -167,6 +170,13 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
       .join(" → ")}`,
     ...stageRules(stages),
     `Etiquetas actuales: ${currentTags.length ? currentTags.join(", ") : "ninguna"}`,
+    ...(earlierTags.length
+      ? [
+          `Etiquetas de conversaciones anteriores del contacto: ${earlierTags.join(", ")}. Pueden estar ` +
+            "desactualizadas: no las des por ciertas; confírmalas o cámbialas según lo que diga ahora " +
+            "(si el origen del lead nombra otro producto, manda el origen).",
+        ]
+      : []),
     `Catálogo de etiquetas: ${[...byCategory].map(([c, names]) => `${c}: ${names.join(" | ")}`).join("; ") || "vacío"}`,
     ...fields,
     `Tareas pendientes del equipo: ${
