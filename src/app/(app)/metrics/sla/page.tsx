@@ -38,7 +38,7 @@ export default async function SlaPage({ searchParams }: { searchParams: Promise<
   return (
     <>
       <PageHeader
-        title="SLA de ejecutivos"
+        title={isAdmin ? "SLA de ejecutivos" : "Mis SLA"}
         description={`${isAdmin ? "Cuánto tarda el equipo" : "Cuánto tardas"} en responder cuando el lead lo atiende una persona. Metas: primera respuesta en ${formatDuration(s.firstMinutes * 60_000)} y siguientes en ${formatDuration(s.replyMinutes * 60_000)}${s.hoursEnabled ? `, contando solo el horario laboral (${describeHours(s).toLowerCase()})` : ""}.`}
       >
         <PageActions>
