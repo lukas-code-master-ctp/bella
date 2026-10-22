@@ -1,7 +1,10 @@
-import type { MessageAuthor } from "@prisma/client";
+import type { MessageAuthor, Prisma } from "@prisma/client";
 import { db } from "../db";
+import { deliverPendingPush } from "../push";
 import { getSetting, setSetting } from "../settings";
 import { withinBusinessHours, type WeeklyHours } from "./ai-operation";
+import { formatDuration } from "./metrics";
+import { notifySlaLateTx } from "./notifications";
 
 /**
  * SLA de ejecutivos: cuánto tarda el equipo en responderle al cliente cuando el lead lo atiende un
@@ -23,11 +26,17 @@ export type SlaSettings = WeeklyHours & {
   firstMinutes: number;
   /** Meta para responder cada mensaje del cliente después, en minutos. */
   replyMinutes: number;
+  /** Avisar al ejecutivo (o a los admins si el lead no tiene) cuando una espera pasa la meta. */
+  alerts: boolean;
+  /** Avisar también a los admins cuando la espera llega al doble de la meta. */
+  escalate: boolean;
 };
 
 export const DEFAULT_SLA: SlaSettings = {
   firstMinutes: 15,
   replyMinutes: 30,
+  alerts: true,
+  escalate: true,
   hoursEnabled: true,
   days: [1, 2, 3, 4, 5],
   from: 9,
@@ -177,17 +186,27 @@ async function waitsBetween(from: Date, to: Date, funnelId?: string): Promise<Wa
 
 export type PendingWait = Wait & { contactName: string; assigneeName: string | null; elapsedMs: number; goalMs: number };
 
-/** Leads abiertos que hoy esperan respuesta del equipo, los más atrasados primero. */
-export async function pendingWaits(s?: SlaSettings, now = new Date(), funnelId?: string): Promise<PendingWait[]> {
-  const settings = s ?? (await getSlaSettings());
+/**
+ * Para las esperas abiertas basta la historia reciente: los eventos completos (son pocos y dicen
+ * quién atiende el lead) y los últimos mensajes.
+ */
+const RECENT_MESSAGES = 50;
+
+async function pendingWaitsWhere(where: Prisma.LeadWhereInput, settings: SlaSettings, now: Date): Promise<PendingWait[]> {
   const leads = await db.lead.findMany({
     where: {
-      status: "OPEN",
-      contact: { channel: { not: "SIMULATOR" } },
-      OR: [{ aiEnabled: false }, { stage: { requiresHuman: true } }],
-      ...(funnelId ? { stage: { funnelId } } : {}),
+      AND: [
+        where,
+        { status: "OPEN", contact: { channel: { not: "SIMULATOR" } } },
+        { OR: [{ aiEnabled: false }, { stage: { requiresHuman: true } }] },
+      ],
     },
-    select: { ...historySelect, contact: { select: { name: true } }, assignee: { select: { name: true } } },
+    select: {
+      ...historySelect,
+      messages: { ...historySelect.messages, orderBy: { createdAt: "desc" }, take: RECENT_MESSAGES },
+      contact: { select: { name: true } },
+      assignee: { select: { name: true } },
+    },
   });
   const names = await humanStageNames();
   return leads
@@ -203,6 +222,18 @@ export async function pendingWaits(s?: SlaSettings, now = new Date(), funnelId?:
         })),
     )
     .sort((a, b) => b.elapsedMs / b.goalMs - a.elapsedMs / a.goalMs);
+}
+
+/** Leads abiertos que hoy esperan respuesta del equipo, los más atrasados primero. */
+export async function pendingWaits(s?: SlaSettings, now = new Date(), funnelId?: string): Promise<PendingWait[]> {
+  return pendingWaitsWhere(funnelId ? { stage: { funnelId } } : {}, s ?? (await getSlaSettings()), now);
+}
+
+/** De estos leads, los que pasaron la meta de respuesta, con cuánto llevan esperando (para las listas). */
+export async function lateLeads(leadIds: string[], now = new Date()): Promise<Map<string, number>> {
+  if (!leadIds.length) return new Map();
+  const waits = await pendingWaitsWhere({ id: { in: leadIds } }, await getSlaSettings(), now);
+  return new Map(waits.filter((w) => w.elapsedMs > w.goalMs).map((w) => [w.leadId, w.elapsedMs]));
 }
 
 export type SlaStats = { count: number; met: number; medianMs: number | null; maxMs: number | null };
@@ -260,4 +291,45 @@ export async function getSlaReport(filter: SlaFilter, s?: SlaSettings, now = new
     byExecutive,
     waiting,
   };
+}
+
+/**
+ * Avisa las esperas que pasaron la meta (corre cada 5 minutos): al llegar a la meta, al ejecutivo
+ * del lead (o a los admins si no tiene); al doble, también a los admins. Cada aviso sale una vez
+ * por espera: queda un evento SLA_LATE con el inicio de la espera y el nivel.
+ */
+const ALERT_MAX_AGE_MS = 4 * 24 * HOUR_MS;
+
+export async function notifyLateWaits(now = new Date()): Promise<{ notified: number }> {
+  const s = await getSlaSettings();
+  if (!s.alerts) return { notified: 0 };
+  // Las esperas muy antiguas (leads olvidados antes de activar esto) no se avisan.
+  const since = now.getTime() - ALERT_MAX_AGE_MS;
+  const late = (await pendingWaits(s, now)).filter((w) => w.elapsedMs > w.goalMs && w.startedAt.getTime() >= since);
+  let notified = 0;
+  for (const w of late) {
+    const startedAt = w.startedAt.toISOString();
+    const sent = await db.leadEvent.findMany({ where: { leadId: w.leadId, type: "SLA_LATE", createdAt: { gte: w.startedAt } }, select: { data: true } });
+    const levels = new Set(sent.map((e) => e.data as { startedAt?: string; level?: number }).filter((d) => d.startedAt === startedAt).map((d) => d.level));
+    const what = w.kind === "first" ? "la primera respuesta" : "respuesta";
+    const goal = `meta: ${formatDuration(w.goalMs)}`;
+    const toSend: { level: number; body: string; admins: boolean }[] = [];
+    if (!levels.has(1)) toSend.push({ level: 1, body: `Lleva ${formatDuration(w.elapsedMs)} esperando ${what} (${goal})`, admins: false });
+    if (s.escalate && w.elapsedMs >= 2 * w.goalMs && !levels.has(2)) {
+      const who = w.assigneeName ? `de ${w.assigneeName}` : "y no tiene ejecutivo";
+      toSend.push({ level: 2, body: `Atrasado: ${formatDuration(w.elapsedMs)} sin respuesta ${who} (${goal})`, admins: true });
+    }
+    for (const n of toSend) {
+      await db.$transaction(async (tx) => {
+        const admins = n.admins ? (await tx.user.findMany({ where: { role: "ADMIN", active: true, deletedAt: null }, select: { id: true } })).map((u) => u.id) : undefined;
+        await notifySlaLateTx(tx, w.leadId, n.body, admins);
+        await tx.leadEvent.create({
+          data: { leadId: w.leadId, type: "SLA_LATE", actor: "SYSTEM", reason: n.body, data: { startedAt, level: n.level, kind: w.kind } },
+        });
+      });
+      notified++;
+    }
+  }
+  if (notified) await deliverPendingPush();
+  return { notified };
 }

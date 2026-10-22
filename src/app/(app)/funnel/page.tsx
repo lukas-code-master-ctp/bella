@@ -9,6 +9,8 @@ import { campaignOf } from "@/lib/domain/attribution";
 import { formatDue } from "@/lib/dates";
 import { bucketOf } from "@/lib/domain/tasks";
 import { listFunnels } from "@/lib/domain/funnels";
+import { formatDuration } from "@/lib/domain/metrics";
+import { lateLeads } from "@/lib/domain/sla";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, EmptyState } from "@/components/ui";
 import { ParamSelect } from "./filters";
@@ -90,6 +92,7 @@ export default async function FunnelPage({
     cards.sort((a, b) => (a.waitingSince?.getTime() ?? Infinity) - (b.waitingSince?.getTime() ?? Infinity));
   }
   const waiting = cards.filter((c) => c.attention === "waiting").length;
+  const late = await lateLeads(leads.map((l) => l.id), now);
   const shown = onlyWaiting ? cards.filter((c) => c.attention === "waiting") : cards;
 
   return (
@@ -180,6 +183,7 @@ export default async function FunnelPage({
             aiEnabled: l.aiEnabled,
             attention,
             waitingFor: waitingSince ? formatAgo(waitingSince, now) : null,
+            late: late.has(l.id) ? formatDuration(late.get(l.id)!) : null,
             lastMessage: last ? last.body || (last.mediaUrl ? (last.mediaType?.startsWith("audio/") ? "🎤 Nota de voz" : "📎 Archivo") : "") : null,
             summary: l.aiSummary,
             score: l.score,

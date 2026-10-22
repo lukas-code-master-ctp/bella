@@ -19,7 +19,12 @@ export async function saveSlaAction(_prev: string | null, form: FormData): Promi
   const hoursEnabled = form.get("hoursEnabled") === "on";
   const days = form.getAll("days").map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
   if (hoursEnabled && !days.length) return "Elige al menos un día laboral.";
-  await saveSlaSettings({ firstMinutes, replyMinutes, hoursEnabled, days, from: hour(form, "from", 23), to: hour(form, "to", 24) });
+  await saveSlaSettings({
+    firstMinutes,
+    replyMinutes,
+    alerts: form.get("alerts") === "on",
+    escalate: form.get("escalate") === "on",
+    hoursEnabled, days, from: hour(form, "from", 23), to: hour(form, "to", 24) });
   revalidatePath("/settings/sla");
   return "Guardado.";
 }

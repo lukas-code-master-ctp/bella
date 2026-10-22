@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { parseLocalDateTime } from "@/lib/dates";
 import { createLead, moveStage, setAiEnabled, setAssignee } from "@/lib/domain/leads";
-import { businessMs, DEFAULT_SLA, getSlaReport, pendingWaits, waitsOf, type LeadHistory, type SlaSettings } from "@/lib/domain/sla";
+import { businessMs, DEFAULT_SLA, getSlaReport, lateLeads, notifyLateWaits, pendingWaits, saveSlaSettings, waitsOf, type LeadHistory, type SlaSettings } from "@/lib/domain/sla";
 import { executive, seedFunnel } from "./factories";
 
 const MIN = 60_000;
@@ -123,5 +123,40 @@ describe("SLA de ejecutivos", () => {
     await moveStage(b.id, (await db.stage.findFirstOrThrow({ where: { name: "Nuevo" } })).id, { actor: "USER" });
     await setAiEnabled(b.id, true, { actor: "USER" });
     expect(await pendingWaits(allDay, later)).toEqual([]);
+  });
+
+  it("avisa al ejecutivo al pasar la meta y a los admins al doble, una vez por espera", async () => {
+    const [, , , human] = await seedFunnel();
+    await saveSlaSettings({ hoursEnabled: false });
+    const ana = await executive("Ana");
+    const admin = await db.user.create({ data: { name: "Admin", email: "admin@test.cl", passwordHash: "x", role: "ADMIN" } });
+    const lead = await createLead({ name: "Cliente", channel: "WHATSAPP", externalId: "1" });
+    await setAssignee(lead.id, ana.id, { actor: "SYSTEM" });
+    await moveStage(lead.id, human.id, { actor: "AI" });
+    await db.notification.deleteMany();
+    const now = Date.now();
+
+    expect(await notifyLateWaits(new Date(now + 10 * MIN))).toEqual({ notified: 0 });
+    expect((await lateLeads([lead.id], new Date(now + 10 * MIN))).size).toBe(0);
+
+    expect(await notifyLateWaits(new Date(now + 20 * MIN))).toEqual({ notified: 1 });
+    expect(await notifyLateWaits(new Date(now + 25 * MIN))).toEqual({ notified: 0 });
+    expect((await lateLeads([lead.id], new Date(now + 20 * MIN))).get(lead.id)).toBeGreaterThan(15 * MIN);
+    let notes = await db.notification.findMany({ orderBy: { createdAt: "asc" } });
+    expect(notes.map((n) => [n.userId, n.type])).toEqual([[ana.id, "SLA_LATE"]]);
+    expect(notes[0].body).toMatch(/^Lleva 20 min esperando la primera respuesta \(meta: 15 min\)$/);
+
+    expect(await notifyLateWaits(new Date(now + 31 * MIN))).toEqual({ notified: 1 });
+    notes = await db.notification.findMany({ where: { userId: admin.id } });
+    expect(notes.map((n) => n.body)).toEqual(["Atrasado: 31 min sin respuesta de Ana (meta: 15 min)"]);
+
+    // Ana responde: ya no está atrasado.
+    await db.message.create({ data: { leadId: lead.id, author: "USER", userId: ana.id, body: "Hola", createdAt: new Date(now + 32 * MIN) } });
+    expect((await lateLeads([lead.id], new Date(now + 40 * MIN))).size).toBe(0);
+    expect(await notifyLateWaits(new Date(now + 40 * MIN))).toEqual({ notified: 0 });
+
+    await saveSlaSettings({ alerts: false });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "?", createdAt: new Date(now + 41 * MIN) } });
+    expect(await notifyLateWaits(new Date(now + 200 * MIN))).toEqual({ notified: 0 });
   });
 });

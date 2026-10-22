@@ -2,6 +2,7 @@ import type { Channel, LeadStatus, MessageAuthor, Prisma, Role } from "@prisma/c
 import { db } from "../db";
 import { attentionOf, type Attention } from "./attention";
 import { chatDateRange, type ChatFilters } from "./chat-filters";
+import { lateLeads } from "./sla";
 
 /**
  * Bandeja de chats: todas las conversaciones de leads con sus filtros (ver chat-filters.ts).
@@ -20,6 +21,8 @@ export type ChatItem = {
   tags: { name: string; color: string }[];
   score: number | null;
   attention: Attention;
+  /** Si pasó la meta de respuesta del equipo (SLA), cuánto lleva esperando, en ms. */
+  lateMs: number | null;
   /** Último mensaje de la conversación (o null si aún no hay). */
   last: { author: MessageAuthor; body: string; media: "audio" | "file" | null; at: Date } | null;
   /** Fecha que ordena la bandeja: el último mensaje, o la creación del lead si no hay mensajes. */
@@ -104,6 +107,7 @@ export async function listChats(
     },
   });
   const byId = new Map(details.map((d) => [d.id, d]));
+  const late = await lateLeads(page.map((r) => r.id), now);
 
   const items = page.flatMap((r): ChatItem[] => {
     const d = byId.get(r.id);
@@ -121,6 +125,7 @@ export async function listChats(
         tags: d.contact.tags.map((t) => t.tag),
         score: r.score,
         attention: r.attention,
+        lateMs: late.get(r.id) ?? null,
         last: m
           ? {
               author: m.author,
