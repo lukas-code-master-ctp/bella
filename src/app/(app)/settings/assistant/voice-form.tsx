@@ -88,13 +88,19 @@ export function VoiceForm({
             />
           </Field>
           <Field label="Voz" hint={selected && !selected.voices.length ? "Este modelo no tiene voces para elegir." : undefined}>
-            <input
-              name="voice"
-              list="speech-voices"
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-              className={`${inputClass} font-mono`}
-            />
+            {selected?.voices.length ? (
+              // El modelo informa sus voces: se elige de la lista (con la guardada aunque ya no esté).
+              <select name="voice" value={voice} onChange={(e) => setVoice(e.target.value)} className={`${inputClass} font-mono`}>
+                {!selected.voices.includes(voice) && voice && <option value={voice}>{voice}</option>}
+                {selected.voices.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input name="voice" value={voice} onChange={(e) => setVoice(e.target.value)} className={`${inputClass} font-mono`} />
+            )}
           </Field>
         </div>
         <a
@@ -112,13 +118,6 @@ export function VoiceForm({
               <option key={m.id} value={m.id}>
                 {m.name}
               </option>
-            ))}
-          </datalist>
-        )}
-        {selected && (
-          <datalist id="speech-voices">
-            {selected.voices.map((v) => (
-              <option key={v} value={v} />
             ))}
           </datalist>
         )}
