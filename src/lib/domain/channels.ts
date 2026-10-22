@@ -645,7 +645,7 @@ export async function deliverOutbound(leadId: string, apis: OutboundApis = {}): 
       const kind = m.mediaUrl ? fileKind(m.mediaType) : null;
       if (m.mediaUrl && kind === "audio") {
         if (channel === "WHATSAPP" && !canSendAudio(m.mediaType)) {
-          throw new ChannelSendError("WhatsApp no acepta este formato de audio. Graba desde Chrome o Safari actualizados.");
+          throw new ChannelSendError("WhatsApp no acepta este formato de audio. Envíalo como MP3, M4A u Ogg.");
         }
         externalId = await sender.audio(m.mediaUrl);
       } else if (m.mediaUrl && kind && kind !== "audio") {

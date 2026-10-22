@@ -8,6 +8,7 @@ import type { AiConfig } from "@/lib/ai/config";
 import type { ChatClient } from "@/lib/ai/providers";
 import { DEFAULT_TRANSCRIPTION_MODEL, openRouterTranscriber } from "@/lib/ai/transcribe";
 import { AUDIO_MAX_BYTES, audioFormat, type AudioFile, type MediaStore } from "@/lib/media";
+import { encodeWav } from "@/lib/wav";
 import { seedFunnel } from "./factories";
 
 const voiceNote = (bytes = new Uint8Array([1, 2, 3])): AudioFile => ({
@@ -112,6 +113,38 @@ describe("notas de voz del ejecutivo", () => {
     const agent = fakeChat("¡Quedamos atentos!");
     await runAgent(lead.id, { openrouter: agent.client });
     expect(JSON.stringify(agent.requests[0].messages)).toContain("Ejecutivo (Tiare), nota de voz: Te llamo a las cinco");
+  });
+});
+
+describe("nota de voz del ejecutivo por WhatsApp", () => {
+  beforeEach(() => seedFunnel());
+
+  it("convierte la grabación WAV a Ogg/Opus y transcribe el WAV original", async () => {
+    const user = await db.user.create({ data: { email: "eje@test.cl", name: "Tiare", passwordHash: "x" } });
+    const lead = await createLead({ name: "William", channel: "WHATSAPP", externalId: "56900000000" });
+    const tone = new Float32Array(16_000).map((_, i) => 0.3 * Math.sin((2 * Math.PI * 440 * i) / 16_000));
+    const wav = { bytes: new Uint8Array(encodeWav(tone)), mimeType: "audio/wav", fileName: "nota-de-voz-1.wav" };
+    const stored: AudioFile[] = [];
+    let transcribed: AudioFile | null = null;
+    await sendUserAudio(lead.id, user.id, wav, {
+      store: async (file, folder) => (stored.push(file), `https://blob.test/${folder}/${file.fileName}`),
+      transcribe: async (file) => ((transcribed = file), "Hola William"),
+    });
+
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ mimeType: "audio/ogg", fileName: "nota-de-voz-1.ogg" });
+    expect(Buffer.from(stored[0].bytes.subarray(0, 4)).toString("ascii")).toBe("OggS");
+    expect(transcribed).toBe(wav);
+    const saved = await db.message.findFirstOrThrow({ where: { leadId: lead.id } });
+    expect(saved).toMatchObject({ mediaType: "audio/ogg", transcript: "Hola William" });
+  });
+
+  it("en el simulador guarda el WAV tal cual", async () => {
+    const user = await db.user.create({ data: { email: "eje@test.cl", name: "Tiare", passwordHash: "x" } });
+    const lead = await createLead({ name: "William", channel: "SIMULATOR" });
+    const wav = { bytes: new Uint8Array(encodeWav(new Float32Array(1600).fill(0.2))), mimeType: "audio/wav", fileName: "n.wav" };
+    await sendUserAudio(lead.id, user.id, wav, { store, transcribe: async () => "" });
+    expect(await db.message.findFirstOrThrow({ where: { leadId: lead.id } })).toMatchObject({ mediaType: "audio/wav" });
   });
 });
 
