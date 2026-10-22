@@ -25,9 +25,11 @@ import { deliverPendingWebhooks } from "../domain/webhooks";
 import { deliverPendingPush } from "../push";
 import { applyVariant } from "../domain/ab-tests";
 import { activeLessons, lessonsPrompt, type LessonForPrompt } from "../domain/ai-lessons";
+import { getVoiceNoteSettings, shouldSpeak } from "../domain/voice-notes";
 import { getAiConfig } from "./config";
 import { providerFor, TransientAiError, type ProviderClients, type ToolResult, type TranscriptMessage } from "./providers";
 import { executeTool } from "./tools";
+import { voiceNoteFor } from "./speech";
 import type { TraceStep } from "./trace";
 
 const MAX_STEPS = 10;
@@ -239,7 +241,9 @@ function formatPending(messages: (Message & { user: { name: string } | null })[]
       m.author === "CONTACT"
         ? contactText(m)
         : m.author === "AI"
-          ? `${assistantName} (tú): ${m.mediaUrl ? `[enviaste el archivo ${m.mediaName ?? ""}] ` : ""}${m.body}`
+          ? m.mediaUrl && fileKind(m.mediaType) === "audio"
+            ? `${assistantName} (tú, nota de voz): ${m.transcript ?? ""}`
+            : `${assistantName} (tú): ${m.mediaUrl ? `[enviaste el archivo ${m.mediaName ?? ""}] ` : ""}${m.body}`
           : userText(m),
     )
     .join("\n");
@@ -459,6 +463,14 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     handedOff = false;
   }
   const agendaChanged = trace.some((t) => t.type === "tool" && t.name === "schedule_follow_up" && !t.isError);
+  // Nota de voz: si la empresa la activó y la respuesta se puede escuchar, sale como audio con su
+  // texto como transcripción. Si la voz falla, la respuesta sale igual en texto.
+  const voiceSettings = reply && !handedOff ? await getVoiceNoteSettings() : null;
+  const lastFromContact = followUp ? null : (pending.filter((m) => m.author === "CONTACT").at(-1) ?? null);
+  const voice =
+    voiceSettings && shouldSpeak(voiceSettings, reply, { channel: lead.contact.channel, lastFromContact })
+      ? await voiceNoteFor(leadId, reply, voiceSettings, clients.voice)
+      : null;
 
   const sent = await db.$transaction(async (tx) => {
     await tx.agentTranscript.update({
@@ -469,7 +481,13 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
         syncedUntil: pending.length ? pending[pending.length - 1].createdAt : transcript.syncedUntil,
       },
     });
-    const message = reply ? await tx.message.create({ data: { leadId, author: "AI", body: reply } }) : null;
+    const message = !reply
+      ? null
+      : await tx.message.create({
+          data: voice
+            ? { leadId, author: "AI", body: "", transcript: reply, mediaUrl: voice.mediaUrl, mediaType: voice.mediaType }
+            : { leadId, author: "AI", body: reply },
+        });
     if (followUp) {
       await tx.leadEvent.create({
         data: {
@@ -542,6 +560,8 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
       .catch((err) => console.error(`[agent] monitor de actividad, lead ${leadId}:`, err));
     // En un canal real (WhatsApp) la respuesta sale al cliente; en el simulador no hace nada.
     await deliverOutbound(leadId).catch((err) => console.error(`[agent] envío, lead ${leadId}:`, err));
+    // El gasto del audio se registra después de enviar: OpenRouter tarda unos segundos en tenerlo.
+    if (voice) await voice.settle();
   }
   return sent ? "sent" : "skipped";
 }

@@ -127,7 +127,10 @@ async function send(to: string, payload: Record<string, unknown>, from?: string)
 
 export const cloudApi: WhatsAppApi = {
   sendText: (to, body, from) => send(to, { type: "text", text: { body, preview_url: false } }, from),
-  sendAudio: (to, url, from) => send(to, { type: "audio", audio: { link: url } }, from),
+  // Un Ogg/Opus (las notas de voz de la IA) va con voice: true para que llegue como nota de voz
+  // nativa, con la onda y el play; otro formato llega como archivo de audio.
+  sendAudio: (to, url, from) =>
+    send(to, { type: "audio", audio: { link: url, ...(isOggUrl(url) ? { voice: true } : {}) } }, from),
   sendFile: (to, { kind, url, fileName, caption }, from) =>
     send(to, {
       type: kind,
@@ -151,6 +154,10 @@ export const cloudApi: WhatsAppApi = {
     return { bytes: new Uint8Array(await res.arrayBuffer()), mimeType: meta.mime_type };
   },
 };
+
+function isOggUrl(url: string) {
+  return /\.(ogg|opus|oga)$/i.test(new URL(url).pathname);
+}
 
 /** Formatos de audio que WhatsApp acepta para enviar. */
 const SENDABLE_AUDIO = ["audio/ogg", "audio/mp4", "audio/mpeg", "audio/aac", "audio/amr"];

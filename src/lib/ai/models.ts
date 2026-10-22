@@ -50,3 +50,41 @@ export async function getOpenRouterKeyInfo(): Promise<OpenRouterKeyInfo | null> 
     return null;
   }
 }
+
+export type SpeechModelOption = {
+  id: string;
+  name: string;
+  voices: string[];
+  /** Dólares por unidad de entrada (carácter o token, según el modelo) y de salida (token de audio o segundo). */
+  pricing: { prompt: number; completion: number };
+  /** Los modelos de Gemini cobran por token (texto y audio); los demás, por carácter o por segundo. */
+  tokenizer: string | null;
+};
+
+/** Modelos de voz (texto a audio) de OpenRouter, con sus voces. Se cachea una hora; null si no responde. */
+export async function listSpeechModels(): Promise<SpeechModelOption[] | null> {
+  try {
+    const res = await fetch(`${OPENROUTER_URL}/models?output_modalities=speech`, { next: { revalidate: 3600 } });
+    if (!res.ok) return null;
+    const { data } = (await res.json()) as {
+      data: {
+        id: string;
+        name: string;
+        supported_voices?: string[] | null;
+        pricing?: { prompt?: string; completion?: string };
+        architecture?: { tokenizer?: string | null };
+      }[];
+    };
+    return data
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        voices: m.supported_voices ?? [],
+        pricing: { prompt: Number(m.pricing?.prompt) || 0, completion: Number(m.pricing?.completion) || 0 },
+        tokenizer: m.architecture?.tokenizer ?? null,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  } catch {
+    return null;
+  }
+}

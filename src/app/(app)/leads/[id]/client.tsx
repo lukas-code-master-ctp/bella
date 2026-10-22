@@ -133,8 +133,8 @@ export function LeadChat({
               key={item.id}
               message={item}
               animate={entersAnimated(item)}
-              onInspect={item.author === "AI" && !item.pending ? () => setInspected(item) : undefined}
-              onCorrect={item.author === "AI" && !item.pending && item.body ? () => setCorrecting(item) : undefined}
+              onInspect={item.author === "AI" && !item.pending ? () => setInspected(withSpokenText(item)) : undefined}
+              onCorrect={item.author === "AI" && !item.pending && (item.body || item.audio?.transcript) ? () => setCorrecting(withSpokenText(item)) : undefined}
             />
           ),
         )}
@@ -465,7 +465,12 @@ function ImagePreview({ file }: { file: NonNullable<ChatMessage["file"]> }) {
   );
 }
 
-/** Nota de voz (del cliente o del ejecutivo): reproductor y su transcripción. */
+/** Una nota de voz de la IA guarda lo que dijo en la transcripción: así se corrige y se inspecciona. */
+function withSpokenText(m: ChatMessage): ChatMessage {
+  return m.body || !m.audio?.transcript ? m : { ...m, body: m.audio.transcript };
+}
+
+/** Nota de voz (del cliente, del ejecutivo o de la IA): reproductor y su transcripción. */
 function VoiceNote({ audio, pending }: { audio: NonNullable<ChatMessage["audio"]>; pending?: boolean }) {
   return (
     <span className="block space-y-1.5">
