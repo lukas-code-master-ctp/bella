@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { credentials } from "../credentials";
+import { getAiConfig, missingKeyMessage, PROVIDER_LABEL } from "../ai/config";
 import { missingMessengerEnv } from "../channels/messenger";
 import { missingWhatsAppEnv } from "../channels/whatsapp";
 import { getAssistantSettings } from "../settings";
@@ -21,7 +22,8 @@ export type SetupStep = {
 };
 
 export async function setupChecklist(): Promise<SetupStep[]> {
-  const [assistant, whatsappMissing, messengerMissing, docs, users, simulated, creds, pixel] = await Promise.all([
+  const [ai, assistant, whatsappMissing, messengerMissing, docs, users, simulated, creds, pixel] = await Promise.all([
+    getAiConfig(),
     getAssistantSettings(),
     missingWhatsAppEnv(),
     missingMessengerEnv(),
@@ -32,6 +34,13 @@ export async function setupChecklist(): Promise<SetupStep[]> {
     getPixelSettings(),
   ]);
   return [
+    {
+      id: "ai-key",
+      title: `Conecta la IA con tu clave de ${PROVIDER_LABEL[ai.provider]}`,
+      description: "Sin esta clave la asistente no puede responder ni redactar sus instrucciones.",
+      href: "/settings/credentials",
+      done: !(await missingKeyMessage(ai.provider)),
+    },
     {
       id: "assistant",
       title: "Presenta a tu asistente",
