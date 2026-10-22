@@ -59,7 +59,10 @@ export async function saveAiOperation(s: Partial<AiOperationSettings>) {
   await setSetting("aiOperation", { ...(await getAiOperation()), ...s });
 }
 
-export function withinBusinessHours(s: AiOperationSettings, now: Date): boolean {
+/** Un horario semanal: lo usan la IA (horario de atención) y los SLA de ejecutivos (horario laboral). */
+export type WeeklyHours = Pick<AiOperationSettings, "hoursEnabled" | "days" | "from" | "to">;
+
+export function withinBusinessHours(s: WeeklyHours, now: Date): boolean {
   if (!s.hoursEnabled) return true;
   const { weekday, hour } = localWeekdayHour(now);
   if (s.from === s.to % 24) return s.days.includes(weekday);
@@ -81,7 +84,7 @@ export function aiBlocked(s: AiOperationSettings, channel: Channel, now: Date): 
 }
 
 /** "Lunes a viernes, de 9:00 a 19:00", para mostrar el horario. */
-export function describeHours(s: AiOperationSettings): string {
+export function describeHours(s: WeeklyHours): string {
   const days = [...s.days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
   const mondayFirst = days.map((d) => (d + 6) % 7);
   const consecutive = mondayFirst.every((d, i) => i === 0 || d === mondayFirst[i - 1] + 1);

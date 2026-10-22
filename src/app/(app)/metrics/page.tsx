@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChartNoAxesColumn, Clock, Megaphone, Sparkles, TriangleAlert, Trophy, UserRound } from "lucide-react";
+import { ChartNoAxesColumn, Clock, Timer, Megaphone, Sparkles, TriangleAlert, Trophy, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -63,6 +63,10 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             : "Cómo van tus leads, sobre los que entraron en el período."
         }
       >
+        <Link href="/metrics/sla" className={buttonClass("secondary")}>
+          <Timer aria-hidden />
+          SLA de ejecutivos
+        </Link>
         {isAdmin && (
           <Link href="/metrics/campaigns" className={buttonClass("secondary")}>
             <TriangleAlert aria-hidden />
