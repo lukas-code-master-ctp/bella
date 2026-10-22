@@ -1,4 +1,4 @@
-import { Archive, GraduationCap, ListChecks, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
+import { Archive, GraduationCap, ListChecks, Building2, KeyRound, FlaskConical, Power, Crosshair, Target, Timer, BellRing, BookOpen, Bot, ClipboardList, Contact, MessageSquareReply, MessagesSquare, Shuffle, SquareKanban, Users, Webhook } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { pendingLessonCount } from "@/lib/domain/ai-lessons";
 import { NavLink } from "../nav-link";
@@ -30,6 +30,7 @@ const GROUPS = [
       ["/settings/funnel", "Funnel y etiquetas", <SquareKanban key="i" />],
       ["/settings/fields", "Campos del cliente", <ClipboardList key="i" />],
       ["/settings/rules", "Asignación", <Shuffle key="i" />],
+      ["/settings/sla", "Tiempos de respuesta", <Timer key="i" />],
       ["/settings/follow-ups", "Seguimientos", <BellRing key="i" />],
       ["/settings/auto-close", "Cierre automático", <Archive key="i" />],
     ],
