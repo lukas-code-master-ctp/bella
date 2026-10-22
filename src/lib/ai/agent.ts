@@ -1,4 +1,4 @@
-import type { Message, Stage } from "@prisma/client";
+import type { LeadSource, Message, Stage } from "@prisma/client";
 import { toLocalInput } from "../dates";
 import { db } from "../db";
 import {
@@ -139,6 +139,7 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
     where: { id: leadId },
     include: {
       stage: true,
+      source: true,
       contact: { include: { tags: { include: { tag: true } } } },
       tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" } },
     },
@@ -160,6 +161,7 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
     `Teléfono: ${lead.contact.phone ?? "sin registrar"}`,
     `Correo: ${lead.contact.email ?? "sin registrar"}`,
     `Etapa actual: ${lead.stage.name}`,
+    ...originLines(lead.source),
     `Etapas del funnel (en orden): ${stages
       .map((s) => (s.requiresHuman ? `${s.name} [atención humana]` : s.name))
       .join(" → ")}`,
@@ -176,6 +178,43 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
     ...previous,
     "</crm_state>",
   ].join("\n");
+}
+
+/**
+ * De dónde llegó el lead: el anuncio de Meta (título, texto, campaña) o el enlace con UTM. Así la
+ * IA no pregunta por el producto que el cliente ya vio en el anuncio y puede etiquetarlo.
+ */
+export function originLines(source: LeadSource | null): string[] {
+  if (!source) return [];
+  const clean = (v: string | null) => v?.replace(/\s+/g, " ").trim() || null;
+  const details = (
+    source.kind === "AD"
+      ? [
+          ["Título del anuncio", source.adHeadline],
+          ["Texto del anuncio", source.adBody],
+          ["Anuncio", source.adName],
+          ["Conjunto de anuncios", source.adsetName],
+          ["Campaña", source.campaignName],
+        ]
+      : [
+          ["Campaña", source.utmCampaign],
+          ["Fuente", source.utmSource],
+          ["Medio", source.utmMedium],
+          ["Contenido", source.utmContent],
+          ["Término", source.utmTerm],
+          ["Página", source.landingUrl],
+        ]
+  ).flatMap(([label, value]) => (clean(value) ? [`- ${label}: ${clean(value)}`] : []));
+  if (!details.length) return [];
+  return [
+    source.kind === "AD"
+      ? `Origen del lead: llegó desde ${source.adType === "post" ? "una publicación" : "un anuncio"} de Meta.`
+      : "Origen del lead: llegó desde un enlace de campaña.",
+    ...details,
+    "Si el origen nombra un producto o proyecto, tómalo como el que le interesa al cliente: no le " +
+      "preguntes cuál busca (puedes confirmarlo de pasada) y etiquétalo si hay una etiqueta del " +
+      "catálogo que corresponda, reemplazando la de la misma categoría si tiene otra.",
+  ];
 }
 
 /**

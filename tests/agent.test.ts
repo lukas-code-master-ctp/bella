@@ -144,6 +144,56 @@ describe("asistente IA (Anthropic)", () => {
     expect(state).not.toContain("No debería aparecer");
   });
 
+  it("ve el anuncio de Meta del que llegó el lead", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    await db.leadSource.create({
+      data: {
+        leadId: lead.id,
+        kind: "AD",
+        adType: "ad",
+        adHeadline: "Parcelas Los Robles",
+        adBody: "Conoce Los Robles,\n  rodeado de bosque.",
+        campaignName: "Campaña Sur",
+        ctwaClid: "no-debería-aparecer",
+      },
+    });
+    await inbound(lead.id, "Hola, quiero más información");
+
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(lead.id, client);
+
+    const state = (requests[0].messages[0].content as { text: string }[])[0].text;
+    expect(state).toContain("Origen del lead: llegó desde un anuncio de Meta.");
+    expect(state).toContain("- Título del anuncio: Parcelas Los Robles");
+    expect(state).toContain("- Texto del anuncio: Conoce Los Robles, rodeado de bosque.");
+    expect(state).toContain("- Campaña: Campaña Sur");
+    expect(state).toContain("no le preguntes cuál busca");
+    expect(state).not.toContain("no-debería-aparecer");
+  });
+
+  it("ve la campaña del enlace con UTM y nada si el lead no tiene origen", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
+    const other = await createLead({ name: "Ana", channel: "SIMULATOR" });
+    await db.leadSource.create({ data: { leadId: lead.id, kind: "LINK", utmCampaign: "verano", utmSource: "google" } });
+    await inbound(lead.id, "Hola");
+    await inbound(other.id, "Hola");
+
+    const { client, requests } = fakeAnthropic([
+      { stop_reason: "end_turn", content: [text("¡Hola!")] },
+      { stop_reason: "end_turn", content: [text("¡Hola!")] },
+    ]);
+    await runAgent(lead.id, client);
+    await runAgent(other.id, client);
+
+    const state = (requests[0].messages[0].content as { text: string }[])[0].text;
+    expect(state).toContain("Origen del lead: llegó desde un enlace de campaña.");
+    expect(state).toContain("- Campaña: verano");
+    expect(state).toContain("- Fuente: google");
+    expect((requests[1].messages[0].content as { text: string }[])[0].text).not.toContain("Origen del lead");
+  });
+
   it("sin reglas de avance no agrega la sección al estado del CRM", async () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });
