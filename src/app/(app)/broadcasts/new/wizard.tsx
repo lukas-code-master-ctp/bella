@@ -179,6 +179,21 @@ export function BroadcastWizard({
     source === "resend" ? Boolean(resend) : source === "funnel" ? Boolean(funnelId) : rows.length > 0 && (source === "paste" || Boolean(phoneCol));
   const step2Ready = Boolean(fillReady(templateA, fillA) && (!abTest || fillReady(templateB, fillB)) && stageId && name.trim());
 
+  /** Los pasos de arriba se pueden apretar: hacia atrás siempre, hacia adelante si lo anterior está listo. */
+  function canReach(i: number) {
+    if (i === 0) return true;
+    if (i === 1) return step1Ready;
+    return step1Ready && step2Ready;
+  }
+
+  function goTo(i: number) {
+    if (i === step || !canReach(i)) return;
+    setError(null);
+    // La revisión se vuelve a calcular por si cambiaron destinatarios o plantilla.
+    if (i === 2) goReview();
+    else setStep(i);
+  }
+
   function goReview() {
     setError(null);
     start(async () => {
@@ -231,24 +246,40 @@ export function BroadcastWizard({
   return (
     <div className="space-y-4">
       <ol className="flex flex-wrap gap-2" aria-label="Pasos">
-        {STEPS.map((label, i) => (
-          <li
-            key={label}
-            aria-current={i === step ? "step" : undefined}
-            className={`flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-sm font-semibold ${
-              i === step ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            <span
-              className={`flex size-6 items-center justify-center rounded-full text-xs ${
-                i === step ? "bg-brand-600 text-white" : i < step ? "bg-brand-100 text-brand-700" : "bg-white text-slate-600"
-              }`}
-            >
-              {i < step ? <Check aria-hidden className="size-3.5" strokeWidth={3} /> : i + 1}
-            </span>
-            {label}
-          </li>
-        ))}
+        {STEPS.map((label, i) => {
+          const reachable = i < step || canReach(i);
+          const pill = (
+            <>
+              <span
+                className={`flex size-6 items-center justify-center rounded-full text-xs ${
+                  i === step ? "bg-brand-600 text-white" : i < step ? "bg-brand-100 text-brand-700" : "bg-white text-slate-600"
+                }`}
+              >
+                {i < step ? <Check aria-hidden className="size-3.5" strokeWidth={3} /> : i + 1}
+              </span>
+              {label}
+            </>
+          );
+          const pillClass = `flex items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 text-sm font-semibold ${
+            i === step ? "bg-brand-50 text-brand-700" : "bg-slate-100 text-slate-600"
+          }`;
+          return (
+            <li key={label} aria-current={i === step ? "step" : undefined}>
+              {i !== step && reachable ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => goTo(i)}
+                  className={`${pillClass} transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:opacity-60`}
+                >
+                  {pill}
+                </button>
+              ) : (
+                <div className={`${pillClass} ${i === step ? "" : "opacity-60"}`}>{pill}</div>
+              )}
+            </li>
+          );
+        })}
       </ol>
 
       <Card className="animate-rise">
