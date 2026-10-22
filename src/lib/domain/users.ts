@@ -1,70 +1,54 @@
-import bcrypt from "bcryptjs";
-import type { Role } from "@prisma/client";
+import type { Role, User } from "@prisma/client";
 import { db, rootDb } from "../db";
 import { currentCompanyId } from "../tenant";
-import { APP_URL, emailConfigured, emailFrom, escapeHtml, resendSender, type EmailSender } from "../email";
-import { MIN_PASSWORD_LENGTH } from "./password-reset";
-
-export function renderWelcomeEmail(p: { name: string; email: string; companyName: string; adminName: string; loginUrl: string }) {
-  const subject = `Te damos la bienvenida a Beliapp`;
-  const text = [
-    `Hola ${p.name}:`,
-    "",
-    `${p.adminName} te creó una cuenta en Beliapp para trabajar en ${p.companyName}.`,
-    `Entra con tu correo ${p.email} y la contraseña inicial que te entregó ${p.adminName}:`,
-    p.loginUrl,
-    "",
-    "Si no tienes la contraseña, toca «¿Olvidaste tu contraseña?» en esa pantalla y te mandamos un enlace para elegir una.",
-  ].join("\n");
-  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#0f172a;line-height:1.5">
-<p>Hola ${escapeHtml(p.name)}:</p>
-<p>${escapeHtml(p.adminName)} te creó una cuenta en Beliapp para trabajar en <strong>${escapeHtml(p.companyName)}</strong>.</p>
-<p>Entra con tu correo <strong>${escapeHtml(p.email)}</strong> y la contraseña inicial que te entregó ${escapeHtml(p.adminName)}.</p>
-<p><a href="${escapeHtml(p.loginUrl)}" style="display:inline-block;background:#2c8040;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Entrar a Beliapp</a></p>
-<p style="color:#475569;font-size:13px">Si no tienes la contraseña, toca «¿Olvidaste tu contraseña?» en esa pantalla y te mandamos un enlace para elegir una.</p>
-</div>`;
-  return { subject, text, html };
-}
+import { APP_URL, resendSender, type EmailSender } from "../email";
+import { sendInvitation, unusablePasswordHash } from "./password-reset";
 
 export type CreateUserResult = { error: string } | { emailed: boolean };
 
+type InviteOptions = { sender?: EmailSender; baseUrl?: string };
+
+async function inviteToCurrentCompany(user: Pick<User, "id" | "name" | "email">, invitedBy: string, { sender = resendSender, baseUrl = APP_URL }: InviteOptions) {
+  const company = await rootDb.company.findUnique({ where: { id: await currentCompanyId() } });
+  await sendInvitation(user, { companyName: company?.name ?? "tu empresa", invitedBy }, { sender, baseUrl });
+}
+
 /**
- * Crea un usuario en la empresa actual y le manda un correo de bienvenida con el enlace para
- * entrar (sin la contraseña). Si el correo falla, el usuario queda creado igual.
+ * Crea un usuario en la empresa actual, sin contraseña: le llega un correo con el enlace para
+ * crearla. Si el correo falla, el usuario queda creado igual y se le puede reenviar.
  */
 export async function createUser(
-  input: { name: string; email: string; password: string; role: Role },
+  input: { name: string; email: string; role: Role },
   admin: { name: string },
-  { sender = resendSender, baseUrl = APP_URL }: { sender?: EmailSender; baseUrl?: string } = {},
+  options: InviteOptions = {},
 ): Promise<CreateUserResult> {
   const email = input.email.trim().toLowerCase();
-  if (input.password.length < MIN_PASSWORD_LENGTH) {
-    return { error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` };
-  }
+  const name = input.name.trim();
+  if (!name) return { error: "Escribe el nombre." };
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Escribe un correo válido." };
   // El correo es único entre todas las empresas.
   if (await rootDb.user.findUnique({ where: { email } })) return { error: "Ya existe un usuario con ese correo." };
-  const user = await db.user.create({
-    data: { name: input.name.trim(), email, role: input.role, passwordHash: await bcrypt.hash(input.password, 10) },
-  });
-
-  if (sender === resendSender && !emailConfigured()) return { emailed: false };
+  const user = await db.user.create({ data: { name, email, role: input.role, passwordHash: await unusablePasswordHash() } });
   try {
-    const company = await rootDb.company.findUnique({ where: { id: await currentCompanyId() } });
-    await sender.send({
-      from: emailFrom(),
-      to: [user.email],
-      ...renderWelcomeEmail({
-        name: user.name,
-        email: user.email,
-        companyName: company?.name ?? "tu empresa",
-        adminName: admin.name,
-        loginUrl: `${baseUrl.replace(/\/$/, "")}/login`,
-      }),
-    });
+    await inviteToCurrentCompany(user, admin.name, options);
     return { emailed: true };
   } catch (e) {
-    console.error("Correo de bienvenida", e);
+    console.error("Invitación", e);
     return { emailed: false };
+  }
+}
+
+/** Vuelve a mandar el correo para crear la contraseña (el enlace anterior deja de valer). */
+export async function resendInvitation(id: string, admin: { name: string }, options: InviteOptions = {}): Promise<string | null> {
+  const user = await db.user.findFirst({ where: { id, deletedAt: null } });
+  if (!user) return "Ese usuario ya no existe.";
+  if (!user.active) return "Activa al usuario antes de invitarlo.";
+  try {
+    await inviteToCurrentCompany(user, admin.name, options);
+    return null;
+  } catch (e) {
+    console.error("Invitación", e);
+    return "No se pudo mandar el correo. Inténtalo de nuevo en unos minutos.";
   }
 }
 

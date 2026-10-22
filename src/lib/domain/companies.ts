@@ -1,9 +1,10 @@
-import bcrypt from "bcryptjs";
 import type { User } from "@prisma/client";
 import { db, rootDb } from "../db";
 import { DEFAULT_ASSISTANT, setSetting, type AssistantSettings } from "../settings";
 import { currentCompanyId, withCompany } from "../tenant";
+import { APP_URL, type EmailSender } from "../email";
 import { ensureDefaultFunnel } from "./default-funnel";
+import { sendInvitation, unusablePasswordHash } from "./password-reset";
 
 /**
  * Empresas que usan Beliapp. Cada una tiene sus datos, configuración y credenciales (ver
@@ -32,28 +33,43 @@ export async function seedStarterData() {
   if ((await db.tag.count()) === 0) await db.tag.createMany({ data: STARTER_TAGS });
 }
 
-export type NewCompany = { name: string; adminName: string; adminEmail: string; adminPassword: string };
+export type NewCompany = { name: string; adminName: string; adminEmail: string };
 
-/** Crea la empresa con su primer administrador y datos de ejemplo. Devuelve el error a mostrar o el id. */
-export async function createCompany(input: NewCompany): Promise<{ error: string } | { id: string }> {
+/**
+ * Crea la empresa con su primer administrador y datos de ejemplo. El administrador no recibe
+ * contraseña: le llega un correo para crearla (`emailed` dice si salió). Devuelve el error a
+ * mostrar o el id.
+ */
+export async function createCompany(
+  input: NewCompany,
+  invitedBy: { name: string },
+  options: { sender?: EmailSender; baseUrl?: string } = {},
+): Promise<{ error: string } | { id: string; emailed: boolean }> {
   const name = input.name.trim();
   const email = input.adminEmail.trim().toLowerCase();
   if (!name) return { error: "Falta el nombre de la empresa." };
   if (!input.adminName.trim() || !email) return { error: "Falta el nombre o el correo del administrador." };
-  if (input.adminPassword.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres." };
+  if (!/^\S+@\S+\.\S+$/.test(email)) return { error: "Escribe un correo válido para el administrador." };
   // El correo es único entre todas las empresas: con él se inicia sesión.
   if (await rootDb.user.findUnique({ where: { email } })) return { error: "Ya existe un usuario con ese correo." };
 
   const company = await rootDb.company.create({ data: { name } });
-  await withCompany(company.id, async () => {
-    await db.user.create({
-      data: { name: input.adminName.trim(), email, role: "ADMIN", passwordHash: await bcrypt.hash(input.adminPassword, 10) },
+  const emailed = await withCompany(company.id, async () => {
+    const admin = await db.user.create({
+      data: { name: input.adminName.trim(), email, role: "ADMIN", passwordHash: await unusablePasswordHash() },
     });
     await seedStarterData();
     // La asistente parte con el nombre de la empresa; el resto lo redacta "Presenta a tu asistente".
     await setSetting<AssistantSettings>("assistant", { ...DEFAULT_ASSISTANT, companyName: name });
+    try {
+      await sendInvitation(admin, { companyName: name, invitedBy: invitedBy.name }, { sender: options.sender, baseUrl: options.baseUrl ?? APP_URL });
+      return true;
+    } catch (e) {
+      console.error("Invitación al administrador", e);
+      return false;
+    }
   });
-  return { id: company.id };
+  return { id: company.id, emailed };
 }
 
 export type CompanySummary = {

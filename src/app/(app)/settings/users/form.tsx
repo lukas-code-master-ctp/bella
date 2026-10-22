@@ -9,19 +9,16 @@ import { createUserAction } from "../actions";
 import { withToast } from "@/components/toast";
 
 export function NewUserForm() {
-  const [error, action] = useActionState(withToast(createUserAction, (e) => (e ? null : "Usuario creado. Le mandamos un correo de bienvenida.")), null);
+  const [error, action] = useActionState(withToast(createUserAction, (e) => (e ? null : "Usuario creado. Le mandamos un correo para crear su contraseña.")), null);
   return (
     <form action={action}>
       <PanelBody>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nombre">
             <input name="name" required className={inputClass} />
           </Field>
-          <Field label="Correo">
+          <Field label="Correo" hint="Le llega un correo para crear su contraseña.">
             <input name="email" type="email" required autoComplete="off" className={inputClass} />
-          </Field>
-          <Field label="Contraseña inicial" hint="Mínimo 8 caracteres">
-            <input name="password" type="text" required minLength={8} autoComplete="off" className={inputClass} />
           </Field>
         </div>
         <fieldset className="space-y-1.5">

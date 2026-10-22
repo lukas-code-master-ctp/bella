@@ -13,6 +13,8 @@ export const RESET_TTL_MS = 60 * 60 * 1000;
 /** Evita mandar varios correos seguidos a la misma persona si aprieta el botón muchas veces. */
 const RESEND_COOLDOWN_MS = 60 * 1000;
 export const MIN_PASSWORD_LENGTH = 8;
+/** La invitación a una cuenta nueva dura más: la persona puede tardar unos días en abrirla. */
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -41,6 +43,55 @@ export function renderPasswordResetEmail({ name, link }: { name: string; link: s
   return { subject, text, html };
 }
 
+export function renderInvitationEmail(p: { name: string; email: string; companyName: string; invitedBy: string; link: string }) {
+  const subject = "Crea tu contraseña para entrar a Beliapp";
+  const text = [
+    `Hola ${p.name}:`,
+    "",
+    `${p.invitedBy} te creó una cuenta en Beliapp para trabajar en ${p.companyName}.`,
+    `Abre este enlace para crear tu contraseña (vence en 7 días y sirve una sola vez). Después entras con tu correo ${p.email}:`,
+    p.link,
+  ].join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#0f172a;line-height:1.5">
+<p>Hola ${escapeHtml(p.name)}:</p>
+<p>${escapeHtml(p.invitedBy)} te creó una cuenta en Beliapp para trabajar en <strong>${escapeHtml(p.companyName)}</strong>.</p>
+<p>Toca el botón para crear tu contraseña. Después entras con tu correo <strong>${escapeHtml(p.email)}</strong>. El enlace vence en 7 días y sirve una sola vez.</p>
+<p><a href="${escapeHtml(p.link)}" style="display:inline-block;background:#2c8040;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Crear mi contraseña</a></p>
+<p style="color:#475569;font-size:13px">Si el botón no funciona, copia este enlace: ${escapeHtml(p.link)}</p>
+</div>`;
+  return { subject, text, html };
+}
+
+/** Contraseña imposible de adivinar para una cuenta nueva: la persona elige la suya con la invitación. */
+export async function unusablePasswordHash() {
+  return bcrypt.hash(randomBytes(32).toString("base64url"), 10);
+}
+
+/** Enlace de un solo uso para `user` (en su empresa). Deja sin efecto los anteriores. */
+async function issueLink(userId: string, baseUrl: string, ttlMs: number, now: Date) {
+  const token = randomBytes(32).toString("base64url");
+  await db.passwordResetToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } });
+  await db.passwordResetToken.create({
+    data: { userId, tokenHash: hashToken(token), expiresAt: new Date(now.getTime() + ttlMs), createdAt: now },
+  });
+  return `${baseUrl.replace(/\/$/, "")}/login/restablecer?token=${token}`;
+}
+
+/**
+ * Invitación a una cuenta nueva (o que aún no entra): un correo con el enlace para crear su
+ * contraseña. Corre en la empresa del usuario. Lanza error si el correo no se pudo mandar.
+ */
+export async function sendInvitation(
+  user: Pick<User, "id" | "name" | "email">,
+  p: { companyName: string; invitedBy: string },
+  { sender = resendSender, baseUrl, now = new Date() }: { sender?: EmailSender; baseUrl: string; now?: Date },
+): Promise<void> {
+  if (!(await passwordResetAvailable(sender))) throw new Error("El envío de correos no está configurado.");
+  const from = emailFrom();
+  const link = `${await issueLink(user.id, baseUrl, INVITE_TTL_MS, now)}&nueva=1`;
+  await sender.send({ from, to: [user.email], ...renderInvitationEmail({ name: user.name, email: user.email, ...p, link }) });
+}
+
 /**
  * Crea un enlace y lo manda por correo si existe un usuario activo con esa dirección. No dice si
  * el correo existe (la pantalla muestra siempre el mismo mensaje). `baseUrl` es el origen de la app.
@@ -62,14 +113,7 @@ async function sendResetLink(user: User, baseUrl: string, sender: EmailSender, n
   });
   if (recent) return;
   const from = emailFrom();
-
-  const token = randomBytes(32).toString("base64url");
-  // Un enlace nuevo deja sin efecto los anteriores.
-  await db.passwordResetToken.updateMany({ where: { userId: user.id, usedAt: null }, data: { usedAt: now } });
-  await db.passwordResetToken.create({
-    data: { userId: user.id, tokenHash: hashToken(token), expiresAt: new Date(now.getTime() + RESET_TTL_MS), createdAt: now },
-  });
-  const link = `${baseUrl.replace(/\/$/, "")}/login/restablecer?token=${token}`;
+  const link = await issueLink(user.id, baseUrl, RESET_TTL_MS, now);
   await sender.send({ from, to: [user.email], ...renderPasswordResetEmail({ name: user.name, link }) });
 }
 

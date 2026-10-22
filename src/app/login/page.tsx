@@ -11,7 +11,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <AuthShell title="Inicia sesión" description="Entra con tu correo de trabajo.">
       {restablecida && (
         <div className="mb-6 rounded-lg bg-emerald-50 px-4 py-3 ring-1 ring-emerald-200">
-          <FormMessage tone="neutral">Listo, cambiaste tu contraseña. Ya puedes entrar con la nueva.</FormMessage>
+          <FormMessage tone="neutral">Listo, guardaste tu contraseña. Ya puedes entrar con ella.</FormMessage>
         </div>
       )}
       <LoginForm />

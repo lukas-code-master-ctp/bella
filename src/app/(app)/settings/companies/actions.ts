@@ -9,16 +9,16 @@ import { currentCompanyId } from "@/lib/tenant";
 const str = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export async function createCompanyAction(_prev: string | null, form: FormData): Promise<string | null> {
-  await requireSuperadmin();
-  const result = await createCompany({
-    name: str(form, "name"),
-    adminName: str(form, "adminName"),
-    adminEmail: str(form, "adminEmail"),
-    adminPassword: String(form.get("adminPassword") ?? ""),
-  });
+  const user = await requireSuperadmin();
+  const result = await createCompany(
+    { name: str(form, "name"), adminName: str(form, "adminName"), adminEmail: str(form, "adminEmail") },
+    user,
+  );
   if ("error" in result) return result.error;
   revalidatePath("/settings/companies");
-  return null;
+  return result.emailed
+    ? null
+    : "Empresa creada, pero no se pudo mandar el correo al administrador. Entra a la empresa y reenvíalo desde Usuarios.";
 }
 
 /** Entra a la empresa: todo lo que ve y hace desde ahora es de ella, hasta volver a cambiar. */
