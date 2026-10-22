@@ -2,7 +2,7 @@ import OpusScript from "opusscript";
 
 /**
  * Notas de voz para WhatsApp: WhatsApp solo las muestra como nota de voz (con la onda y el play)
- * si son Ogg con códec Opus. Los modelos de voz entregan MP3, así que aquí se decodifica, se
+ * si son Ogg con códec Opus. Los modelos de voz entregan MP3 o PCM, así que aquí se decodifica, se
  * codifica en Opus y se arma el contenedor Ogg (RFC 7845), todo en WebAssembly, sin ffmpeg.
  */
 
@@ -29,6 +29,43 @@ export async function decodeMp3(bytes: Uint8Array): Promise<{ samples: Float32Ar
   } finally {
     decoder.free();
   }
+}
+
+/** Frecuencia del PCM crudo de los modelos de voz (Gemini, MAI-Voice): 24 kHz, 16 bits, mono. */
+export const PCM_RATE = 24_000;
+
+/**
+ * PCM de 16 bits little-endian → muestras mono en [-1, 1]. Si viene con cabecera WAV se lee de
+ * ella la frecuencia y los canales; si es crudo se asume `rate` mono.
+ */
+export function decodePcm(bytes: Uint8Array, rate = PCM_RATE): { samples: Float32Array; sampleRate: number } {
+  const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let data = buf;
+  let sampleRate = rate;
+  let channels = 1;
+  if (buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WAVE") {
+    for (let at = 12; at + 8 <= buf.length; ) {
+      const id = buf.toString("ascii", at, at + 4);
+      const size = buf.readUInt32LE(at + 4);
+      if (id === "fmt ") {
+        channels = buf.readUInt16LE(at + 10) || 1;
+        sampleRate = buf.readUInt32LE(at + 12) || rate;
+      } else if (id === "data") {
+        data = buf.subarray(at + 8, Math.min(buf.length, at + 8 + size));
+        break;
+      }
+      at += 8 + size + (size % 2);
+    }
+  }
+  const frames = Math.floor(data.length / 2 / channels);
+  if (!frames) throw new Error("El audio del modelo de voz venía vacío.");
+  const samples = new Float32Array(frames);
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    for (let c = 0; c < channels; c++) sum += data.readInt16LE((i * channels + c) * 2) / 0x8000;
+    samples[i] = sum / channels;
+  }
+  return { samples, sampleRate };
 }
 
 /** Lleva las muestras a 48 kHz (interpolación lineal: de sobra para voz). */
