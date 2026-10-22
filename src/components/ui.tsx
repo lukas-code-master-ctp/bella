@@ -68,6 +68,23 @@ export function PageHeader({ title, description, children }: { title: string; de
   );
 }
 
+/** Grupo de acciones de un PageHeader: se mantienen juntas y, en móvil, llenan cada fila sin cortar el texto. */
+export function PageActions({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-full flex-wrap gap-2 sm:w-auto [&>*]:flex-auto [&>*]:whitespace-nowrap sm:[&>*]:flex-none">{children}</div>
+  );
+}
+
+/** Filtros de una página (GET): fila propia bajo el encabezado; en móvil, los selectores se reparten el ancho. */
+export function FilterBar({ className = "", ...props }: ComponentProps<"form">) {
+  return (
+    <form
+      className={`mb-6 flex flex-wrap items-center gap-2 [&>button]:flex-1 [&>select]:flex-1 [&>select]:basis-40 sm:[&>button]:flex-none sm:[&>select]:flex-none sm:[&>select]:basis-auto ${className}`}
+      {...props}
+    />
+  );
+}
+
 const tones = {
   neutral: "bg-slate-100 text-slate-700 ring-slate-200",
   brand: "bg-brand-50 text-brand-700 ring-brand-200",

@@ -10,7 +10,7 @@ import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
 import { countActiveCampaignAlerts } from "@/lib/domain/campaign-alerts";
 import { listFunnels } from "@/lib/domain/funnels";
 import { adReturns, formatDuration, getMetrics, type AdReturns, type Metrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
-import { buttonClass, Card, CardHeader, EmptyState, inputClass, PageHeader } from "@/components/ui";
+import { buttonClass, Card, CardHeader, EmptyState, FilterBar, inputClass, PageActions, PageHeader } from "@/components/ui";
 
 const RANGES = [
   ["7", "Últimos 7 días"],
@@ -63,69 +63,72 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             : "Cómo van tus leads, sobre los que entraron en el período."
         }
       >
-        <Link href="/metrics/sla" className={buttonClass("secondary")}>
-          <Timer aria-hidden />
-          SLA de ejecutivos
-        </Link>
-        {isAdmin && (
-          <Link href="/metrics/campaigns" className={buttonClass("secondary")}>
-            <TriangleAlert aria-hidden />
-            Campañas en alerta
-            {campaignAlerts > 0 && (
-              <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">{campaignAlerts}</span>
-            )}
+        <PageActions>
+          <Link href="/metrics/sla" className={buttonClass("secondary")}>
+            <Timer aria-hidden />
+            SLA de ejecutivos
           </Link>
-        )}
-        {isAdmin && (
-          <Link href="/metrics/insights" className={buttonClass("secondary")}>
-            <Sparkles aria-hidden />
-            Resumen semanal
-            {newInsight && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">Nuevo</span>}
-          </Link>
-        )}
-        <form className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <label htmlFor="d" className="sr-only">
-            Período
-          </label>
-          <select id="d" name="d" defaultValue={String(days)} className={`${inputClass} sm:w-44`}>
-            {RANGES.map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </select>
-          {funnelId && (
-            <>
-              <label htmlFor="funnel" className="sr-only">
-                Embudo
-              </label>
-              <select id="funnel" name="funnel" defaultValue={funnelId} className={`${inputClass} sm:w-44`}>
-                {funnels.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-            </>
+          {isAdmin && (
+            <Link href="/metrics/campaigns" className={buttonClass("secondary")}>
+              <TriangleAlert aria-hidden />
+              Campañas en alerta
+              {campaignAlerts > 0 && (
+                <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">{campaignAlerts}</span>
+              )}
+            </Link>
           )}
           {isAdmin && (
-            <>
-              <label htmlFor="executive" className="sr-only">
-                Ejecutivo
-              </label>
-              <select id="executive" name="executive" defaultValue={assigneeId ?? ""} className={`${inputClass} sm:w-48`}>
-                <option value="">Todo el equipo</option>
-                {executives.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-            </>
+            <Link href="/metrics/insights" className={buttonClass("secondary")}>
+              <Sparkles aria-hidden />
+              Resumen semanal
+              {newInsight && <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">Nuevo</span>}
+            </Link>
           )}
-          <button className={buttonClass("secondary")}>Ver</button>
-        </form>
+        </PageActions>
       </PageHeader>
+
+      <FilterBar>
+        <label htmlFor="d" className="sr-only">
+          Período
+        </label>
+        <select id="d" name="d" defaultValue={String(days)} className={`${inputClass} sm:w-44`}>
+          {RANGES.map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
+            </option>
+          ))}
+        </select>
+        {funnelId && (
+          <>
+            <label htmlFor="funnel" className="sr-only">
+              Embudo
+            </label>
+            <select id="funnel" name="funnel" defaultValue={funnelId} className={`${inputClass} sm:w-44`}>
+              {funnels.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        {isAdmin && (
+          <>
+            <label htmlFor="executive" className="sr-only">
+              Ejecutivo
+            </label>
+            <select id="executive" name="executive" defaultValue={assigneeId ?? ""} className={`${inputClass} sm:w-48`}>
+              <option value="">Todo el equipo</option>
+              {executives.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        <button className={buttonClass("secondary")}>Ver</button>
+      </FilterBar>
 
       {campaignAlerts > 0 && (
         <Link

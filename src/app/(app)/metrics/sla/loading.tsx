@@ -4,6 +4,10 @@ export default function SlaLoading() {
   return (
     <LoadingScreen label="Cargando el SLA de ejecutivos…">
       <PageHeaderSkeleton />
+      <div className="mb-6 flex gap-2">
+        <Skeleton className="h-10 flex-1 sm:w-44 sm:flex-none" />
+        <Skeleton className="h-10 w-16" />
+      </div>
       <div className="space-y-6">
         <div className="grid gap-3 sm:grid-cols-3">
           {Array.from({ length: 3 }, (_, i) => (
