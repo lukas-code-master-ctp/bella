@@ -111,10 +111,22 @@ export default async function FunnelSettingsPage({ searchParams }: { searchParam
                   </span>
                 </div>
                 {s.requiresHuman ? (
-                  <p className="flex items-center gap-1.5 text-xs text-slate-600">
-                    <UserRound aria-hidden className="size-3.5" />
-                    La IA se pausa y un ejecutivo toma la conversación.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-1.5 text-xs text-slate-600">
+                      <UserRound aria-hidden className="size-3.5" />
+                      La IA se pausa y un ejecutivo toma la conversación.
+                    </p>
+                    <label className="block text-sm text-slate-700">
+                      <span className="mb-1 block text-xs font-medium text-slate-600">Cuándo la IA deriva un lead a esta etapa</span>
+                      <textarea
+                        name="entryCriteria"
+                        rows={2}
+                        defaultValue={s.entryCriteria ?? ""}
+                        placeholder="Ej.: cuando el cliente quiera visitar o reservar, pida un descuento o tenga un reclamo. Vale desde cualquier etapa. Si lo dejas vacío, la IA deriva cuando el cliente pide una persona, quiere comprar, está molesto o pregunta algo que no sabe."
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
                 ) : (
                   <label className="block text-sm text-slate-700">
                     <span className="mb-1 block text-xs font-medium text-slate-600">Cuándo la IA saca al lead de esta etapa</span>

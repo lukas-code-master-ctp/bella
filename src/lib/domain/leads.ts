@@ -2,6 +2,7 @@ import type { Actor, Channel, Prisma } from "@prisma/client";
 import { db } from "../db";
 import { deliverPendingPush } from "../push";
 import { getSetting } from "../settings";
+import { normalize } from "../text";
 import { applyAssignment } from "./assignment";
 import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./conversions";
 import { notifyAssignedTx, notifyHumanStageTx, notifyWonAmountTx } from "./notifications";
@@ -285,16 +286,18 @@ export async function setAiEnabled(leadId: string, enabled: boolean, by: ActorRe
 }
 
 /**
- * La IA deriva a un humano: mueve el lead a la primera etapa de atención humana
- * (si existe), pausa la IA y deja que las reglas asignen un ejecutivo.
+ * La IA deriva a un humano: mueve el lead a la etapa de atención humana pedida (o a la primera,
+ * si no nombra una válida), pausa la IA y deja que las reglas asignen un ejecutivo.
  */
-export async function handoffToHumanTx(tx: Tx, leadId: string, reason: string) {
+export async function handoffToHumanTx(tx: Tx, leadId: string, reason: string, stageName = "") {
   const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId }, include: { stage: true } });
-  // La etapa de atención humana del mismo embudo del lead.
-  const humanStage = await tx.stage.findFirst({
+  // Las etapas de atención humana del mismo embudo del lead.
+  const humanStages = await tx.stage.findMany({
     where: { requiresHuman: true, funnelId: lead.stage.funnelId },
     orderBy: { position: "asc" },
   });
+  const wanted = normalize(stageName);
+  const humanStage = humanStages.find((s) => wanted && normalize(s.name) === wanted) ?? humanStages[0];
   await tx.leadEvent.create({ data: { leadId, type: "HANDOFF", actor: "AI", reason } });
   // Entrar a la etapa humana ya pausa la IA y notifica (moveStageTx); si no hay cambio de etapa, se hace aquí.
   if (humanStage && humanStage.id !== lead.stageId) {

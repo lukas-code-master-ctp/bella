@@ -99,7 +99,8 @@ export function buildSystemPrompt(
         ]
       : []),
     "- Usa handoff_to_human cuando el cliente pida hablar con una persona, quiera concretar la " +
-      "compra, esté molesto, o necesite algo que no puedes resolver.",
+      "compra, esté molesto, o necesite algo que no puedes resolver, salvo que el estado del CRM " +
+      "traiga criterios de derivación de la empresa: entonces sigue esos.",
     "- Tu respuesta final de cada turno es exactamente el mensaje que recibirá el cliente por chat: " +
       "texto plano, sin markdown ni encabezados.",
     "",
@@ -179,7 +180,7 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
 
 /**
  * Criterios que la empresa definió en Configuración para sacar al lead de cada etapa que atiende
- * la IA. Sin destino nombrado en el criterio, el lead avanza a la etapa siguiente.
+ * la IA (sin destino nombrado, avanza a la siguiente) y para derivarlo a cada etapa humana.
  */
 export function stageRules(stages: Stage[]): string[] {
   const rules = stages.flatMap((s, i) => {
@@ -188,11 +189,26 @@ export function stageRules(stages: Stage[]): string[] {
     const next = stages[i + 1];
     return [`- Desde "${s.name}"${next ? ` (siguiente: "${next.name}")` : ""}: ${criteria}`];
   });
-  if (!rules.length) return [];
+  const handoffs = stages.flatMap((s) => {
+    const criteria = s.requiresHuman ? s.entryCriteria?.trim() : "";
+    return criteria ? [`- A "${s.name}": ${criteria}`] : [];
+  });
   return [
-    "Reglas de avance entre etapas (definidas por la empresa; síguelas al usar move_stage o " +
-      "handoff_to_human, y si la regla no nombra otra etapa, mueve a la siguiente):",
-    ...rules,
+    ...(rules.length
+      ? [
+          "Reglas de avance entre etapas (definidas por la empresa; síguelas al usar move_stage o " +
+            "handoff_to_human, y si la regla no nombra otra etapa, mueve a la siguiente):",
+          ...rules,
+        ]
+      : []),
+    ...(handoffs.length
+      ? [
+          "Cuándo derivar a atención humana (definido por la empresa; vale desde cualquier etapa y " +
+            "prevalece sobre los criterios generales de derivación, salvo que el cliente pida hablar " +
+            "con una persona, que siempre se deriva). Usa handoff_to_human con esa etapa:",
+          ...handoffs,
+        ]
+      : []),
   ];
 }
 
