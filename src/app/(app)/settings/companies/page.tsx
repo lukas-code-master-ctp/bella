@@ -19,7 +19,7 @@ export default async function CompaniesPage() {
         title="Empresas"
         description="Cada empresa tiene sus leads, su equipo, su configuración y sus credenciales. Sus usuarios entran por el mismo link y solo ven la suya; tú puedes entrar a cualquiera."
       />
-      <ul className="stagger overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <ul className="stagger rounded-xl border border-slate-200 bg-white shadow-sm">
         {companies.map((c) => (
           <li key={c.id} className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4 text-sm last:border-0">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700 [&_svg]:size-5">
