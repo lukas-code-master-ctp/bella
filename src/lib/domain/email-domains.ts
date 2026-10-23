@@ -29,6 +29,8 @@ export type EmailDomainsApi = {
   create(name: string): Promise<ResendDomain>;
   get(id: string): Promise<ResendDomain>;
   verify(id: string): Promise<void>;
+  /** Activa el seguimiento de aperturas y clics (para las métricas de cada envío). */
+  track(id: string): Promise<void>;
   remove(id: string): Promise<void>;
 };
 
@@ -50,6 +52,9 @@ export const resendDomainsApi: EmailDomainsApi = {
   get: (id) => resend<ResendDomain>("GET", `/domains/${id}`),
   verify: async (id) => {
     await resend("POST", `/domains/${id}/verify`);
+  },
+  track: async (id) => {
+    await resend("PATCH", `/domains/${id}`, { open_tracking: true, click_tracking: true });
   },
   remove: async (id) => {
     await resend("DELETE", `/domains/${id}`);
@@ -102,6 +107,7 @@ export async function connectEmailDomain(input: { domain: string } & SenderInput
     throw new DomainError("Ese dominio ya está conectado en otra empresa de Beliapp.");
   }
   const created = await api.create(domain);
+  await api.track(created.id);
   return db.emailDomain.create({
     data: { domain, resendId: created.id, status: created.status, records: created.records ?? [], ...sender },
   });

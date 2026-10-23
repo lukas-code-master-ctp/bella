@@ -4,9 +4,10 @@ import { handleResendEvent, verifyResendSignature } from "@/lib/domain/email-sup
 export const dynamic = "force-dynamic";
 
 /**
- * Avisos de Resend (rebotes y quejas de spam) de los envíos por correo de todas las empresas:
- * la empresa sale del dominio del remitente. Se configura una vez en Resend → Webhooks con los
- * eventos email.bounced y email.complained, y su secreto va en RESEND_WEBHOOK_SECRET.
+ * Avisos de Resend de los envíos por correo de todas las empresas (entregado, abierto, clic,
+ * rebote, queja): la empresa sale del dominio del remitente. Se configura una vez en Resend →
+ * Webhooks con los eventos email.delivered, email.opened, email.clicked, email.bounced y
+ * email.complained, y su secreto va en RESEND_WEBHOOK_SECRET.
  */
 export async function POST(request: NextRequest) {
   const raw = await request.text();

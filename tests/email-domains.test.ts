@@ -44,6 +44,9 @@ function fakeApi(status = "not_started") {
     async verify(id) {
       calls.push(`verify ${id}`);
     },
+    async track(id) {
+      calls.push(`track ${id}`);
+    },
     async remove(id) {
       calls.push(`remove ${id}`);
     },
@@ -58,14 +61,14 @@ describe("dominio de envío por correo", () => {
     const { api, calls, setStatus } = fakeApi();
     const d = await connectEmailDomain({ domain: " https://Noticias.Motos.cl/ ", ...sender }, api);
     expect(d).toMatchObject({ domain: "noticias.motos.cl", resendId: "rs_1", status: "not_started", companyId: TEST_COMPANY_ID });
-    expect(calls).toEqual(["create noticias.motos.cl"]);
+    expect(calls).toEqual(["create noticias.motos.cl", "track rs_1"]);
     expect(await companyEmailSender()).toBeNull();
 
     setStatus("verified");
     const checked = await checkEmailDomain(api);
     expect(checked.status).toBe("verified");
     expect(checked.verifiedAt).toBeInstanceOf(Date);
-    expect(calls).toEqual(["create noticias.motos.cl", "verify rs_1", "get rs_1"]);
+    expect(calls).toEqual(["create noticias.motos.cl", "track rs_1", "verify rs_1", "get rs_1"]);
 
     await updateEmailSender({ fromName: "Motos <Sur>", fromLocal: "Hola", replyTo: "ventas@motos.cl" });
     expect(await companyEmailSender()).toEqual({ from: "Motos Sur <hola@noticias.motos.cl>", replyTo: "ventas@motos.cl" });
