@@ -731,15 +731,23 @@ export async function broadcastRecipients(broadcastId: string, filter: Recipient
 // --- Prueba y plantillas nuevas -----------------------------------------------------------
 
 /**
- * Envía la plantilla, con los datos de la primera persona de la lista, a un número del equipo
- * para ver cómo llega. No crea contacto, lead ni mensaje en el chat.
+ * Envía la plantilla a un número del equipo para ver cómo llega: "Primer nombre" lleva el nombre
+ * de quien prueba (`testerName`) y el resto de las variables, los datos de la primera persona de la lista.
+ * No crea contacto, lead ni mensaje en el chat.
  */
-export async function sendBroadcastTest(input: BroadcastInput, to: string, { api = cloudApi }: { api?: WhatsAppApi } = {}) {
+export async function sendBroadcastTest(
+  input: BroadcastInput,
+  to: string,
+  { api = cloudApi, testerName = "" }: { api?: WhatsAppApi; testerName?: string } = {},
+) {
   const { headers } = await validate(input);
   const phone = normalizePhone(to, input.audience.kind === "rows" ? (input.audience.countryCode ?? "") : "");
   if (!phone) throw new DomainError("Escribe tu número de WhatsApp con código de país, ej. +56 9 1234 5678.");
   const { recipients } = await auditAudience(input.audience, [allVariables(input)]);
-  const params = recipients[0]?.fills[0] ?? resolveParams(allVariables(input), { name: "María" });
+  const variables = allVariables(input);
+  const first = recipients[0]?.fills[0] ?? resolveParams(variables, { name: "María" });
+  const tester = firstName(testerName);
+  const params = first && tester ? first.map((p, i) => (variables[i]?.source === "name" ? tester : p)) : first;
   if (!params) throw new DomainError("Para la prueba hace falta al menos una persona en la lista con todos los datos.");
   if (api === cloudApi) {
     const missing = await missingSendCredentials(input.fromPhoneNumberId || null);
