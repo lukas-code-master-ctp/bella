@@ -75,7 +75,7 @@ export function AiForm({
               className={`${inputClass} font-mono`}
             />
           </Field>
-          <Field label="Modelo para resumen y puntaje" hint={price(summarySelected)}>
+          <Field label="Modelo para todo lo demás" hint={["Todo menos conversar con clientes: resumen y puntaje, borradores @ia, informes, pulir textos.", price(summarySelected)].filter(Boolean).join(" ")}>
             <input
               name="summaryModel"
               list={provider === "openrouter" ? "openrouter-models" : undefined}
