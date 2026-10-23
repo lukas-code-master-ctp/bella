@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Channel } from "@prisma/client";
 import { ArrowUpRight, Smartphone, SquareKanban } from "lucide-react";
 import { missingMessengerEnv } from "@/lib/channels/messenger";
 import { missingWhatsAppEnv } from "@/lib/channels/whatsapp";
@@ -7,6 +8,7 @@ import { db } from "@/lib/db";
 import { credentials } from "@/lib/credentials";
 import { pendingDeletionRequests } from "@/lib/domain/privacy";
 import { getWebWidgetSettings } from "@/lib/domain/web-widget";
+import { getEmailDomain } from "@/lib/domain/email-domains";
 import { listWhatsAppNumbers } from "@/lib/domain/whatsapp-numbers";
 import { buttonClass, Card, CardHeader, Field, inputClass, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -22,10 +24,11 @@ const DESCRIPTIONS: Record<Exclude<ChannelKind, "SIMULATOR">, string> = {
   INSTAGRAM: "Mensajes directos y comentarios de tu cuenta.",
   FACEBOOK: "Mensajes de tu página de Facebook.",
   WEB: "Burbuja de chat flotante en tu sitio web.",
+  EMAIL: "Newsletters y envíos masivos desde tu dominio.",
 };
 
 export default async function ChannelsSettingsPage() {
-  const [s, leads, stages, numbers, env, waMissing, metaMissing, deletions, widget] = await Promise.all([
+  const [s, leads, stages, numbers, env, waMissing, metaMissing, deletions, widget, emailDomain] = await Promise.all([
     getChannelSettings(),
     openLeadsByChannel(),
     db.stage.count(),
@@ -35,6 +38,7 @@ export default async function ChannelsSettingsPage() {
     missingMessengerEnv(),
     pendingDeletionRequests(),
     getWebWidgetSettings(),
+    getEmailDomain(),
   ]);
   const metaOk = metaMissing.length === 0;
 
@@ -77,9 +81,18 @@ export default async function ChannelsSettingsPage() {
       aiOn: s.webAi,
       setup: "/settings/channels/web",
     },
+    {
+      kind: "EMAIL",
+      group: "Correo",
+      name: "Correo",
+      detail: !emailDomain ? "Sin conectar" : emailDomain.status === "verified" ? emailDomain.domain : `${emailDomain.domain}: faltan registros DNS`,
+      connected: emailDomain?.status === "verified",
+      setup: "/settings/channels/email",
+    },
   ];
   const inFunnel = [
-    ...rows.filter((r) => r.connected),
+    // El correo solo envía (Envíos masivos): sus respuestas no entran como leads de un canal propio.
+    ...rows.filter((r): r is (typeof rows)[number] & { kind: Channel } => r.connected && r.kind !== "EMAIL"),
     { kind: "SIMULATOR" as const, name: "Simulador", detail: "Pruebas de la asistente" },
   ];
 
