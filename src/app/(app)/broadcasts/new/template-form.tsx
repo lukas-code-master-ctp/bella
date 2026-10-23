@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LoaderCircle, Send, X } from "lucide-react";
+import { LoaderCircle, Send, Sparkles, Undo2, X } from "lucide-react";
 import { templateDraftError, templateDraftParams, type TemplateDraft } from "@/lib/domain/broadcast-templates";
 import { Button, Field, FormMessage, inputClass } from "@/components/ui";
-import { submitBroadcastTemplateAction } from "../actions";
+import { polishTemplateAction, submitBroadcastTemplateAction } from "../actions";
 
 /** Nombre válido para Meta a partir de lo que escribió: "Preventa Octubre" → "preventa_octubre". */
 const slug = (s: string) =>
@@ -24,6 +24,9 @@ export function TemplateForm({ onClose }: { onClose: () => void }) {
   const [examples, setExamples] = useState<string[]>(["María"]);
   const [message, setMessage] = useState<{ tone: "danger" | "neutral"; text: string } | null>(null);
   const [pending, start] = useTransition();
+  const [polishing, startPolish] = useTransition();
+  /** Texto antes de pulir, para deshacer. */
+  const [beforePolish, setBeforePolish] = useState<string | null>(null);
 
   const params = templateDraftParams(text);
   const draft: TemplateDraft = { name: slug(label), language, category, text, examples };
@@ -35,6 +38,16 @@ export function TemplateForm({ onClose }: { onClose: () => void }) {
     start(async () => {
       const res = await submitBroadcastTemplateAction(draft);
       setMessage("error" in res ? { tone: "danger", text: res.error } : { tone: "neutral", text: res.ok });
+    });
+  }
+
+  function polish() {
+    setMessage(null);
+    startPolish(async () => {
+      const res = await polishTemplateAction(text, category);
+      if ("error" in res) return setMessage({ tone: "danger", text: res.error });
+      setBeforePolish(text);
+      setText(res.text);
     });
   }
 
@@ -73,12 +86,28 @@ export function TemplateForm({ onClose }: { onClose: () => void }) {
         </Field>
       </div>
       <Field label="Mensaje" hint="{{1}}, {{2}}… se reemplazan por los datos de cada persona. No puede empezar ni terminar con una variable.">
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} maxLength={1024} className={inputClass} />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} disabled={polishing} rows={5} maxLength={1024} className={inputClass} />
       </Field>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="secondary" onClick={insertVariable}>
           Agregar variable {`{{${params + 1}}}`}
         </Button>
+        <Button variant="secondary" onClick={polish} disabled={polishing || !text.trim()} title="La IA mejora la redacción y mantiene las variables">
+          {polishing ? <LoaderCircle aria-hidden className="animate-spin" /> : <Sparkles aria-hidden />}
+          {polishing ? "Puliendo…" : "Pulir"}
+        </Button>
+        {beforePolish !== null && !polishing && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setText(beforePolish);
+              setBeforePolish(null);
+            }}
+          >
+            <Undo2 aria-hidden />
+            Deshacer
+          </Button>
+        )}
         <span className="text-xs text-slate-600">{text.length}/1024</span>
       </div>
       {params > 0 && (
