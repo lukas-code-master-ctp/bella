@@ -19,6 +19,7 @@ import {
 import { deleteTemplate, submitTemplate } from "@/lib/channels/whatsapp";
 import { templateDraftError, templateDraftParams, type TemplateDraft } from "@/lib/domain/broadcast-templates";
 import { DomainError } from "@/lib/domain/leads";
+import { polishTemplateText } from "@/lib/ai/polish-template";
 
 export type PreviewResult = Awaited<ReturnType<typeof previewBroadcast>> | { error: string };
 
@@ -119,4 +120,15 @@ export async function deleteTemplateAction(id: string, name: string): Promise<{ 
   revalidatePath("/broadcasts/templates");
   revalidatePath("/broadcasts/new");
   return null;
+}
+
+/** "Pulir": la IA mejora la redacción del mensaje de una plantilla nueva, con las mismas variables. */
+export async function polishTemplateAction(text: string, category: "MARKETING" | "UTILITY"): Promise<{ text: string } | { error: string }> {
+  await requireAdmin();
+  try {
+    return { text: await polishTemplateText(text.slice(0, 2000), category === "UTILITY" ? "UTILITY" : "MARKETING") };
+  } catch (e) {
+    if (e instanceof DomainError) return { error: e.message };
+    return { error: "No se pudo pulir el mensaje. Revisa la IA en Configuración e intenta de nuevo." };
+  }
 }
