@@ -32,7 +32,7 @@ describe("redactar con IA (@ia)", () => {
     const draft = await draftExecutiveReply(lead.id, "Pedro", "ofrécele el sábado", { clients });
 
     expect(draft).toBe("¡Hola Ana! Sí, el sábado a las 11:00 hay visita guiada. ¿Te anoto?");
-    expect(requests[0].model).toBe("grande");
+    expect(requests[0].model).toBe("chico");
     const [system, input] = requests[0].messages.map((m) => m.content);
     expect(system).toContain("Pedro, ejecutivo de ventas");
     expect(system).toContain("Visitas guiadas los sábados");

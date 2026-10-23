@@ -2,8 +2,8 @@ import { getAiConfig } from "./config";
 import { defaultAnthropic, openRouterClient, type ProviderClients } from "./providers";
 
 /**
- * Una sola llamada al modelo principal (el de Configuración), sin herramientas ni historial:
- * para informes que la IA arma de una vez (resumen semanal, recomendaciones de campañas).
+ * Una sola llamada, sin herramientas ni historial, al modelo de tareas de apoyo (todo lo que no es
+ * conversar con el cliente): informes, recomendaciones, borradores, pulir textos.
  * Devuelve el texto y el modelo usado.
  */
 export async function completeOnce(
@@ -26,15 +26,15 @@ export async function completeOnce(
   if (config.provider === "anthropic") {
     const api = clients.anthropic ?? (await defaultAnthropic());
     const response = await api.beta.messages.create({
-      model: config.model,
+      model: config.summaryModel,
       max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: input }],
     });
-    return { text: response.content.map((b) => (b.type === "text" ? b.text : "")).join(""), model: config.model };
+    return { text: response.content.map((b) => (b.type === "text" ? b.text : "")).join(""), model: config.summaryModel };
   }
   const response = await (clients.openrouter ?? openRouterClient).complete({
-    model: config.model,
+    model: config.summaryModel,
     max_tokens: maxTokens,
     ...(effort ? { reasoning: { effort } } : {}),
     messages: [
@@ -42,7 +42,7 @@ export async function completeOnce(
       { role: "user", content: input },
     ],
   });
-  return { text: response.choices?.[0]?.message.content ?? "", model: config.model };
+  return { text: response.choices?.[0]?.message.content ?? "", model: config.summaryModel };
 }
 
 /** El objeto JSON dentro de la respuesta (aunque venga entre ```json o con texto alrededor). */

@@ -65,7 +65,7 @@ describe("alertas de campañas", () => {
       { reason: "Sin presupuesto", count: 2 },
     ]);
     expect(alert.advice).toMatchObject({ shouldPause: true, improvements: ["Aclarar en el anuncio que es venta", "Excluir intereses de arriendo"] });
-    expect(alert.adviceModel).toBe("grande");
+    expect(alert.adviceModel).toBe("chico");
     const input = requests[0].messages[1].content;
     expect(input).toContain("Campaña: Arriendo.");
     expect(input).toContain("Parcelas desde $9 millones");

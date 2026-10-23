@@ -56,7 +56,7 @@ describe("insights semanales", () => {
     const { clients, requests } = fakeOpenRouter("```json\n" + REPLY + "\n```");
     expect(await runWeeklyInsight(now, clients)).toMatchObject({ created: true, insightId: expect.any(String) });
 
-    expect(requests[0].model).toBe("grande");
+    expect(requests[0].model).toBe("chico");
     const input = requests[0].messages[1].content;
     expect(input).toContain("Leads nuevos: 1 (abiertos 0, ganados 0, perdidos 1)");
     expect(input).toContain("Sin presupuesto (1)");
