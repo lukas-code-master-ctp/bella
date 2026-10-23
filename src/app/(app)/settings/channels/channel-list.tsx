@@ -12,7 +12,8 @@ export type ChannelRow = {
   name: string;
   detail: string;
   connected: boolean;
-  aiOn: boolean;
+  /** Si la asistente responde sola; sin valor, el canal no tiene asistente (correo). */
+  aiOn?: boolean;
   /** Pantalla de configuración de este canal. */
   setup: string;
 };
@@ -64,12 +65,14 @@ export function ChannelList({ rows }: { rows: ChannelRow[] }) {
                     <p className="truncate text-sm font-semibold text-slate-900">{r.name}</p>
                     <p className="truncate text-xs text-slate-600">{r.detail}</p>
                   </div>
+{r.aiOn !== undefined && (
                   <span
                     title={r.aiOn ? "La asistente responde sola" : "La asistente no responde sola"}
                     className={`flex size-8 items-center justify-center rounded-lg [&_svg]:size-4 ${r.aiOn ? "bg-brand-50 text-brand-700" : "text-slate-400"}`}
                   >
                     {r.aiOn ? <Bot aria-label="Asistente encendida" /> : <BotOff aria-label="Asistente apagada" />}
                   </span>
+                  )}
                   <span
                     title={r.connected ? "Conectado" : "Sin conectar: faltan credenciales"}
                     className={`flex size-8 items-center justify-center [&_svg]:size-4 ${r.connected ? "text-emerald-600" : "text-slate-400"}`}

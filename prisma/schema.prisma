@@ -1124,3 +1124,55 @@ model QuickReply {
 
   @@index([companyId, userId])
 }
+
+/// Dominio (o subdominio) desde el que una empresa manda sus envíos masivos por correo, por
+/// ejemplo noticias.suempresa.cl. Se crea en la cuenta Resend de Beliapp y la empresa agrega
+/// los registros DNS que entrega Resend (ver src/lib/domain/email-domains.ts). Uno por empresa.
+model EmailDomain {
+  id         String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId  String    @unique @default("default")
+  /// En minúsculas; único entre todas las empresas.
+  domain     String    @unique
+  /// Id del dominio en Resend.
+  resendId   String
+  /// Estado según Resend: not_started, pending, verified, failed o temporary_failure.
+  status     String    @default("not_started")
+  /// Registros DNS que la empresa debe agregar, como los entrega Resend.
+  records    Json      @default("[]")
+  /// Nombre y parte antes de la @ del remitente: "Mi Empresa <noticias@dominio>".
+  fromName   String
+  fromLocal  String    @default("noticias")
+  /// Dirección a la que llegan las respuestas; vacía usa el remitente.
+  replyTo    String    @default("")
+  createdAt  DateTime  @default(now())
+  verifiedAt DateTime?
+  checkedAt  DateTime?
+}
+
+enum EmailSuppressionReason {
+  /// Se dio de baja con el enlace del correo (se puede volver a incluir si lo pide).
+  UNSUBSCRIBED
+  /// El correo rebotó de forma definitiva (la dirección no existe).
+  BOUNCED
+  /// La persona lo marcó como spam.
+  COMPLAINED
+}
+
+/// Dirección a la que una empresa ya no manda envíos masivos por correo (ver
+/// src/lib/domain/email-suppression.ts). Es por dirección y no por contacto, así cubre también
+/// las listas importadas.
+model EmailSuppression {
+  id        String                 @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId String                 @default("default")
+  /// En minúsculas.
+  email     String
+  reason    EmailSuppressionReason
+  /// Motivo que entregó el servidor de correo, si hubo.
+  detail    String                 @default("")
+  createdAt DateTime               @default(now())
+
+  @@unique([companyId, email])
+  @@index([companyId, createdAt])
+}

@@ -1,18 +1,20 @@
-import { Bot, Globe } from "lucide-react";
+import { Bot, Globe, Mail } from "lucide-react";
 
-export type ChannelKind = "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "WEB" | "SIMULATOR";
+export type ChannelKind = "WHATSAPP" | "INSTAGRAM" | "FACEBOOK" | "WEB" | "EMAIL" | "SIMULATOR";
 
 const BG: Record<ChannelKind, string> = {
   WHATSAPP: "bg-[#25D366]",
   INSTAGRAM: "bg-[linear-gradient(45deg,#FEDA75,#FA7E1E_25%,#D62976_55%,#962FBF_80%,#4F5BD5)]",
   FACEBOOK: "bg-[linear-gradient(45deg,#0A7CFF,#A033FF_70%,#FF5280)]",
   WEB: "bg-[linear-gradient(135deg,var(--color-brand-700),var(--color-brand-500))]",
+  EMAIL: "bg-[linear-gradient(135deg,var(--color-brand-600),var(--color-brand-500))]",
   SIMULATOR: "bg-brand-600",
 };
 
 function Glyph({ kind }: { kind: ChannelKind }) {
   if (kind === "SIMULATOR") return <Bot aria-hidden className="size-1/2" />;
   if (kind === "WEB") return <Globe aria-hidden className="size-1/2" />;
+  if (kind === "EMAIL") return <Mail aria-hidden className="size-1/2" />;
   return (
     <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-1/2">
       {kind === "INSTAGRAM" ? (
@@ -36,7 +38,7 @@ function Glyph({ kind }: { kind: ChannelKind }) {
   );
 }
 
-/** Ícono del canal con su color de marca (WhatsApp, Instagram, Messenger) o el de Beliapp (web, simulador). */
+/** Ícono del canal con su color de marca (WhatsApp, Instagram, Messenger) o el de Beliapp (web, correo, simulador). */
 export function ChannelIcon({ kind, size = "md" }: { kind: ChannelKind; size?: "md" | "lg" }) {
   return (
     <span

@@ -18,6 +18,8 @@ import { ChannelSendError, submitTemplate, subscribeWhatsAppApp } from "@/lib/ch
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { saveWebWidgetSettings } from "@/lib/domain/web-widget";
+import { checkEmailDomain, connectEmailDomain, removeEmailDomain, updateEmailSender } from "@/lib/domain/email-domains";
+import { resubscribeEmail } from "@/lib/domain/email-suppression";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
 import { resolveDeletionRequest, saveLegalSettings } from "@/lib/domain/privacy";
 import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib/domain/funnels";
@@ -541,4 +543,59 @@ export async function retryConversionsAction() {
   await db.conversionEvent.updateMany({ where: { status: "FAILED" }, data: { attempts: 0 } });
   await deliverPendingConversions();
   revalidatePath("/settings/pixel");
+}
+
+// Correo (dominio de envío de los envíos masivos)
+
+export async function connectEmailDomainAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  try {
+    await connectEmailDomain({
+      domain: str(form, "domain"),
+      fromName: str(form, "fromName"),
+      fromLocal: str(form, "fromLocal"),
+      replyTo: str(form, "replyTo"),
+    });
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/channels", "layout");
+  return null;
+}
+
+export async function checkEmailDomainAction(_prev: string | null, _form: FormData): Promise<string | null> {
+  await requireAdmin();
+  try {
+    const d = await checkEmailDomain();
+    revalidatePath("/settings/channels", "layout");
+    return d.status === "verified" ? null : "Resend aún no ve todos los registros. El DNS puede tardar desde minutos hasta unas horas en propagarse.";
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+}
+
+export async function updateEmailSenderAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  try {
+    await updateEmailSender({ fromName: str(form, "fromName"), fromLocal: str(form, "fromLocal"), replyTo: str(form, "replyTo") });
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings/channels", "layout");
+  return null;
+}
+
+export async function removeEmailDomainAction() {
+  await requireAdmin();
+  await removeEmailDomain();
+  revalidatePath("/settings/channels", "layout");
+}
+
+export async function resubscribeEmailAction(form: FormData) {
+  await requireAdmin();
+  await resubscribeEmail(str(form, "email"));
+  revalidatePath("/settings/channels/email");
 }
