@@ -134,33 +134,55 @@ export function verifyResendSignature(
 
 type ResendEvent = {
   type?: string;
-  data?: { from?: string; to?: string[] | string; bounce?: { type?: string; subType?: string; message?: string } };
+  created_at?: string;
+  data?: {
+    email_id?: string;
+    from?: string;
+    to?: string[] | string;
+    bounce?: { type?: string; subType?: string; message?: string };
+  };
 };
 
+const EVENT_FIELD = {
+  "email.delivered": "deliveredAt",
+  "email.opened": "openedAt",
+  "email.clicked": "clickedAt",
+  "email.bounced": "bouncedAt",
+  "email.complained": "complainedAt",
+} as const;
+
+/** Guarda en el destinatario de un envío por correo lo que pasó con su correo (la primera vez). */
+async function recordRecipientEvent(type: keyof typeof EVENT_FIELD, resendId: string, at: Date) {
+  const field = EVENT_FIELD[type];
+  await db.emailRecipient.updateMany({ where: { resendId, [field]: null }, data: { [field]: at } });
+  // Si lo abrió o hizo clic, le llegó, aunque el aviso de entrega aún no aparezca.
+  if (field === "openedAt" || field === "clickedAt") {
+    await db.emailRecipient.updateMany({ where: { resendId, deliveredAt: null }, data: { deliveredAt: at } });
+  }
+}
+
 /**
- * Aplica un aviso de Resend: un rebote definitivo o una queja de spam dejan la dirección fuera
- * de los envíos de la empresa dueña del remitente. Los rebotes temporales (buzón lleno) no.
- * Devuelve cuántas direcciones quedaron fuera.
+ * Aplica un aviso de Resend en la empresa dueña del remitente: marca entregas, aperturas, clics,
+ * rebotes y quejas en el envío, y un rebote definitivo o una queja de spam dejan la dirección
+ * fuera de los próximos envíos. Los rebotes temporales (buzón lleno) no. Devuelve cuántas
+ * direcciones quedaron fuera.
  */
 export async function handleResendEvent(event: ResendEvent): Promise<number> {
   const { type, data } = event;
-  if (!data?.from) return 0;
-  let reason: EmailSuppressionReason;
-  let detail = "";
-  if (type === "email.bounced") {
-    if (data.bounce?.type !== "Permanent") return 0;
-    reason = "BOUNCED";
-    detail = [data.bounce.subType, data.bounce.message].filter(Boolean).join(": ");
-  } else if (type === "email.complained") {
-    reason = "COMPLAINED";
-  } else {
-    return 0;
-  }
+  if (!type || !data?.from || !(type in EVENT_FIELD)) return 0;
   const companyId = await companyForSender(data.from);
   if (!companyId) return 0;
+  const permanentBounce = type === "email.bounced" && data.bounce?.type === "Permanent";
+  const at = event.created_at ? new Date(event.created_at) : new Date();
   const to = (Array.isArray(data.to) ? data.to : data.to ? [data.to] : []).map((t) => t.match(/<([^>]+)>/)?.[1] ?? t);
-  await withCompany(companyId, async () => {
+  return withCompany(companyId, async () => {
+    if (data.email_id && (type !== "email.bounced" || permanentBounce)) {
+      await recordRecipientEvent(type as keyof typeof EVENT_FIELD, data.email_id, isNaN(at.getTime()) ? new Date() : at);
+    }
+    if (!permanentBounce && type !== "email.complained") return 0;
+    const reason: EmailSuppressionReason = permanentBounce ? "BOUNCED" : "COMPLAINED";
+    const detail = permanentBounce ? [data.bounce?.subType, data.bounce?.message].filter(Boolean).join(": ") : "";
     for (const address of to) await suppressEmail(address, reason, detail);
+    return to.length;
   });
-  return to.length;
 }

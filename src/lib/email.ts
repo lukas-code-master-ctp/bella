@@ -11,7 +11,16 @@ export const APP_URL =
 
 export const DEFAULT_EMAIL_FROM = "Beliapp <no-reply@avisos.beliapp.cl>";
 
-export type Email = { from: string; to: string[]; subject: string; html: string; text: string };
+export type Email = {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  text: string;
+  /** Envíos masivos: dirección para las respuestas y cabeceras de baja (List-Unsubscribe). */
+  reply_to?: string;
+  headers?: Record<string, string>;
+};
 
 /** Lo que Beliapp necesita para mandar correos. Se reemplaza en pruebas. */
 export type EmailSender = { send(email: Email): Promise<string> };
@@ -41,6 +50,32 @@ export const resendSender: EmailSender = {
       throw new EmailError(`Resend rechazó el correo: ${json.message ?? `HTTP ${res.status}`}`);
     }
     return json.id;
+  },
+};
+
+/** Envío de muchos correos en una sola llamada (envíos masivos). Se reemplaza en pruebas. */
+export type EmailBatchSender = {
+  /** Devuelve el id de cada correo, en el mismo orden. La misma clave no envía dos veces. */
+  sendBatch(emails: Email[], idempotencyKey: string): Promise<string[]>;
+};
+
+/** Hasta 100 correos por llamada (límite de Resend). */
+export const RESEND_BATCH_MAX = 100;
+
+export const resendBatchSender: EmailBatchSender = {
+  async sendBatch(emails, idempotencyKey) {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) throw new EmailError("Falta RESEND_API_KEY en el servidor.");
+    const res = await fetch("https://api.resend.com/emails/batch", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(emails),
+    });
+    const json = (await res.json().catch(() => ({}))) as { data?: { id: string }[]; message?: string };
+    if (!res.ok || !json.data || json.data.length !== emails.length) {
+      throw new EmailError(`Resend rechazó los correos: ${json.message ?? `HTTP ${res.status}`}`);
+    }
+    return json.data.map((d) => d.id);
   },
 };
 

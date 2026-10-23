@@ -10,7 +10,7 @@ const STATUS: Record<BroadcastStatus, { label: string; tone: "brand" | "success"
   CANCELED: { label: "Cancelado", tone: "neutral" },
 };
 
-export function BroadcastStatusBadge({ status, stats }: { status: BroadcastStatus; stats?: BroadcastStats }) {
+export function BroadcastStatusBadge({ status, stats }: { status: BroadcastStatus; stats?: Pick<BroadcastStats, "total" | "pending"> }) {
   const s = STATUS[status];
   const progress = status === "SENDING" && stats ? ` ${(stats.total - stats.pending).toLocaleString("es-CL")} de ${stats.total.toLocaleString("es-CL")}` : "";
   return <Badge tone={s.tone}>{s.label + progress}</Badge>;
