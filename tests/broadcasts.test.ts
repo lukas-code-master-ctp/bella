@@ -358,6 +358,15 @@ describe("envíos masivos: programar, baja y prueba", () => {
     expect(sent).toEqual([{ to: "56987654321", params: ["Camila", "Los Robles"], from: undefined }]);
     expect(await db.lead.count()).toBe(0);
     await expect(sendBroadcastTest(input({ kind: "rows", rows: [] }), "123", { api })).rejects.toThrow(/código de país/);
+
+    // Con el nombre de quien prueba, "Primer nombre" lleva ese nombre y el resto sale de la primera fila.
+    const mine = await sendBroadcastTest(
+      input({ kind: "rows", countryCode: "56", rows: [{ phone: "911112222", name: "Camila Rojas", values: { proyecto: "Los Robles" } }] }),
+      "+56 9 8765 4321",
+      { api, testerName: "Pedro Soto" },
+    );
+    expect(mine.body).toBe("Hola Pedro, tenemos Los Robles para ti.");
+    expect(sent.at(-1)?.params).toEqual(["Pedro", "Los Robles"]);
   });
 
   it("revisa las plantillas nuevas antes de mandarlas a Meta", () => {

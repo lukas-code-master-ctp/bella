@@ -84,10 +84,10 @@ export async function retryFailedAction(id: string) {
 
 /** Prueba a un número del equipo: no crea lead ni queda en el envío. */
 export async function sendBroadcastTestAction(input: BroadcastInput, to: string): Promise<{ ok: string } | { error: string }> {
-  await requireAdmin();
+  const user = await requireAdmin();
   try {
-    const { phone } = await sendBroadcastTest(input, to);
-    return { ok: `Prueba enviada a ${phone}. Revisa tu WhatsApp.` };
+    const { phone, body } = await sendBroadcastTest(input, to, { testerName: user.name });
+    return { ok: `Prueba enviada a ${phone}: «${body}»` };
   } catch (e) {
     if (e instanceof DomainError) return { error: e.message };
     throw e;

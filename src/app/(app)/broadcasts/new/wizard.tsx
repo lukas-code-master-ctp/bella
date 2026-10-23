@@ -588,7 +588,7 @@ export function BroadcastWizard({
                 </Field>
                 <div className="space-y-2 rounded-xl border border-slate-200 p-3">
                   <p className="text-sm font-medium text-slate-800">Enviarme una prueba</p>
-                  <p className="text-xs text-slate-600">Te llega la plantilla con los datos de la primera persona. No crea un lead ni cuenta en el envío.</p>
+                  <p className="text-xs text-slate-600">Te llega con tu nombre en «Primer nombre» y el resto de los datos de la primera persona. No crea un lead ni cuenta en el envío.</p>
                   <div className="flex flex-wrap gap-2">
                     <input
                       value={testPhone}
