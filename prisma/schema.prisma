@@ -1180,28 +1180,32 @@ model EmailSuppression {
 /// Envío masivo por correo (newsletter) desde el dominio verificado de la empresa (ver
 /// src/lib/domain/email-broadcasts.ts). Sale por tandas desde el cron, sin pasar el máximo diario.
 model EmailBroadcast {
-  id          String          @id @default(cuid())
+  id           String          @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
-  companyId   String          @default("default")
-  name        String
-  status      BroadcastStatus @default(SENDING)
+  companyId    String          @default("default")
+  name         String
+  status       BroadcastStatus @default(SENDING)
   /// Por qué se pausó solo (ej. muchos rebotes); null si lo pausó un admin o no está pausado.
-  note        String?
-  subject     String
+  note         String?
+  subject      String
+  /// Prueba A/B: segundo asunto para la mitad de la lista (al azar); null si no hay prueba.
+  subjectB     String?
   /// Texto corto que la bandeja de entrada muestra junto al asunto.
-  preheader   String          @default("")
+  preheader    String          @default("")
   /// Contenido: título, texto, imagen, botón y separador (ver EmailBlock).
-  blocks      Json
+  blocks       Json
   /// Color de los botones y títulos.
-  color       String          @default("#3D9A4F")
+  color        String          @default("#3D9A4F")
   /// Pie del correo (dirección, redes); el enlace de baja se agrega siempre.
-  footer      String          @default("")
+  footer       String          @default("")
   /// Máximo de correos por día sumando todos los envíos por correo de la empresa.
-  dailyLimit  Int
-  createdById String?
-  createdAt   DateTime        @default(now())
-  scheduledAt DateTime?
-  finishedAt  DateTime?
+  dailyLimit   Int
+  createdById  String?
+  createdAt    DateTime        @default(now())
+  scheduledAt  DateTime?
+  finishedAt   DateTime?
+  /// Envío del que se tomó la lista de quienes no abrieron (reenvío).
+  resentFromId String?
 
   recipients EmailRecipient[]
 
@@ -1224,6 +1228,8 @@ model EmailRecipient {
   status           BroadcastRecipientStatus @default(PENDING)
   /// Motivo cuando falló o se saltó.
   error            String?
+  /// Prueba A/B: 0 recibe el asunto A, 1 el asunto B.
+  variant          Int                      @default(0)
   resendId         String?                  @unique
   sentAt           DateTime?
   deliveredAt      DateTime?

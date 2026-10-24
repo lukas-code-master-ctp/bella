@@ -1,5 +1,6 @@
 import { Prisma, type EmailBroadcast, type EmailRecipient, type LeadStatus } from "@prisma/client";
 import { db } from "../db";
+import { parseLocalDateTime } from "../dates";
 import { currentCompanyId } from "../tenant";
 import { EmailError, RESEND_BATCH_MAX, resendBatchSender, resendSender, type Email, type EmailBatchSender, type EmailSender } from "../email";
 import { contentError, personalize, renderEmailHtml, renderEmailText, usedVars, varsFor, type EmailBlock, type EmailContent } from "../email-content";
@@ -12,7 +13,8 @@ import { DomainError } from "./leads";
  * personas, desde el dominio verificado de la empresa. Sale por tandas de hasta 100 desde el cron
  * (y apenas se crea), sin pasar el máximo diario. Se deja fuera a quien se dio de baja, rebotó o
  * marcó spam, y el envío se pausa solo si los rebotes o las quejas pasan lo que aceptan Gmail y
- * Yahoo, para cuidar la reputación del dominio.
+ * Yahoo, para cuidar la reputación del dominio. Se puede programar, probar dos asuntos (A/B) y
+ * reenviar a quienes no abrieron.
  */
 
 export const MAX_EMAIL_RECIPIENTS = 50_000;
@@ -22,6 +24,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const REPUTATION_MIN_SENT = 100;
 const MAX_BOUNCE_RATE = 0.05;
 const MAX_COMPLAINT_RATE = 0.003;
+const MAX_SCHEDULE_MS = 60 * DAY_MS;
+/** En la prueba A/B, entregados que necesita cada asunto antes de nombrar un ganador. */
+export const AB_MIN_DELIVERED = 50;
 
 const EMAIL_RE = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[a-z]{2,}$/i;
 
@@ -29,7 +34,19 @@ export type EmailRow = { email: string; name?: string; values?: Record<string, s
 
 export type EmailAudience =
   | { kind: "rows"; rows: EmailRow[] }
-  | { kind: "funnel"; funnelId: string; stageId?: string | null; status?: LeadStatus | "ALL"; tagId?: string | null };
+  | { kind: "funnel"; funnelId: string; stageId?: string | null; status?: LeadStatus | "ALL"; tagId?: string | null }
+  /** Quienes recibieron otro envío y no lo abrieron ni hicieron clic. */
+  | { kind: "resend"; emailBroadcastId: string };
+
+/** Quien recibió el correo y no lo abrió, no hizo clic, ni rebotó o se quejó. */
+const notOpened = (emailBroadcastId: string): Prisma.EmailRecipientWhereInput => ({
+  emailBroadcastId,
+  status: "SENT",
+  openedAt: null,
+  clickedAt: null,
+  bouncedAt: null,
+  complainedAt: null,
+});
 
 export type EmailExclusions = {
   invalid: number;
@@ -47,6 +64,12 @@ export type EmailAudit = {
 
 async function audienceRows(audience: EmailAudience): Promise<EmailRow[]> {
   if (audience.kind === "rows") return audience.rows;
+  if (audience.kind === "resend") {
+    const original = await db.emailBroadcast.findUnique({ where: { id: audience.emailBroadcastId }, select: { id: true } });
+    if (!original) throw new DomainError("Ese envío no existe.");
+    const rows = await db.emailRecipient.findMany({ where: notOpened(original.id), select: { email: true, name: true, values: true }, orderBy: { id: "asc" } });
+    return rows.map((r) => ({ email: r.email, name: r.name, values: r.values as Record<string, string> }));
+  }
   if (!(await db.funnel.count({ where: { id: audience.funnelId } }))) throw new DomainError("Ese embudo no existe.");
   const leads = await db.lead.findMany({
     where: {
@@ -102,7 +125,23 @@ export type EmailBroadcastInput = Omit<EmailContent, "blocks"> & {
   /** Quien sube una lista declara que esas personas aceptaron recibir sus correos. */
   consent: boolean;
   dailyLimit: number;
+  /** Prueba A/B: segundo asunto para la mitad de la lista; vacío si no hay prueba. */
+  subjectB?: string | null;
+  /** "AAAA-MM-DDTHH:MM" en hora de Chile; vacío para enviar ahora. */
+  scheduledAt?: string | null;
 };
+
+/** Cuándo parte el envío programado; null si parte ahora. */
+function scheduleOf(input: EmailBroadcastInput, now = new Date()): Date | null {
+  if (!input.scheduledAt?.trim()) return null;
+  const at = parseLocalDateTime(input.scheduledAt);
+  if (!at) throw new DomainError("Revisa la fecha y hora del envío.");
+  if (at.getTime() < now.getTime() + 60_000) throw new DomainError("La fecha y hora del envío ya pasó: elige una más adelante.");
+  if (at.getTime() > now.getTime() + MAX_SCHEDULE_MS) throw new DomainError("Se puede programar hasta 60 días hacia adelante.");
+  return at;
+}
+
+const subjectBOf = (input: EmailBroadcastInput) => input.subjectB?.trim() || null;
 
 /** Máximo diario sugerido: un dominio nuevo parte de a poco para ganar reputación. */
 export async function suggestedDailyLimit(now = new Date()): Promise<number> {
@@ -115,20 +154,25 @@ async function validate(input: EmailBroadcastInput) {
   if (!input.name.trim()) throw new DomainError("Ponle un nombre al envío.");
   const invalid = contentError(input);
   if (invalid) throw new DomainError(invalid);
+  const subjectB = subjectBOf(input);
+  if (subjectB && subjectB.length > 200) throw new DomainError("El asunto B es muy largo (máximo 200 caracteres).");
+  if (subjectB && subjectB === input.subject.trim()) throw new DomainError("Para la prueba A/B, el asunto B tiene que ser distinto del A.");
   if (input.audience.kind === "rows" && !input.consent) {
     throw new DomainError("Confirma que las personas de la lista aceptaron recibir tus correos.");
   }
   if (!Number.isInteger(input.dailyLimit) || input.dailyLimit < 1 || input.dailyLimit > 1_000_000) {
     throw new DomainError("El máximo por día tiene que ser un número mayor que cero.");
   }
+  const scheduledAt = scheduleOf(input);
   const sender = await companyEmailSender();
   if (!sender) throw new DomainError("Primero conecta y verifica tu dominio en Configuración → Canales → Correo.");
-  return sender;
+  return { sender, scheduledAt };
 }
 
 /** Variables que el correo usa y que no vienen en la lista: se avisan antes de enviar. */
 function missingColumns(input: EmailBroadcastInput, recipients: EmailAudit["recipients"]): string[] {
-  const used = usedVars(input);
+  const subjectB = subjectBOf(input);
+  const used = [...new Set([...usedVars(input), ...(subjectB ? usedVars({ ...input, subject: subjectB }) : [])])];
   if (!used.length) return [];
   const columns = new Set(recipients.flatMap((r) => Object.keys(varsFor("", r.values))));
   return used.filter((v) => !columns.has(v));
@@ -136,23 +180,27 @@ function missingColumns(input: EmailBroadcastInput, recipients: EmailAudit["reci
 
 /** Revisión antes de enviar: sin guardar nada. */
 export async function previewEmailBroadcast(input: EmailBroadcastInput) {
-  const sender = await validate(input);
+  const { sender, scheduledAt } = await validate(input);
   const audit = await auditEmailAudience(input.audience);
   const first = audit.recipients[0];
-  const content = personalize(input, varsFor(first?.name ?? "", first?.values));
+  const vars = varsFor(first?.name ?? "", first?.values);
+  const content = personalize(input, vars);
+  const subjectB = subjectBOf(input);
   return {
     total: audit.total,
     excluded: audit.excluded,
     count: audit.recipients.length,
     from: sender.from,
     subject: content.subject,
+    subjectB: subjectB ? personalize({ ...input, subject: subjectB }, vars).subject : null,
+    scheduledAt,
     sampleName: first ? first.name || first.email : null,
     missingColumns: missingColumns(input, audit.recipients),
   };
 }
 
 export async function createEmailBroadcast(input: EmailBroadcastInput, userId: string): Promise<EmailBroadcast> {
-  await validate(input);
+  const { scheduledAt } = await validate(input);
   const { recipients } = await auditEmailAudience(input.audience);
   if (!recipients.length) throw new DomainError("No queda nadie a quien enviarle: revisa los correos y las exclusiones.");
   if (recipients.length > MAX_EMAIL_RECIPIENTS) {
@@ -160,23 +208,35 @@ export async function createEmailBroadcast(input: EmailBroadcastInput, userId: s
   }
   const missing = missingColumns(input, recipients);
   if (missing.length) throw new DomainError(`El correo usa {{${missing[0]}}}, pero la lista no tiene esa columna.`);
+  const subjectB = subjectBOf(input);
+  // Con prueba A/B, la mitad de la lista (al azar) recibe cada asunto.
+  const ordered = subjectB ? recipients.map((r) => ({ r, k: Math.random() })).sort((a, b) => a.k - b.k).map(({ r }) => r) : recipients;
   return db.$transaction(
     async (tx) => {
       const broadcast = await tx.emailBroadcast.create({
         data: {
           name: input.name.trim(),
           subject: input.subject.trim(),
+          subjectB,
           preheader: input.preheader.trim(),
           blocks: input.blocks as Prisma.InputJsonValue,
           color: input.color,
           footer: input.footer.trim(),
           dailyLimit: input.dailyLimit,
           createdById: userId,
+          ...(scheduledAt ? { status: "SCHEDULED" as const, scheduledAt } : {}),
+          resentFromId: input.audience.kind === "resend" ? input.audience.emailBroadcastId : null,
         },
       });
-      for (let i = 0; i < recipients.length; i += 1000) {
+      for (let i = 0; i < ordered.length; i += 1000) {
         await tx.emailRecipient.createMany({
-          data: recipients.slice(i, i + 1000).map((r) => ({ emailBroadcastId: broadcast.id, email: r.email, name: r.name, values: r.values })),
+          data: ordered.slice(i, i + 1000).map((r, j) => ({
+            emailBroadcastId: broadcast.id,
+            email: r.email,
+            name: r.name,
+            values: r.values,
+            variant: subjectB ? (i + j) % 2 : 0,
+          })),
         });
       }
       return broadcast;
@@ -186,6 +246,11 @@ export async function createEmailBroadcast(input: EmailBroadcastInput, userId: s
 }
 
 // --- Pausar, seguir, cancelar -----------------------------------------------------------
+
+/** Un envío programado parte ya, sin esperar su hora. */
+export async function sendEmailBroadcastNow(id: string) {
+  await db.emailBroadcast.updateMany({ where: { id, status: "SCHEDULED" }, data: { status: "SENDING", scheduledAt: new Date() } });
+}
 
 export async function pauseEmailBroadcast(id: string) {
   await db.emailBroadcast.updateMany({ where: { id, status: "SENDING" }, data: { status: "PAUSED", note: null } });
@@ -282,7 +347,8 @@ export async function runEmailBroadcasts(
       await pause("El dominio de envío ya no está verificado: revísalo en Configuración → Canales → Correo.");
       continue;
     }
-    const content = contentOf(b);
+    const base = contentOf(b);
+    const contents = [base, b.subjectB ? { ...base, subject: b.subjectB } : base];
     while (Date.now() < deadline) {
       const problem = await reputationProblem(b.id);
       if (problem) {
@@ -323,7 +389,7 @@ export async function runEmailBroadcasts(
       const batch = claimed.filter((r) => !suppressed.has(r.email));
       if (!batch.length) continue;
       try {
-        const emails = await Promise.all(batch.map((r) => buildEmail(content, sender, r)));
+        const emails = await Promise.all(batch.map((r) => buildEmail(contents[r.variant] ?? base, sender, r)));
         const ids = await batchSender.sendBatch(emails, `${b.id}-${batch[0].id}-${batch.length}`);
         const sentAt = new Date();
         await db.$transaction(batch.map((r, i) => db.emailRecipient.update({ where: { id: r.id }, data: { status: "SENT", sentAt, resendId: ids[i], error: null } })));
@@ -432,4 +498,40 @@ export function emailBroadcastRecipients(emailBroadcastId: string, filter: Email
   if (filter === "rebotaron") where.OR = [{ bouncedAt: { not: null } }, { complainedAt: { not: null } }];
   if (filter === "fallaron") where.status = { in: ["FAILED", "SKIPPED"] };
   return db.emailRecipient.findMany({ where, orderBy: [{ sentAt: { sort: "desc", nulls: "last" } }, { email: "asc" }], take });
+}
+
+export type EmailVariantStats = { variant: number; subject: string; sent: number; delivered: number; opened: number; clicked: number };
+
+/**
+ * Resultados de la prueba A/B: cuántos abrieron cada asunto y cuál va ganando. El ganador se
+ * nombra recién cuando los dos tienen al menos AB_MIN_DELIVERED entregados.
+ */
+export async function emailAbResults(b: Pick<EmailBroadcast, "id" | "subject" | "subjectB">) {
+  if (!b.subjectB) return null;
+  const rows = await db.emailRecipient.groupBy({
+    by: ["variant"],
+    where: { emailBroadcastId: b.id, status: "SENT" },
+    _count: { _all: true, deliveredAt: true, openedAt: true, clickedAt: true },
+  });
+  const variants: EmailVariantStats[] = [0, 1].map((variant) => {
+    const r = rows.find((x) => x.variant === variant);
+    return {
+      variant,
+      subject: variant ? b.subjectB! : b.subject,
+      sent: r?._count._all ?? 0,
+      delivered: r?._count.deliveredAt ?? 0,
+      opened: r?._count.openedAt ?? 0,
+      clicked: r?._count.clickedAt ?? 0,
+    };
+  });
+  const rate = (v: EmailVariantStats) => (v.delivered ? v.opened / v.delivered : 0);
+  const ready = variants.every((v) => v.delivered >= AB_MIN_DELIVERED);
+  const [a, bb] = variants;
+  const winner = !ready || rate(a) === rate(bb) ? null : rate(a) > rate(bb) ? 0 : 1;
+  return { variants, ready, winner };
+}
+
+/** Cuántas personas de un envío no lo abrieron (para reenviarles). */
+export function emailNonOpenersCount(emailBroadcastId: string) {
+  return db.emailRecipient.count({ where: notOpened(emailBroadcastId) });
 }

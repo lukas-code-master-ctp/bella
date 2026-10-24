@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CircleX, Pause, Play } from "lucide-react";
+import { ArrowLeft, CircleX, Pause, Play, Repeat, Send, Trophy } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
+  AB_MIN_DELIVERED,
+  emailAbResults,
+  emailNonOpenersCount,
   EMAIL_RECIPIENT_FILTERS,
   emailBroadcastRecipients,
   emailBroadcastStats,
@@ -12,10 +15,10 @@ import {
 } from "@/lib/domain/email-broadcasts";
 import type { EmailRecipient } from "@prisma/client";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { Badge, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Badge, buttonClass, Card, EmptyState, PageHeader } from "@/components/ui";
 import { Callout, Stat } from "@/components/settings-ui";
 import { SubmitButton } from "@/components/submit-button";
-import { cancelEmailBroadcastAction, pauseEmailBroadcastAction, resumeEmailBroadcastAction } from "../actions";
+import { cancelEmailBroadcastAction, pauseEmailBroadcastAction, resumeEmailBroadcastAction, sendEmailBroadcastNowAction } from "../actions";
 import { BroadcastStatusBadge, dateTime, pct } from "../../ui";
 
 function state(r: EmailRecipient): { label: string; tone: "brand" | "success" | "warning" | "danger" | "neutral" } {
@@ -37,10 +40,14 @@ export default async function EmailBroadcastPage({ params, searchParams }: { par
   const filter = (filtro && filtro in EMAIL_RECIPIENT_FILTERS ? filtro : "todos") as EmailRecipientFilter;
   const b = await db.emailBroadcast.findUnique({ where: { id } });
   if (!b) notFound();
-  const [statsMap, recipients, creator] = await Promise.all([
+  const finished = b.status === "DONE" || b.status === "CANCELED";
+  const [statsMap, recipients, creator, ab, nonOpeners, original] = await Promise.all([
     emailBroadcastStats([b.id]),
     emailBroadcastRecipients(b.id, filter),
     b.createdById ? db.user.findUnique({ where: { id: b.createdById }, select: { name: true } }) : null,
+    emailAbResults(b),
+    finished ? emailNonOpenersCount(b.id) : 0,
+    b.resentFromId ? db.emailBroadcast.findUnique({ where: { id: b.resentFromId }, select: { id: true, name: true } }) : null,
   ]);
   const s = statsMap.get(b.id) ?? EMPTY_EMAIL_STATS;
 
@@ -55,7 +62,21 @@ export default async function EmailBroadcastPage({ params, searchParams }: { par
         title={b.name}
         description={
           <>
-            Correo <span className="font-medium text-slate-800">«{b.subject}»</span> · máximo {b.dailyLimit.toLocaleString("es-CL")} por día · creado{" "}
+            Correo <span className="font-medium text-slate-800">«{b.subject}»</span>
+            {b.subjectB && (
+              <>
+                {" "}y <span className="font-medium text-slate-800">«{b.subjectB}»</span> (prueba A/B)
+              </>
+            )}
+            {original && (
+              <>
+                {" "}· reenvío de{" "}
+                <Link href={`/broadcasts/email/${original.id}`} className="font-medium text-brand-700 underline-offset-2 hover:underline">
+                  {original.name}
+                </Link>
+              </>
+            )}{" "}
+            · máximo {b.dailyLimit.toLocaleString("es-CL")} por día · creado{" "}
             {dateTime(b.createdAt)}
             {creator ? ` por ${creator.name}` : ""}
           </>
@@ -63,6 +84,20 @@ export default async function EmailBroadcastPage({ params, searchParams }: { par
       >
         <div className="flex flex-wrap items-center gap-2">
           <BroadcastStatusBadge status={b.status} stats={s} />
+          {b.status === "SCHEDULED" && (
+            <form action={sendEmailBroadcastNowAction.bind(null, b.id)}>
+              <SubmitButton variant="secondary" pendingText="Enviando…" confirm="¿Enviarlo ahora, sin esperar la hora programada?">
+                <Send aria-hidden />
+                Enviar ahora
+              </SubmitButton>
+            </form>
+          )}
+          {finished && nonOpeners > 0 && (
+            <Link href={`/broadcasts/email/new?reenviar=${b.id}`} className={buttonClass("secondary", "md")}>
+              <Repeat aria-hidden />
+              Reenviar a quienes no abrieron ({nonOpeners.toLocaleString("es-CL")})
+            </Link>
+          )}
           {b.status === "SENDING" && (
             <form action={pauseEmailBroadcastAction.bind(null, b.id)}>
               <SubmitButton variant="secondary" pendingText="Pausando…">
@@ -91,6 +126,11 @@ export default async function EmailBroadcastPage({ params, searchParams }: { par
       </PageHeader>
 
       <div className="space-y-6">
+        {b.status === "SCHEDULED" && b.scheduledAt && (
+          <Callout tone="neutral" title={`Programado para el ${dateTime(b.scheduledAt)}`}>
+            Sale dentro de los 5 minutos siguientes a esa hora. Antes de enviar a cada persona se revisa de nuevo si se dio de baja o rebotó.
+          </Callout>
+        )}
         {b.status === "PAUSED" && b.note && (
           <Callout tone="danger" title="El envío se pausó solo">
             {b.note} Cuando lo corrijas, toca “Seguir enviando”.
@@ -115,6 +155,33 @@ export default async function EmailBroadcastPage({ params, searchParams }: { par
             hint={s.failed + s.skipped ? `${(s.failed + s.skipped).toLocaleString("es-CL")} no se enviaron` : pct(s.bounced + s.complained, s.sent)}
           />
         </div>
+        {ab && (
+          <Card className="animate-rise p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Prueba A/B de asuntos</h2>
+            <p className="mt-0.5 text-xs text-slate-600">
+              {ab.winner !== null
+                ? `Va ganando el asunto ${ab.winner ? "B" : "A"}.`
+                : ab.ready
+                  ? "Por ahora van empatados."
+                  : `El ganador se muestra cuando cada asunto tenga al menos ${AB_MIN_DELIVERED} correos entregados.`}
+            </p>
+            <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+              {ab.variants.map((v) => (
+                <li key={v.variant} className={`rounded-lg border p-3 ${ab.winner === v.variant ? "border-brand-500 bg-brand-50" : "border-slate-200"}`}>
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    Asunto {v.variant ? "B" : "A"}
+                    {ab.winner === v.variant && <Trophy aria-label="Ganador" className="size-3.5 text-brand-600" />}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{v.subject}</p>
+                  <p className="mt-2 text-sm text-slate-700">
+                    Abrieron <span className="font-semibold">{pct(v.opened, v.delivered || v.sent)}</span> · clic {pct(v.clicked, v.delivered || v.sent)} ·{" "}
+                    {v.sent.toLocaleString("es-CL")} enviados
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         <p className="text-xs text-slate-600">
           Las aperturas son aproximadas: algunos correos (como Apple Mail) abren las imágenes solos y otros las bloquean.
         </p>

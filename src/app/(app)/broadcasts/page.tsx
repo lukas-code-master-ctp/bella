@@ -155,7 +155,7 @@ async function EmailBroadcasts() {
                           {b.name}
                         </Link>
                         <p className="max-w-xs truncate text-xs text-slate-600">
-                          {b.subject} · {dateTime(b.createdAt)}
+                          {b.subject}{b.subjectB ? " (A/B)" : ""} · {b.status === "SCHEDULED" && b.scheduledAt ? `programado para el ${dateTime(b.scheduledAt)}` : dateTime(b.createdAt)}
                         </p>
                       </td>
                       <td className="px-4 py-3">
