@@ -11,6 +11,7 @@ import {
   previewEmailBroadcast,
   resumeEmailBroadcast,
   runEmailBroadcasts,
+  sendEmailBroadcastNow,
   sendEmailBroadcastTest,
   type EmailBroadcastInput,
 } from "@/lib/domain/email-broadcasts";
@@ -37,8 +38,8 @@ export async function createEmailBroadcastAction(input: EmailBroadcastInput): Pr
     if (e instanceof DomainError) return { error: e.message };
     throw e;
   }
-  // La primera tanda sale apenas se crea; el resto, con el cron cada 5 minutos.
-  await afterInCompany(() => runEmailBroadcasts());
+  // La primera tanda sale apenas se crea (si no está programado); el resto, con el cron cada 5 minutos.
+  if (!input.scheduledAt) await afterInCompany(() => runEmailBroadcasts());
   revalidatePath("/broadcasts");
   redirect(`/broadcasts/email/${id}`);
 }
@@ -63,6 +64,13 @@ export async function pauseEmailBroadcastAction(id: string) {
 export async function resumeEmailBroadcastAction(id: string) {
   await requireAdmin();
   await resumeEmailBroadcast(id);
+  await afterInCompany(() => runEmailBroadcasts());
+  revalidatePath(`/broadcasts/email/${id}`);
+}
+
+export async function sendEmailBroadcastNowAction(id: string) {
+  await requireAdmin();
+  await sendEmailBroadcastNow(id);
   await afterInCompany(() => runEmailBroadcasts());
   revalidatePath(`/broadcasts/email/${id}`);
 }

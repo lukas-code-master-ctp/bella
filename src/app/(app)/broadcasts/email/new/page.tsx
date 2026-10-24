@@ -4,15 +4,30 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { emailConfigured } from "@/lib/email";
 import { companyEmailSender, getEmailDomain } from "@/lib/domain/email-domains";
-import { suggestedDailyLimit } from "@/lib/domain/email-broadcasts";
+import { emailNonOpenersCount, suggestedDailyLimit } from "@/lib/domain/email-broadcasts";
+import type { EmailBlock } from "@/lib/email-content";
 import { listFunnels, stageOptions } from "@/lib/domain/funnels";
 import { fileKind } from "@/lib/media";
 import { buttonClass, Card, EmptyState, PageHeader } from "@/components/ui";
-import { EmailEditor } from "./email-editor";
+import { EmailEditor, type EmailResend } from "./email-editor";
 
-export default async function NewEmailBroadcastPage() {
+/** El envío original, cuando se llega desde "Reenviar a quienes no abrieron". */
+async function resendOf(id: string | undefined): Promise<EmailResend | null> {
+  if (!id) return null;
+  const b = await db.emailBroadcast.findUnique({ where: { id } });
+  if (!b) return null;
+  return {
+    id: b.id,
+    name: b.name,
+    nonOpeners: await emailNonOpenersCount(b.id),
+    content: { subject: b.subject, preheader: b.preheader, color: b.color, footer: b.footer, blocks: b.blocks as EmailBlock[] },
+  };
+}
+
+export default async function NewEmailBroadcastPage({ searchParams }: { searchParams: Promise<{ reenviar?: string }> }) {
   await requireAdmin();
-  const [sender, domain, funnels, stages, tags, files, dailyLimit] = await Promise.all([
+  const { reenviar } = await searchParams;
+  const [sender, domain, funnels, stages, tags, files, dailyLimit, resend] = await Promise.all([
     companyEmailSender(),
     getEmailDomain(),
     listFunnels(),
@@ -20,6 +35,7 @@ export default async function NewEmailBroadcastPage() {
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     db.mediaFile.findMany({ orderBy: [{ product: "asc" }, { title: "asc" }], select: { url: true, title: true, product: true, mimeType: true } }),
     suggestedDailyLimit(),
+    resendOf(reenviar),
   ]);
 
   return (
@@ -28,7 +44,14 @@ export default async function NewEmailBroadcastPage() {
         <ArrowLeft aria-hidden className="size-4" />
         Envíos masivos
       </Link>
-      <PageHeader title="Nuevo correo" description="Arma el correo, elige a quiénes y revisa antes de enviar. Nada sale hasta que confirmes." />
+      <PageHeader
+        title={resend ? "Reenviar a quienes no abrieron" : "Nuevo correo"}
+        description={
+          resend
+            ? "Partimos del mismo correo: un asunto nuevo suele funcionar mejor. Nada sale hasta que confirmes."
+            : "Arma el correo, elige a quiénes y revisa antes de enviar. Nada sale hasta que confirmes."
+        }
+      />
       {!sender || !emailConfigured() ? (
         <Card className="animate-rise">
           <EmptyState icon={<Globe />} title={domain ? "Tu dominio aún no está verificado" : "Primero conecta tu dominio"}>
@@ -47,6 +70,7 @@ export default async function NewEmailBroadcastPage() {
           dailyLimit={dailyLimit}
           sender={sender.from}
           companyName={domain?.fromName ?? ""}
+          resend={resend}
         />
       )}
     </>

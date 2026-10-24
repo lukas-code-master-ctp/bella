@@ -5,6 +5,7 @@ import Papa from "papaparse";
 import {
   ArrowDown,
   ArrowUp,
+  CalendarClock,
   ClipboardList,
   FileSpreadsheet,
   Heading1,
@@ -12,10 +13,12 @@ import {
   LoaderCircle,
   Minus,
   MousePointerClick,
+  Repeat,
   Send,
   SquareKanban,
   Trash2,
   Type,
+  Zap,
 } from "lucide-react";
 import type { EmailBroadcastInput } from "@/lib/domain/email-broadcasts";
 import { personalize, renderEmailHtml, varsFor, normalizeVar, type EmailBlock } from "@/lib/email-content";
@@ -27,13 +30,23 @@ import { colorInputClass } from "@/components/settings-ui";
 import { createEmailBroadcastAction, previewEmailBroadcastAction, sendEmailTestAction, type EmailPreviewResult } from "../actions";
 
 type Option = { id: string; label: string };
-type Source = "file" | "paste" | "funnel";
+type Source = "file" | "paste" | "funnel" | "resend";
 type Row = Record<string, string>;
 
 const EMAIL_ALIASES = ["email", "correo", "e mail", "mail", "correo electronico"];
 const NAME_ALIASES = ["nombre", "name", "nombre completo", "cliente", "contacto"];
 const guess = (headers: string[], aliases: string[]) => headers.find((h) => aliases.includes(normalize(h).trim())) ?? "";
 const TEST_EMAIL_KEY = "beliapp:prueba-correo";
+/** Valor de un <input type="datetime-local"> en la hora del navegador. */
+const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+
+/** Contenido de un envío anterior, para reenviarlo a quienes no lo abrieron. */
+export type EmailResend = {
+  id: string;
+  name: string;
+  nonOpeners: number;
+  content: Pick<EmailBroadcastInput, "subject" | "preheader" | "color" | "footer" | "blocks">;
+};
 
 /** "ana@correo.cl, Ana" o solo el correo, uno por línea. */
 function parsePasted(text: string): Row[] {
@@ -71,6 +84,7 @@ export function EmailEditor({
   dailyLimit: initialLimit,
   sender,
   companyName,
+  resend,
 }: {
   funnels: Option[];
   stages: (Option & { funnelId: string })[];
@@ -79,24 +93,29 @@ export function EmailEditor({
   dailyLimit: number;
   sender: string;
   companyName: string;
+  resend?: EmailResend | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   // Contenido
-  const [name, setName] = useState("");
-  const [subject, setSubject] = useState("");
-  const [preheader, setPreheader] = useState("");
-  const [color, setColor] = useState("#3D9A4F");
-  const [footer, setFooter] = useState("");
-  const [blocks, setBlocks] = useState<EmailBlock[]>([
-    { type: "heading", text: "" },
-    { type: "text", text: "Hola {{nombre|}}:\n\n" },
-    { type: "button", text: "", url: "https://" },
-  ]);
+  const [name, setName] = useState(resend ? `${resend.name} (reenvío)` : "");
+  const [subject, setSubject] = useState(resend?.content.subject ?? "");
+  const [abTest, setAbTest] = useState(false);
+  const [subjectB, setSubjectB] = useState("");
+  const [preheader, setPreheader] = useState(resend?.content.preheader ?? "");
+  const [color, setColor] = useState(resend?.content.color ?? "#3D9A4F");
+  const [footer, setFooter] = useState(resend?.content.footer ?? "");
+  const [blocks, setBlocks] = useState<EmailBlock[]>(
+    resend?.content.blocks ?? [
+      { type: "heading", text: "" },
+      { type: "text", text: "Hola {{nombre|}}:\n\n" },
+      { type: "button", text: "", url: "https://" },
+    ],
+  );
 
   // Destinatarios
-  const [source, setSource] = useState<Source>("file");
+  const [source, setSource] = useState<Source>(resend ? "resend" : "file");
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileRows, setFileRows] = useState<Row[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -109,6 +128,8 @@ export function EmailEditor({
   const [filterTag, setFilterTag] = useState("");
   const [consent, setConsent] = useState(false);
   const [dailyLimit, setDailyLimit] = useState(String(initialLimit));
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [scheduledAt, setScheduledAt] = useState("");
 
   // Revisión
   const [preview, setPreview] = useState<Exclude<EmailPreviewResult, { error: string }> | null>(null);
@@ -158,8 +179,12 @@ export function EmailEditor({
       blocks,
       consent,
       dailyLimit: Number(dailyLimit),
+      subjectB: abTest ? subjectB : null,
+      scheduledAt: when === "later" ? scheduledAt : null,
       audience:
-        source === "funnel"
+        source === "resend" && resend
+          ? { kind: "resend", emailBroadcastId: resend.id }
+          : source === "funnel"
           ? { kind: "funnel", funnelId, stageId: filterStage || null, status, tagId: filterTag || null }
           : {
               kind: "rows",
@@ -201,7 +226,12 @@ export function EmailEditor({
     });
   }
 
-  const audienceReady = source === "funnel" ? Boolean(funnelId) : rows.length > 0 && (source === "paste" || Boolean(emailCol));
+  const audienceReady =
+    source === "resend" ? true : source === "funnel" ? Boolean(funnelId) : rows.length > 0 && (source === "paste" || Boolean(emailCol));
+  const whenLabel =
+    when === "later" && scheduledAt
+      ? new Date(scheduledAt).toLocaleString("es-CL", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })
+      : null;
 
   function review() {
     setError(null);
@@ -215,7 +245,8 @@ export function EmailEditor({
   function send() {
     if (!preview) return;
     const people = `${preview.count.toLocaleString("es-CL")} ${preview.count === 1 ? "persona" : "personas"}`;
-    if (!window.confirm(`¿Enviar el correo «${preview.subject}» a ${people}?`)) return;
+    const question = whenLabel ? `¿Programar el correo «${preview.subject}» para el ${whenLabel}, a ${people}?` : `¿Enviar el correo «${preview.subject}» a ${people}?`;
+    if (!window.confirm(question)) return;
     setError(null);
     start(async () => {
       const res = await createEmailBroadcastAction(buildInput());
@@ -254,6 +285,18 @@ export function EmailEditor({
             <Field label="Asunto">
               <input value={subject} onChange={(e) => (setSubject(e.target.value), setPreview(null))} maxLength={200} placeholder="Ej. {{nombre|Hola}}, llegó lo nuevo de octubre" className={inputClass} />
             </Field>
+            <label className="flex items-start gap-2 text-sm text-slate-800">
+              <input type="checkbox" checked={abTest} onChange={(e) => (setAbTest(e.target.checked), setPreview(null))} className="mt-0.5 size-4 rounded border-slate-300 accent-brand-600" />
+              <span>
+                Probar dos asuntos (prueba A/B)
+                <span className="block text-xs text-slate-600">La mitad de la lista, al azar, recibe cada asunto. En los resultados verás cuál abrieron más.</span>
+              </span>
+            </label>
+            {abTest && (
+              <Field label="Asunto B">
+                <input value={subjectB} onChange={(e) => (setSubjectB(e.target.value), setPreview(null))} maxLength={200} placeholder="Otra forma de decirlo" className={inputClass} />
+              </Field>
+            )}
             <Field label="Texto de vista previa (opcional)" hint="Aparece junto al asunto en la bandeja de entrada.">
               <input value={preheader} onChange={(e) => setPreheader(e.target.value)} maxLength={150} className={inputClass} />
             </Field>
@@ -344,7 +387,17 @@ export function EmailEditor({
 
       <Panel title="Destinatarios">
         <PanelBody>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className={`grid gap-3 ${resend ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>
+            {resend && (
+              <ChoiceCard
+                name="source"
+                checked={source === "resend"}
+                onChange={() => (setSource("resend"), setPreview(null))}
+                icon={<Repeat />}
+                title="Quienes no abrieron"
+                description={`${resend.nonOpeners.toLocaleString("es-CL")} de «${resend.name}» no lo abrieron ni hicieron clic.`}
+              />
+            )}
             <ChoiceCard name="source" checked={source === "file"} onChange={() => (setSource("file"), setPreview(null))} icon={<FileSpreadsheet />} title="Archivo CSV" description="Con una columna de correo; las demás sirven como variables." />
             <ChoiceCard name="source" checked={source === "paste"} onChange={() => (setSource("paste"), setPreview(null))} icon={<ClipboardList />} title="Pegar correos" description="Uno por línea, con el nombre después de una coma." />
             <ChoiceCard name="source" checked={source === "funnel"} onChange={() => (setSource("funnel"), setPreview(null))} icon={<SquareKanban />} title="Desde el funnel" description="Leads cuyo contacto tiene correo." />
@@ -426,7 +479,7 @@ export function EmailEditor({
             </div>
           )}
 
-          {source !== "funnel" && (
+          {(source === "file" || source === "paste") && (
             <label className="flex items-start gap-2 text-sm text-slate-800">
               <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-4 rounded border-slate-300 accent-brand-600" />
               Estas personas aceptaron recibir correos de {companyName} (son clientes, se inscribieron o lo autorizaron).
@@ -435,9 +488,24 @@ export function EmailEditor({
           <Field label="Máximo de correos por día" hint="Un dominio nuevo debe partir de a poco: subirlo de golpe hace que los correos lleguen a spam.">
             <input type="number" min={1} value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} className={`${inputClass} max-w-40`} />
           </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ChoiceCard name="when" checked={when === "now"} onChange={() => (setWhen("now"), setPreview(null))} icon={<Zap />} title="Enviar ahora" description="Parte apenas confirmes." />
+            <ChoiceCard name="when" checked={when === "later"} onChange={() => (setWhen("later"), setPreview(null))} icon={<CalendarClock />} title="Programar" description="Elige el día y la hora." />
+          </div>
+          {when === "later" && (
+            <Field label="Día y hora" hint="Hora de Chile. Sale dentro de los 5 minutos siguientes.">
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                min={localInput(new Date())}
+                onChange={(e) => (setScheduledAt(e.target.value), setPreview(null))}
+                className={`${inputClass} max-w-64`}
+              />
+            </Field>
+          )}
         </PanelBody>
         <PanelFooter note={preview ? null : "Nada se envía hasta que lo confirmes."}>
-          <Button type="button" variant={preview ? "secondary" : "primary"} disabled={!audienceReady || pending} onClick={review}>
+          <Button type="button" variant={preview ? "secondary" : "primary"} disabled={!audienceReady || pending || (when === "later" && !scheduledAt)} onClick={review}>
             {pending && !preview ? <LoaderCircle aria-hidden className="animate-spin" /> : null}
             Revisar
           </Button>
@@ -447,8 +515,22 @@ export function EmailEditor({
       {error && <FormMessage>{error}</FormMessage>}
 
       {preview && (
-        <Panel title={`Se enviará a ${preview.count.toLocaleString("es-CL")} ${preview.count === 1 ? "persona" : "personas"}`} description={`De ${preview.from} · Asunto: ${preview.subject}`}>
+        <Panel title={`Se enviará a ${preview.count.toLocaleString("es-CL")} ${preview.count === 1 ? "persona" : "personas"}`} description={`De ${preview.from}${whenLabel ? ` · el ${whenLabel}` : ""}`}>
           <PanelBody>
+            {preview.subjectB ? (
+              <ul className="space-y-1 text-sm text-slate-800">
+                <li>
+                  <span className="font-semibold">Asunto A (la mitad):</span> {preview.subject}
+                </li>
+                <li>
+                  <span className="font-semibold">Asunto B (la otra mitad):</span> {preview.subjectB}
+                </li>
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-800">
+                <span className="font-semibold">Asunto:</span> {preview.subject}
+              </p>
+            )}
             {excluded.some(([, n]) => n > 0) && (
               <ul className="space-y-1 text-sm text-slate-700">
                 {excluded
@@ -476,8 +558,8 @@ export function EmailEditor({
           </PanelBody>
           <PanelFooter note="Cada correo lleva tu dirección de respuestas y un enlace para darse de baja.">
             <Button type="button" disabled={pending || preview.count === 0 || preview.missingColumns.length > 0} onClick={send}>
-              {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : <Send aria-hidden />}
-              Enviar a {preview.count.toLocaleString("es-CL")}
+              {pending ? <LoaderCircle aria-hidden className="animate-spin" /> : when === "later" ? <CalendarClock aria-hidden /> : <Send aria-hidden />}
+              {when === "later" ? "Programar" : "Enviar"} a {preview.count.toLocaleString("es-CL")}
             </Button>
           </PanelFooter>
         </Panel>
