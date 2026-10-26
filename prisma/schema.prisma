@@ -1129,28 +1129,30 @@ model QuickReply {
 /// ejemplo noticias.suempresa.cl. Se crea en la cuenta Resend de Beliapp y la empresa agrega
 /// los registros DNS que entrega Resend (ver src/lib/domain/email-domains.ts). Uno por empresa.
 model EmailDomain {
-  id            String    @id @default(cuid())
+  id              String    @id @default(cuid())
   /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
-  companyId     String    @unique @default("default")
+  companyId       String    @unique @default("default")
   /// En minúsculas; único entre todas las empresas.
-  domain        String    @unique
+  domain          String    @unique
   /// Id del dominio en la cuenta de Resend de la empresa.
-  resendId      String
+  resendId        String
+  /// false si el dominio ya existía en la cuenta de Resend y Beliapp solo lo usa: al quitarlo no se borra allá.
+  createdInResend Boolean   @default(true)
   /// Webhook que Beliapp creó en esa cuenta (entregas, aperturas, rebotes) y su secreto de firma, cifrado.
-  webhookId     String?
-  webhookSecret String?
+  webhookId       String?
+  webhookSecret   String?
   /// Estado según Resend: not_started, pending, verified, failed o temporary_failure.
-  status        String    @default("not_started")
+  status          String    @default("not_started")
   /// Registros DNS que la empresa debe agregar, como los entrega Resend.
-  records       Json      @default("[]")
+  records         Json      @default("[]")
   /// Nombre y parte antes de la @ del remitente: "Mi Empresa <noticias@dominio>".
-  fromName      String
-  fromLocal     String    @default("noticias")
+  fromName        String
+  fromLocal       String    @default("noticias")
   /// Dirección a la que llegan las respuestas; vacía usa el remitente.
-  replyTo       String    @default("")
-  createdAt     DateTime  @default(now())
-  verifiedAt    DateTime?
-  checkedAt     DateTime?
+  replyTo         String    @default("")
+  createdAt       DateTime  @default(now())
+  verifiedAt      DateTime?
+  checkedAt       DateTime?
 }
 
 enum EmailSuppressionReason {
