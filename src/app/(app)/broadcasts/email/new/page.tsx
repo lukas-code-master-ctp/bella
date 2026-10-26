@@ -58,10 +58,12 @@ export default async function NewEmailBroadcastPage({ searchParams }: { searchPa
             icon={<Globe />}
             title={!resendKey ? "Primero conecta tu cuenta de Resend" : domain ? "Tu dominio aún no está verificado" : "Primero conecta tu dominio"}
           >
-            Los correos salen con tu cuenta de Resend y desde el dominio de tu empresa. Configúralos en Configuración → Canales → Correo.
-            <Link href="/settings/channels/email" className={buttonClass("primary", "md", "mt-4")}>
-              Ir a Correo
-            </Link>
+            <p>Los correos salen con tu cuenta de Resend y desde el dominio de tu empresa. Se configuran en Configuración → Canales → Correo.</p>
+            <div className="mt-5">
+              <Link href="/settings/channels/email" className={buttonClass("primary", "md")}>
+                Ir a Correo
+              </Link>
+            </div>
           </EmptyState>
         </Card>
       ) : (
