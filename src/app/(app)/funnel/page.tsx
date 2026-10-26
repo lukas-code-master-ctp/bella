@@ -178,6 +178,7 @@ export default async function FunnelPage({
       ) : (
         <Board
           leadHref={hrefWith({ lead: "__id__" })}
+          focusWaiting={onlyWaiting}
           stages={stages.map(({ id, name, color, requiresHuman }) => ({
             id,
             name,
