@@ -5,7 +5,8 @@ import { chatDateRange, type ChatFilters } from "./chat-filters";
 import { lateLeads, openWaitStarts } from "./sla";
 
 /**
- * Bandeja de chats: todas las conversaciones de leads con sus filtros (ver chat-filters.ts).
+ * Bandeja de chats: las conversaciones de leads con sus filtros (ver chat-filters.ts), una por
+ * contacto.
  */
 
 export type ChatViewer = { id: string; role: Role };
@@ -27,6 +28,8 @@ export type ChatItem = {
   last: { author: MessageAuthor; body: string; media: "audio" | "file" | null; at: Date } | null;
   /** Fecha que ordena la bandeja: el último mensaje, o la creación del lead si no hay mensajes. */
   at: Date;
+  /** Cuántos leads tiene el contacto en total (la bandeja muestra uno por contacto). */
+  leadCount: number;
 };
 
 const STATUS: Record<ChatFilters["status"], LeadStatus | undefined> = { open: "OPEN", won: "WON", lost: "LOST", all: undefined };
@@ -61,7 +64,7 @@ export async function listChats(
 ): Promise<{ total: number; items: ChatItem[] }> {
   const candidates = await db.lead.findMany({
     where: whereOf(f, viewer),
-    select: { id: true, aiEnabled: true, noReplyNeededAt: true, score: true, createdAt: true, stage: { select: { requiresHuman: true } } },
+    select: { id: true, contactId: true, aiEnabled: true, noReplyNeededAt: true, score: true, createdAt: true, stage: { select: { requiresHuman: true } } },
   });
   if (candidates.length === 0) return { total: 0, items: [] };
 
@@ -96,7 +99,13 @@ export async function listChats(
     newest: (a, b) => time(b.createdAt) - time(a.createdAt),
   };
   rows.sort(sorters[f.sort]);
-  const page = rows.slice(0, take);
+  // Una fila por contacto: el lead que queda primero con el orden elegido (sus leads anteriores
+  // se ven en la ficha).
+  const seen = new Set<string>();
+  const unique = rows.filter((r) => !seen.has(r.contactId) && Boolean(seen.add(r.contactId)));
+  const page = unique.slice(0, take);
+  const counts = await db.lead.groupBy({ by: ["contactId"], where: { contactId: { in: page.map((r) => r.contactId) } }, _count: true });
+  const countOf = new Map(counts.map((c) => [c.contactId, c._count]));
 
   const details = await db.lead.findMany({
     where: { id: { in: page.map((r) => r.id) } },
@@ -138,10 +147,11 @@ export async function listChats(
             }
           : null,
         at: r.at,
+        leadCount: countOf.get(r.contactId) ?? 1,
       },
     ];
   });
-  return { total: rows.length, items };
+  return { total: unique.length, items };
 }
 
 /** Opciones de los filtros: embudos con sus etapas, ejecutivos activos y etiquetas. */

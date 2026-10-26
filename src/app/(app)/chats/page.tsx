@@ -151,6 +151,11 @@ function ChatRow({ chat: c, now, href, selected }: { chat: ChatItem; now: Date; 
           ))}
           {c.tags.length > 2 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">+{c.tags.length - 2}</span>}
           {c.score != null && <ScoreBadge score={c.score} />}
+          {c.leadCount > 1 && (
+            <span title="Este contacto tiene más de un lead" className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+              {c.leadCount} leads
+            </span>
+          )}
           <span className="ml-auto flex items-center gap-1.5">
             {c.status === "WON" && <Badge tone="success">Ganado</Badge>}
             {c.status === "LOST" && <Badge tone="danger">Perdido</Badge>}
