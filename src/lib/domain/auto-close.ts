@@ -46,6 +46,12 @@ export async function getAutoCloseSettings(): Promise<AutoCloseSettings> {
   return { ...DEFAULT_AUTO_CLOSE, ...saved, lostStagesEnabled };
 }
 
+/** Etapas de descarte en uso: sus leads ya se dan por perdidos aunque la pasada diaria aún no los cierre. */
+export async function lostStageIdsInUse(): Promise<string[]> {
+  const s = await getAutoCloseSettings();
+  return s.lostStagesEnabled ? s.lostStageIds : [];
+}
+
 /**
  * Cierra como perdidos los leads abiertos que:
  * - llevan `days` días sin actividad (último mensaje o evento, de quien sea) y cuyo último

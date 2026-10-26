@@ -6,6 +6,7 @@ import { withinBusinessHours, type WeeklyHours } from "./ai-operation";
 import { formatDuration } from "./metrics";
 import { reassignTx } from "./assignment";
 import { notifySlaLateTx } from "./notifications";
+import { lostStageIdsInUse } from "./auto-close";
 
 /**
  * SLA de ejecutivos: cuánto tarda el equipo en responderle al cliente cuando el lead lo atiende un
@@ -225,6 +226,8 @@ async function pendingWaitsWhere(where: Prisma.LeadWhereInput, settings: SlaSett
         where,
         { status: "OPEN", contact: { channel: { not: "SIMULATOR" } } },
         { OR: [{ aiEnabled: false }, { stage: { requiresHuman: true } }] },
+        // En una etapa de descarte el lead ya se da por perdido: no espera respuesta.
+        { stageId: { notIn: await lostStageIdsInUse() } },
       ],
     },
     select: {

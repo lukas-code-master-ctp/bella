@@ -3,6 +3,8 @@ import type { MessageAuthor } from "@prisma/client";
 import { db } from "@/lib/db";
 import { createLead, moveStage } from "@/lib/domain/leads";
 import { listChats } from "@/lib/domain/chats";
+import { pendingWaits } from "@/lib/domain/sla";
+import { setSetting } from "@/lib/settings";
 import { chatDateRange, chatFiltersToParams, DEFAULT_CHAT_FILTERS, parseChatFilters, type ChatFilters } from "@/lib/domain/chat-filters";
 import { executive, seedFunnel } from "./factories";
 
@@ -75,6 +77,19 @@ describe("bandeja de chats", () => {
     expect(await items()).toEqual(["Lukas"]);
     await db.message.create({ data: { leadId: lead.id, author: "USER", body: "Hola, soy Tiare", createdAt: new Date(Date.now() + 1000) } });
     expect(await items()).toEqual([]);
+  });
+
+  it("un lead en una etapa de descarte (ej. Perdidos) ya no queda sin atender ni cuenta para el SLA", async () => {
+    const [, , , human] = await seedFunnel();
+    const lead = await createLead({ name: "Pola", channel: "WHATSAPP" });
+    await moveStage(lead.id, human!.id, { actor: "AI" });
+    await say(lead.id, "CONTACT", "Borren mi número", new Date());
+    const waiting = async () => (await listChats(filters({ attention: ["waiting"] }), admin)).items.map((c) => c.name);
+    expect(await waiting()).toEqual(["Pola"]);
+
+    await setSetting("autoClose", { enabled: false, lostStageIds: [human!.id], lostStagesEnabled: true });
+    expect(await waiting()).toEqual([]);
+    expect(await pendingWaits()).toEqual([]);
   });
 
   it("filtra por etiqueta, estado y fecha, y un ejecutivo solo ve sus leads", async () => {
