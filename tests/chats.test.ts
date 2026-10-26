@@ -99,4 +99,23 @@ describe("bandeja de chats", () => {
     expect(await names({ date: "custom", from: "2026-09-01", to: "2026-09-01" })).toEqual(["Elvira"]);
     expect(await names({ executives: ["none"] }, { id: ana.id, role: "EXECUTIVE" })).toEqual(["Mirella"]);
   });
+
+  it("muestra una fila por contacto, con su lead más reciente y cuántos leads tiene", async () => {
+    await seedFunnel();
+    const first = await createLead({ name: "Lukas", channel: "WHATSAPP" });
+    await db.lead.update({ where: { id: first.id }, data: { status: "LOST" } });
+    const second = await db.lead.create({ data: { contactId: first.contactId, stageId: first.stageId, status: "LOST" } });
+    const other = await createLead({ name: "Rosa", channel: "WHATSAPP" });
+    await say(first.id, "CONTACT", "Hola", minutesAgo(60));
+    await say(second.id, "CONTACT", "Hola de nuevo", minutesAgo(10));
+    await say(other.id, "CONTACT", "Hola", minutesAgo(30));
+
+    const { total, items } = await listChats(filters({ status: "all" }), admin, { now });
+    expect(total).toBe(2);
+    expect(items.map((c) => [c.leadId, c.leadCount])).toEqual([
+      [second.id, 2],
+      [other.id, 1],
+    ]);
+    expect((await listChats(filters({ status: "open" }), admin, { now })).items.map((c) => c.leadId)).toEqual([other.id]);
+  });
 });
