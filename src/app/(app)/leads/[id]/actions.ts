@@ -33,7 +33,9 @@ import {
 import { receiveContactAudio, sendUserAudio } from "@/lib/domain/messages";
 import { sendLibraryFiles, sendUploadedFile, type UploadedFile } from "@/lib/domain/files";
 import { notifyContactMessage } from "@/lib/domain/notifications";
+import { chatTemplates, replyWindowClosed, sendLeadTemplate, WINDOW_CLOSED_ERROR, type TemplateToSend } from "@/lib/domain/reply-window";
 import { BLOB_MISSING } from "@/lib/media";
+import { ChannelSendError } from "@/lib/channels/whatsapp";
 
 async function authorize(leadId: string) {
   const user = await requireUser();
@@ -109,6 +111,7 @@ function audioError(e: unknown) {
 export async function sendAsUserAction(leadId: string, form: FormData): Promise<string | null> {
   const { user, lead, by } = await authorize(leadId);
   if (lead.contact.blockedAt) return BLOCKED;
+  if (await replyWindowClosed(leadId)) return WINDOW_CLOSED_ERROR;
   const body = String(form.get("body") ?? "").trim();
   const audio = await audioFrom(form);
   if (audio) {
@@ -135,6 +138,7 @@ export type FilesToSend = { libraryIds: string[]; caption: string } | { upload: 
 export async function sendFilesAction(leadId: string, files: FilesToSend): Promise<string | null> {
   const { user, lead, by } = await authorize(leadId);
   if (lead.contact.blockedAt) return BLOCKED;
+  if (await replyWindowClosed(leadId)) return WINDOW_CLOSED_ERROR;
   try {
     if ("upload" in files) await sendUploadedFile(leadId, user.id, files.upload, files.caption);
     else await sendLibraryFiles(leadId, user.id, files.libraryIds, files.caption);
@@ -145,6 +149,33 @@ export async function sendFilesAction(leadId: string, files: FilesToSend): Promi
   if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
   const failed = await deliverOutbound(leadId);
   await refreshInsightsLater(leadId);
+  done(leadId);
+  return failed;
+}
+
+/** Plantillas aprobadas en Meta para retomar la conversación cuando pasaron las 24 h. */
+export async function chatTemplatesAction(leadId: string): Promise<{ templates: Awaited<ReturnType<typeof chatTemplates>> } | { error: string }> {
+  await authorize(leadId);
+  try {
+    return { templates: await chatTemplates() };
+  } catch (e) {
+    if (!(e instanceof ChannelSendError)) console.error(e);
+    return { error: e instanceof ChannelSendError ? e.message : "No se pudieron leer las plantillas de Meta." };
+  }
+}
+
+/** El ejecutivo reactiva la conversación con una plantilla; igual que al escribir, la IA se pausa. */
+export async function sendTemplateAction(leadId: string, template: TemplateToSend): Promise<string | null> {
+  const { user, lead, by } = await authorize(leadId);
+  if (lead.contact.blockedAt) return BLOCKED;
+  let failed: string | null;
+  try {
+    failed = await sendLeadTemplate(leadId, user.id, template);
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  if (lead.aiEnabled) await setAiEnabled(leadId, false, by);
   done(leadId);
   return failed;
 }

@@ -12,6 +12,7 @@ import { CorrectionDialog } from "./correction-dialog";
 import { timeline } from "@/lib/chat-timeline";
 import { MicButton, RecordingBar, useVoiceRecorder } from "./voice-recorder";
 import { FileButton } from "./file-sender";
+import { ClosedWindowComposer } from "./template-sender";
 import { autoGrow, useQuickReplyMenu, type QuickReplyOption } from "./quick-replies";
 import { hasAiMention, useAiDraft } from "./ai-draft";
 
@@ -81,6 +82,8 @@ export function LeadChat({
   blocked = false,
   isAdmin = false,
   windowClosed = false,
+  channelName = "WhatsApp",
+  templatesAllowed = false,
   quickReplies = [],
 }: {
   leadId: string;
@@ -93,8 +96,12 @@ export function LeadChat({
   /** Contacto bloqueado: no se le escribe ni se simula que escribe. */
   blocked?: boolean;
   isAdmin?: boolean;
-  /** Pasaron más de 24 horas desde el último mensaje del cliente: el canal solo deja mandar plantillas. */
+  /** Pasaron más de 24 horas desde el último mensaje del cliente: no se le puede escribir libremente. */
   windowClosed?: boolean;
+  /** Nombre del canal para el aviso de las 24 h ("WhatsApp", "Instagram"…). */
+  channelName?: string;
+  /** El canal deja retomar con una plantilla aprobada (solo WhatsApp). */
+  templatesAllowed?: boolean;
   /** Respuestas rápidas del usuario, que busca escribiendo "/". */
   quickReplies?: QuickReplyOption[];
 }) {
@@ -160,15 +167,24 @@ export function LeadChat({
             }}
           />
         )}
-        <UserComposer
-          leadId={leadId}
-          windowClosed={windowClosed}
-          quickReplies={quickReplies}
-          onSend={(body, audioUrl) => {
-            if (audioUrl) addPending(pending("USER", "", { url: audioUrl, transcript: null }));
-            if (body) addPending(pending("USER", body));
-          }}
-        />
+        {windowClosed ? (
+          <ClosedWindowComposer
+            leadId={leadId}
+            channelName={channelName}
+            templatesAllowed={templatesAllowed}
+            contactName={contactName}
+            isAdmin={isAdmin}
+          />
+        ) : (
+          <UserComposer
+            leadId={leadId}
+            quickReplies={quickReplies}
+            onSend={(body, audioUrl) => {
+              if (audioUrl) addPending(pending("USER", "", { url: audioUrl, transcript: null }));
+              if (body) addPending(pending("USER", body));
+            }}
+          />
+        )}
       </div>
       )}
 
@@ -574,12 +590,10 @@ function ContactComposer({
 
 function UserComposer({
   leadId,
-  windowClosed,
   quickReplies,
   onSend,
 }: {
   leadId: string;
-  windowClosed: boolean;
   quickReplies: QuickReplyOption[];
   onSend: (body: string, audioUrl: string | null) => void;
 }) {
@@ -656,7 +670,7 @@ function UserComposer({
                 } else submitOnEnter(e);
               }}
             />
-            <FileButton leadId={leadId} windowClosed={windowClosed} disabled={sendingAudio} />
+            <FileButton leadId={leadId} disabled={sendingAudio} />
             <MicButton recorder={recorder} disabled={sendingAudio} label="Grabar nota de voz" />
             <SubmitButton pendingText="Enviando…">
               <Send aria-hidden />
