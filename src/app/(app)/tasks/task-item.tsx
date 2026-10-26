@@ -14,7 +14,7 @@ const DUE_TONE = {
 
 /**
  * Una tarea como tarjeta compacta: título, lead, vencimiento, responsable y si la creó la IA.
- * Al hacer clic se despliega con la descripción completa y el botón de eliminar.
+ * Al hacer clic se despliega con la descripción completa y el botón de eliminar; abrir otra contrae la anterior.
  * `lead` muestra a qué lead pertenece (en "Mis tareas"); en la ficha del lead se omite.
  */
 export function TaskItem({
@@ -49,7 +49,8 @@ export function TaskItem({
           </span>
         </SubmitButton>
       </form>
-      <details className="group min-w-0 flex-1">
+      {/* Mismo `name` en todas: el navegador deja abierta solo una a la vez. */}
+      <details name="tarea" className="group min-w-0 flex-1">
         <summary className="flex cursor-pointer list-none items-start gap-2 rounded-md py-1.5 pr-1 [&::-webkit-details-marker]:hidden">
           <div className="min-w-0 flex-1">
             <p
