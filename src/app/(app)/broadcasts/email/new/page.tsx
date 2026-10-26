@@ -49,7 +49,7 @@ export default async function NewEmailBroadcastPage({ searchParams }: { searchPa
         description={
           resend
             ? "Partimos del mismo correo: un asunto nuevo suele funcionar mejor. Nada sale hasta que confirmes."
-            : "Arma el correo, elige a quiénes y revisa antes de enviar. Nada sale hasta que confirmes."
+            : "Elige a quiénes, arma el correo y revisa antes de enviar. Nada sale hasta que confirmes."
         }
       />
       {!sender || !resendKey ? (
