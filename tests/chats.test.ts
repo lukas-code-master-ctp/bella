@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MessageAuthor } from "@prisma/client";
 import { db } from "@/lib/db";
-import { createLead } from "@/lib/domain/leads";
+import { createLead, moveStage } from "@/lib/domain/leads";
 import { listChats } from "@/lib/domain/chats";
 import { chatDateRange, chatFiltersToParams, DEFAULT_CHAT_FILTERS, parseChatFilters, type ChatFilters } from "@/lib/domain/chat-filters";
 import { executive, seedFunnel } from "./factories";
@@ -62,6 +62,19 @@ describe("bandeja de chats", () => {
     expect(await names({ q: "1111" })).toEqual(["Paula"]);
     expect(await names({ q: "jor" })).toEqual(["Jorge"]);
     expect(quiet.id).toBeTruthy();
+  });
+
+  it("un lead que la IA derivó a un ejecutivo queda sin atender aunque lo último lo haya escrito la IA", async () => {
+    const [, , , human] = await seedFunnel();
+    const lead = await createLead({ name: "Lukas", channel: "WHATSAPP" });
+    await say(lead.id, "CONTACT", "Quiero hablar con una persona", minutesAgo(10));
+    await moveStage(lead.id, human!.id, { actor: "AI" });
+    await say(lead.id, "AI", "Te comunico con un ejecutivo", new Date());
+
+    const items = async () => (await listChats(filters({ attention: ["waiting"] }), admin)).items.map((c) => c.name);
+    expect(await items()).toEqual(["Lukas"]);
+    await db.message.create({ data: { leadId: lead.id, author: "USER", body: "Hola, soy Tiare", createdAt: new Date(Date.now() + 1000) } });
+    expect(await items()).toEqual([]);
   });
 
   it("filtra por etiqueta, estado y fecha, y un ejecutivo solo ve sus leads", async () => {

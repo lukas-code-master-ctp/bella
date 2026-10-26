@@ -255,6 +255,16 @@ export async function pendingWaits(s?: SlaSettings, now = new Date(), funnelId?:
   return pendingWaitsWhere(funnelId ? { stage: { funnelId } } : {}, s ?? (await getSlaSettings()), now);
 }
 
+/**
+ * De estos leads, los que esperan respuesta del equipo aunque el último mensaje no sea del cliente
+ * (ej. la IA lo derivó con "te comunico con un ejecutivo"), con desde cuándo esperan.
+ */
+export async function openWaitStarts(leadIds: string[], now = new Date()): Promise<Map<string, Date>> {
+  if (!leadIds.length) return new Map();
+  const waits = await pendingWaitsWhere({ id: { in: leadIds } }, await getSlaSettings(), now);
+  return new Map(waits.map((w) => [w.leadId, w.startedAt]));
+}
+
 /** De estos leads, los que pasaron la meta de respuesta, con cuánto llevan esperando (para las listas). */
 export async function lateLeads(leadIds: string[], now = new Date()): Promise<Map<string, number>> {
   if (!leadIds.length) return new Map();
