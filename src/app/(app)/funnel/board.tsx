@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
-import { Bot, CalendarClock, Headset, Megaphone, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { Bot, CalendarClock, ChevronLeft, ChevronRight, Headset, Megaphone, MessageCircleWarning, Sparkles, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import type { Attention } from "@/lib/domain/attention";
 import type { TaskBucket } from "@/lib/domain/tasks";
@@ -52,6 +52,7 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
   const [over, setOver] = useState<string | null>(null);
   // En el teléfono el tablero es una lista por etapa: se elige la etapa en una tira de pestañas.
   const [mobileStage, setMobileStage] = useState(() => (stages.find((s) => leads.some((l) => l.stageId === s.id)) ?? stages[0])?.id);
+  const nav = useBoardNav(stages.length);
 
   function onDrop(event: React.DragEvent, stageId: string) {
     event.preventDefault();
@@ -89,7 +90,53 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
           );
         })}
       </div>
-      <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-4 max-md:mx-0 max-md:block max-md:px-0 sm:mx-0 sm:px-0">
+      <nav aria-label="Ir a una etapa" className="mb-3 flex items-center gap-1.5 max-md:hidden">
+        <button
+          type="button"
+          onClick={() => nav.step(-1)}
+          disabled={nav.atStart}
+          aria-label="Etapas anteriores"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4"
+        >
+          <ChevronLeft aria-hidden />
+        </button>
+        <div ref={nav.stripRef} className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none]">
+          {stages.map((stage, i) => {
+            const total = optimistic.filter((l) => l.stageId === stage.id).length + stage.hidden;
+            const visible = nav.visible.has(i);
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                onClick={() => nav.goTo(i)}
+                aria-current={visible ? "true" : undefined}
+                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors duration-150 ${
+                  visible ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                }`}
+              >
+                <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                {stage.name}
+                <span className="tabular-nums text-slate-500">{total}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => nav.step(1)}
+          disabled={nav.atEnd}
+          aria-label="Etapas siguientes"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-colors duration-150 hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-4"
+        >
+          <ChevronRight aria-hidden />
+        </button>
+      </nav>
+      <div
+        ref={nav.boardRef}
+        style={nav.height ? { height: nav.height } : undefined}
+        onPointerDown={nav.startPan}
+        className={`-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-3 max-md:mx-0 max-md:block max-md:px-0 sm:mx-0 sm:px-0 ${nav.panning ? "cursor-grabbing select-none md:snap-none" : ""}`}
+      >
         {stages.map((stage) => {
           const items = optimistic.filter((l) => l.stageId === stage.id);
           const total = items.length + stage.hidden;
@@ -106,7 +153,7 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
                 if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null);
               }}
               onDrop={(e) => onDrop(e, stage.id)}
-              className={`flex w-[288px] shrink-0 snap-start flex-col rounded-xl border max-md:w-full ${stage.id === mobileStage ? "" : "max-md:hidden"} transition-[background-color,border-color,box-shadow] duration-200 ${
+              className={`flex w-[288px] shrink-0 snap-start flex-col rounded-xl border md:min-h-0 max-md:w-full ${stage.id === mobileStage ? "" : "max-md:hidden"} transition-[background-color,border-color,box-shadow] duration-200 ${
                 isOver ? "border-brand-300 bg-brand-50 shadow-[0_0_0_4px_var(--color-brand-100)]" : "border-transparent bg-slate-100"
               }`}
             >
@@ -123,7 +170,7 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
                   {total}
                 </span>
               </header>
-              <div className="stagger flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1 max-md:pt-2">
+              <div className="stagger flex min-h-28 flex-1 flex-col gap-2 p-2 pt-1 max-md:pt-2 md:overflow-y-auto md:overscroll-contain">
                 {items.length === 0 && (
                   <p className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">
                     {isOver ? "Suelta aquí" : "Sin leads"}
@@ -143,7 +190,7 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
                       setDragging(null);
                       setOver(null);
                     }}
-                    className={`group relative block cursor-grab overflow-hidden rounded-lg border bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
+                    className={`group relative block shrink-0 cursor-grab overflow-hidden rounded-lg border bg-white p-3 shadow-xs transition-[border-color,box-shadow,opacity,translate,scale] duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing ${
                       lead.late ? "border-rose-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-rose-500" : lead.attention === "waiting" ? "border-amber-200 before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-amber-400" : "border-slate-200"
                     } ${dragging === lead.id ? "scale-[0.97] opacity-50" : ""}`}
                   >
@@ -209,6 +256,118 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
       </div>
     </>
   );
+}
+
+/** Espacio que se deja bajo el tablero: el margen inferior de la página (bajo lg también la barra de navegación fija). */
+const bottomGap = () => (window.innerWidth >= 1024 ? 32 : 88);
+
+/**
+ * Navegación lateral del tablero en escritorio: el tablero ocupa el alto de la pantalla (cada columna se desplaza por
+ * dentro, así la barra horizontal queda a la vista), la tira de etapas lleva a una columna, las flechas avanzan de a
+ * una pantalla y se puede arrastrar el fondo para moverse de lado.
+ */
+function useBoardNav(count: number) {
+  const boardRef = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const [visible, setVisible] = useState<Set<number>>(new Set());
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(true);
+  const [panning, setPanning] = useState(false);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const wide = window.matchMedia("(min-width: 768px)");
+    function measure() {
+      if (!board || !wide.matches) return setHeight(null);
+      const top = board.getBoundingClientRect().top + window.scrollY;
+      setHeight(Math.max(360, Math.round(window.innerHeight - top - bottomGap())));
+    }
+    function edges() {
+      if (!board) return;
+      setAtStart(board.scrollLeft <= 1);
+      setAtEnd(board.scrollLeft + board.clientWidth >= board.scrollWidth - 1);
+    }
+    measure();
+    edges();
+    const resize = new ResizeObserver(() => {
+      measure();
+      edges();
+    });
+    if (board.parentElement) resize.observe(board.parentElement);
+    resize.observe(board);
+    window.addEventListener("resize", measure);
+    wide.addEventListener("change", measure);
+    board.addEventListener("scroll", edges, { passive: true });
+    const seen = new IntersectionObserver(
+      (entries) =>
+        setVisible((prev) => {
+          const next = new Set(prev);
+          for (const e of entries) {
+            const i = Array.prototype.indexOf.call(board.children, e.target);
+            if (e.isIntersecting) next.add(i);
+            else next.delete(i);
+          }
+          return next;
+        }),
+      { root: board, threshold: 0.6 },
+    );
+    for (const col of Array.from(board.children)) seen.observe(col);
+    return () => {
+      resize.disconnect();
+      seen.disconnect();
+      window.removeEventListener("resize", measure);
+      wide.removeEventListener("change", measure);
+      board.removeEventListener("scroll", edges);
+    };
+  }, [count]);
+
+  // La etapa visible más a la izquierda se mantiene a la vista en la tira.
+  const first = Math.min(...visible);
+  useEffect(() => {
+    if (Number.isFinite(first)) stripRef.current?.children[first]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [first]);
+
+  function goTo(i: number) {
+    const board = boardRef.current;
+    const col = board?.children[i] as HTMLElement | undefined;
+    if (board && col) board.scrollTo({ left: board.scrollLeft + col.getBoundingClientRect().left - board.getBoundingClientRect().left, behavior: "smooth" });
+  }
+
+  function step(dir: 1 | -1) {
+    const board = boardRef.current;
+    if (board) board.scrollBy({ left: dir * Math.max(304, board.clientWidth - 304), behavior: "smooth" });
+  }
+
+  function startPan(event: React.PointerEvent<HTMLDivElement>) {
+    const board = boardRef.current;
+    // Solo con el mouse sobre el fondo: las tarjetas se arrastran entre etapas y los enlaces se abren.
+    const target = event.target as HTMLElement;
+    if (!board || event.pointerType !== "mouse" || event.button !== 0 || target.closest("a, button")) return;
+    // Sobre una barra de desplazamiento (la del tablero o la de una columna) el navegador se encarga.
+    if (event.nativeEvent.offsetX > target.clientWidth || event.nativeEvent.offsetY > target.clientHeight) return;
+    const startX = event.clientX;
+    const startLeft = board.scrollLeft;
+    let moved = false;
+    function onMove(e: PointerEvent) {
+      if (!board) return;
+      const dx = e.clientX - startX;
+      if (!moved && Math.abs(dx) < 4) return;
+      if (!moved) setPanning(true);
+      moved = true;
+      board.scrollLeft = startLeft - dx;
+    }
+    function onUp() {
+      setPanning(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  return { boardRef, stripRef, height, visible, atStart, atEnd, panning, goTo, step, startPan };
 }
 
 function AttentionBadge({ attention, waitingFor }: { attention: Attention; waitingFor: string | null }) {
