@@ -110,7 +110,10 @@ export const AGENT_TOOLS: Tool[] = [
           "y hora actual del estado del CRM como referencia. Si el cliente no dio un plazo, usa el " +
           "siguiente día hábil.",
       ),
-      notes: text("Contexto para el ejecutivo: datos del cliente y lo acordado, o vacío"),
+      notes: text(
+        "Contexto breve para el ejecutivo (2 o 3 frases): qué necesita el cliente y lo acordado, o " +
+          "vacío. No repitas nombre, teléfono ni correo: ya están en la ficha del lead.",
+      ),
     },
   ),
   tool(

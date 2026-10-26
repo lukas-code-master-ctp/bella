@@ -69,7 +69,7 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 /**
- * Eventos que además se marcan dentro de la conversación (el resto, como etiquetas o campos,
+ * Eventos que además se marcan dentro de la conversación (el resto, como etiquetas, campos o tareas cumplidas,
  * queda solo en Historial para no llenar el chat). Valor: color de la nota.
  */
 const CHAT_EVENTS: Record<string, ChatEvent["tone"]> = {
@@ -90,12 +90,14 @@ const CHAT_EVENTS: Record<string, ChatEvent["tone"]> = {
   CONTACT_MERGED: "neutral",
   FOLLOW_UP_SCHEDULED: "neutral",
   FOLLOW_UP_CANCELED: "neutral",
+  TASK_CREATED: "neutral",
 };
 
 /** Texto de un evento: "Cambio de etapa: Nuevo → Calificado". */
 function eventText(type: string, data: Record<string, unknown>) {
   const label = (EVENT_LABEL[type] ?? type).replace(/:$/, "");
-  const detail = describe(data);
+  let detail = describe(data);
+  if (type === "TASK_CREATED" && typeof data.dueAt === "string") detail += ` · vence ${formatLocal(new Date(data.dueAt))}`;
   return detail ? `${label}: ${detail}` : label;
 }
 

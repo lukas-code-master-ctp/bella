@@ -53,7 +53,7 @@ export function TaskItem({
         <summary className="flex cursor-pointer list-none items-start gap-2 rounded-md py-1.5 pr-1 [&::-webkit-details-marker]:hidden">
           <div className="min-w-0 flex-1">
             <p
-              className={`line-clamp-2 text-sm font-medium group-open:line-clamp-none ${
+              className={`line-clamp-2 text-sm font-medium [overflow-wrap:anywhere] group-open:line-clamp-none ${
                 isDone ? "text-slate-500 line-through" : "text-slate-900"
               }`}
             >
@@ -78,7 +78,20 @@ export function TaskItem({
         </summary>
         <div className="space-y-2 border-t border-slate-100 pb-1 pr-1 pt-2">
           {task.notes ? (
-            <p className="whitespace-pre-line text-xs text-slate-700">{task.notes}</p>
+            // Notas largas (las de la IA suelen serlo) quedan en 4 líneas; un clic las muestra completas.
+            <details className="group/notes">
+              <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                <p className="line-clamp-4 whitespace-pre-line text-xs text-slate-700 [overflow-wrap:anywhere] group-open/notes:line-clamp-none">
+                  {task.notes}
+                </p>
+                {task.notes.length > 160 && (
+                  <span className="mt-0.5 inline-block text-xs font-medium text-brand-700 hover:underline">
+                    <span className="group-open/notes:hidden">Ver más</span>
+                    <span className="hidden group-open/notes:inline">Ver menos</span>
+                  </span>
+                )}
+              </summary>
+            </details>
           ) : (
             <p className="text-xs text-slate-500">Sin descripción.</p>
           )}
