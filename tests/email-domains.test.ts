@@ -25,7 +25,7 @@ import {
 import { withCompany } from "@/lib/tenant";
 import { TEST_COMPANY_ID } from "./company";
 
-function fakeApi(status = "not_started") {
+function fakeApi(status = "not_started", existing: { id: string; name: string; status: string }[] = []) {
   const calls: string[] = [];
   const domain = (id: string, name = "noticias.motos.cl"): ResendDomain => ({
     id,
@@ -34,13 +34,17 @@ function fakeApi(status = "not_started") {
     records: [{ record: "DKIM", name: "resend._domainkey.noticias", type: "TXT", value: "p=abc", status }],
   });
   const api: EmailDomainsApi = {
+    async list() {
+      return existing;
+    },
     async create(name) {
       calls.push(`create ${name}`);
       return domain("rs_1", name);
     },
     async get(id) {
       calls.push(`get ${id}`);
-      return domain(id);
+      const known = existing.find((d) => d.id === id);
+      return known ? { ...domain(id, known.name), status: known.status } : domain(id);
     },
     async verify(id) {
       calls.push(`verify ${id}`);
@@ -59,7 +63,7 @@ function fakeApi(status = "not_started") {
       calls.push(`remove webhook ${id}`);
     },
   };
-  return { api, calls, setStatus: (s: string) => (status = s) };
+  return { api, calls, existing, setStatus: (s: string) => (status = s) };
 }
 
 const sender = { fromName: "Motos del Sur", fromLocal: "noticias", replyTo: "" };
@@ -107,6 +111,31 @@ describe("dominio de envío por correo", () => {
     expect((await checkEmailDomain(flaky)).webhookId).toBe("wh_1");
     await checkEmailDomain(flaky);
     expect(calls.filter((c) => c.startsWith("webhook"))).toHaveLength(1);
+  });
+
+  it("si el dominio ya está verificado en la cuenta de Resend, lo usa sin crear otro ni pedir DNS", async () => {
+    const { api, calls } = fakeApi("not_started", [
+      { id: "rs_viejo", name: "otro.cl", status: "verified" },
+      { id: "rs_suyo", name: "noticias.motos.cl", status: "verified" },
+    ]);
+    const d = await connectEmailDomain({ domain: "Noticias.Motos.cl", ...sender }, api);
+    expect(d).toMatchObject({ resendId: "rs_suyo", status: "verified", createdInResend: false });
+    expect(d.verifiedAt).toBeInstanceOf(Date);
+    expect(calls.some((c) => c.startsWith("create"))).toBe(false);
+    expect(await companyEmailSender()).toEqual({ from: "Motos del Sur <noticias@noticias.motos.cl>", replyTo: undefined });
+
+    // Al quitarlo de Beliapp no se borra de su cuenta de Resend.
+    await removeEmailDomain(api);
+    expect(calls).not.toContain("remove rs_suyo");
+  });
+
+  it("un duplicado pendiente pasa solo al dominio ya verificado al revisar", async () => {
+    const { api, calls, existing } = fakeApi();
+    await connectEmailDomain({ domain: "noticias.motos.cl", ...sender }, api);
+    existing.push({ id: "rs_original", name: "noticias.motos.cl", status: "verified" });
+    const d = await checkEmailDomain(api);
+    expect(d).toMatchObject({ resendId: "rs_original", status: "verified", createdInResend: false });
+    expect(calls).toContain("remove rs_1");
   });
 
   it("rechaza dominios inválidos, de Beliapp, repetidos o un segundo dominio", async () => {

@@ -43,6 +43,8 @@ export type ResendDomain = { id: string; name: string; status: string; records: 
 
 /** Lo que Beliapp usa de la API de dominios de Resend. Se reemplaza en pruebas. */
 export type EmailDomainsApi = {
+  /** Dominios que ya están en la cuenta de Resend (sin registros DNS). */
+  list(): Promise<Pick<ResendDomain, "id" | "name" | "status">[]>;
   create(name: string): Promise<ResendDomain>;
   get(id: string): Promise<ResendDomain>;
   verify(id: string): Promise<void>;
@@ -70,6 +72,7 @@ async function resend<T>(method: string, path: string, body?: object): Promise<T
 }
 
 export const resendDomainsApi: EmailDomainsApi = {
+  list: async () => (await resend<{ data?: Pick<ResendDomain, "id" | "name" | "status">[] }>("GET", "/domains")).data ?? [],
   create: (name) => resend<ResendDomain>("POST", "/domains", { name }),
   get: (id) => resend<ResendDomain>("GET", `/domains/${id}`),
   verify: async (id) => {
@@ -132,10 +135,22 @@ export async function connectEmailDomain(input: { domain: string } & SenderInput
   if (await rootDb.emailDomain.findUnique({ where: { domain }, select: { id: true } })) {
     throw new DomainError("Ese dominio ya está conectado en otra empresa de Beliapp.");
   }
-  const created = await api.create(domain);
-  await api.track(created.id);
+  // Si el dominio ya está en su cuenta de Resend (quizás verificado), se usa ese: crearlo de
+  // nuevo haría un duplicado con llaves DKIM nuevas y habría que volver a tocar el DNS.
+  const existing = sameDomain(await api.list(), domain);
+  const resendDomain = existing ? await api.get(existing.id) : await api.create(domain);
+  await api.track(resendDomain.id);
+  const verified = resendDomain.status === "verified";
   await db.emailDomain.create({
-    data: { domain, resendId: created.id, status: created.status, records: created.records ?? [], ...sender },
+    data: {
+      domain,
+      resendId: resendDomain.id,
+      createdInResend: !existing,
+      status: resendDomain.status,
+      records: resendDomain.records ?? [],
+      ...(verified ? { verifiedAt: new Date(), checkedAt: new Date() } : {}),
+      ...sender,
+    },
   });
   await ensureEmailWebhook(api);
   return (await getEmailDomain())!;
@@ -167,10 +182,25 @@ export async function emailWebhookSecret(): Promise<string | undefined> {
   return (d?.webhookSecret && decryptValue(d.webhookSecret)) || undefined;
 }
 
+/** El mismo dominio en la cuenta de Resend, prefiriendo uno ya verificado. */
+function sameDomain<T extends { name: string; status: string }>(list: T[], domain: string): T | undefined {
+  const matches = list.filter((d) => d.name.toLowerCase() === domain);
+  return matches.find((d) => d.status === "verified") ?? matches[0];
+}
+
 /** Pide a Resend revisar el DNS y guarda el estado. Devuelve el dominio actualizado. */
 export async function checkEmailDomain(api: EmailDomainsApi = resendDomainsApi): Promise<EmailDomain> {
-  const current = await getEmailDomain();
+  let current = await getEmailDomain();
   if (!current) throw new DomainError("Aún no conectas un dominio de envío.");
+  if (current.status !== "verified") {
+    // Si en la cuenta hay otro igual ya verificado (un duplicado que se creó antes), se pasa a ese.
+    const verified = (await api.list()).find((d) => d.name.toLowerCase() === current!.domain && d.status === "verified" && d.id !== current!.resendId);
+    if (verified) {
+      if (current.createdInResend) await api.remove(current.resendId).catch(() => undefined);
+      await api.track(verified.id);
+      current = await db.emailDomain.update({ where: { id: current.id }, data: { resendId: verified.id, createdInResend: false } });
+    }
+  }
   if (current.status !== "verified") await api.verify(current.resendId);
   const fresh = await api.get(current.resendId);
   await ensureEmailWebhook(api);
@@ -199,7 +229,8 @@ export async function removeEmailDomain(api: EmailDomainsApi = resendDomainsApi)
     if (!(e instanceof DomainError && /not.?found|404/i.test(e.message))) throw e;
   };
   if (current.webhookId) await api.removeWebhook(current.webhookId).catch(gone);
-  await api.remove(current.resendId).catch(gone);
+  // Un dominio que ya estaba en su cuenta de Resend se deja allá.
+  if (current.createdInResend) await api.remove(current.resendId).catch(gone);
   await db.emailDomain.delete({ where: { id: current.id } });
 }
 

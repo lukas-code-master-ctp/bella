@@ -30,7 +30,7 @@ export function ConnectDomainForm({ fromName }: { fromName: string }) {
   return (
     <form action={action}>
       <PanelBody>
-        <Field label="Dominio de envío" hint="Te recomendamos un subdominio solo para los envíos, por ejemplo noticias.tuempresa.cl.">
+        <Field label="Dominio de envío" hint="Te recomendamos un subdominio solo para los envíos, por ejemplo noticias.tuempresa.cl. Si ya lo tienes verificado en Resend, se usa ese y no hay que tocar el DNS.">
           <input name="domain" required placeholder="noticias.tuempresa.cl" autoCapitalize="none" spellCheck={false} className={inputClass} />
         </Field>
         <SenderFields fromName={fromName} fromLocal="noticias" replyTo="" />
