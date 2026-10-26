@@ -42,8 +42,11 @@ export type BoardLead = {
 /** `hidden`: leads abiertos de la etapa que no se cargaron en el tablero. */
 export type BoardStage = { id: string; name: string; color: string; requiresHuman: boolean; hidden: number };
 
-/** `leadHref`: enlace al panel del lead, con "__id__" en lugar del id (conserva los filtros de la URL). */
-export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads: BoardLead[]; leadHref: string }) {
+/**
+ * `leadHref`: enlace al panel del lead, con "__id__" en lugar del id (conserva los filtros de la URL).
+ * `focusWaiting`: al activarse, lleva la vista a la primera etapa (de izquierda a derecha) con un lead sin atender.
+ */
+export function Board({ stages, leads, leadHref, focusWaiting = false }: { stages: BoardStage[]; leads: BoardLead[]; leadHref: string; focusWaiting?: boolean }) {
   const [optimistic, move] = useOptimistic(leads, (state, { id, stageId }: { id: string; stageId: string }) =>
     state.map((l) => (l.id === id ? { ...l, stageId } : l)),
   );
@@ -53,6 +56,20 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
   // En el teléfono el tablero es una lista por etapa: se elige la etapa en una tira de pestañas.
   const [mobileStage, setMobileStage] = useState(() => (stages.find((s) => leads.some((l) => l.stageId === s.id)) ?? stages[0])?.id);
   const nav = useBoardNav(stages.length);
+  const mobileTabs = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    mobileTabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [mobileStage]);
+
+  // Solo al encender el filtro "Sin atender", no en cada recarga automática del tablero.
+  useEffect(() => {
+    if (!focusWaiting) return;
+    const i = stages.findIndex((s) => optimistic.some((l) => l.stageId === s.id && l.attention === "waiting"));
+    if (i < 0) return;
+    setMobileStage(stages[i].id);
+    nav.reveal(i);
+  }, [focusWaiting]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function onDrop(event: React.DragEvent, stageId: string) {
     event.preventDefault();
@@ -68,7 +85,7 @@ export function Board({ stages, leads, leadHref }: { stages: BoardStage[]; leads
 
   return (
     <>
-      <div role="tablist" aria-label="Etapas" className="-mx-4 mb-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden">
+      <div ref={mobileTabs} role="tablist" aria-label="Etapas" className="-mx-4 mb-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden">
         {stages.map((stage) => {
           const total = optimistic.filter((l) => l.stageId === stage.id).length + stage.hidden;
           const active = stage.id === mobileStage;
@@ -335,6 +352,16 @@ function useBoardNav(count: number) {
     if (board && col) board.scrollTo({ left: board.scrollLeft + col.getBoundingClientRect().left - board.getBoundingClientRect().left, behavior: "smooth" });
   }
 
+  /** Lleva la columna a la vista solo si no se ve entera. */
+  function reveal(i: number) {
+    const board = boardRef.current;
+    const col = board?.children[i] as HTMLElement | undefined;
+    if (!board || !col) return;
+    const b = board.getBoundingClientRect();
+    const c = col.getBoundingClientRect();
+    if (c.left < b.left || c.right > b.right) goTo(i);
+  }
+
   function step(dir: 1 | -1) {
     const board = boardRef.current;
     if (board) board.scrollBy({ left: dir * Math.max(304, board.clientWidth - 304), behavior: "smooth" });
@@ -367,7 +394,7 @@ function useBoardNav(count: number) {
     window.addEventListener("pointerup", onUp);
   }
 
-  return { boardRef, stripRef, height, visible, atStart, atEnd, panning, goTo, step, startPan };
+  return { boardRef, stripRef, height, visible, atStart, atEnd, panning, goTo, reveal, step, startPan };
 }
 
 function AttentionBadge({ attention, waitingFor }: { attention: Attention; waitingFor: string | null }) {
