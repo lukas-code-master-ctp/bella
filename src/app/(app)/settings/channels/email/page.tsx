@@ -1,10 +1,10 @@
+import Link from "next/link";
 import { Globe, MailX, Send, Trash2 } from "lucide-react";
 import type { EmailSuppressionReason } from "@prisma/client";
-import { emailConfigured } from "@/lib/email";
-import { defaultFromName, getEmailDomain, type DnsRecord } from "@/lib/domain/email-domains";
+import { companyResendKey, defaultFromName, getEmailDomain, type DnsRecord } from "@/lib/domain/email-domains";
 import { listEmailSuppressions } from "@/lib/domain/email-suppression";
 import { formatChileDateTime } from "@/lib/domain/follow-ups";
-import { Badge, PageHeader } from "@/components/ui";
+import { Badge, buttonClass, PageHeader } from "@/components/ui";
 import { Callout, Panel, PanelBody, PanelFooter, StatusPill } from "@/components/settings-ui";
 import { CopyField } from "@/components/copy-field";
 import { SubmitButton } from "@/components/submit-button";
@@ -27,7 +27,12 @@ const REASON: Record<EmailSuppressionReason, { label: string; tone: "neutral" | 
 };
 
 export default async function EmailChannelPage() {
-  const [domain, fromName, { rows, total }] = await Promise.all([getEmailDomain(), defaultFromName(), listEmailSuppressions()]);
+  const [domain, fromName, { rows, total }, resendKey] = await Promise.all([
+    getEmailDomain(),
+    defaultFromName(),
+    listEmailSuppressions(),
+    companyResendKey(),
+  ]);
   const records = (domain?.records ?? []) as DnsRecord[];
   const verified = domain?.status === "verified";
 
@@ -40,13 +45,25 @@ export default async function EmailChannelPage() {
         <ChannelPageActions claude={false} />
       </PageHeader>
       <div className="space-y-6">
-        {!emailConfigured() && (
-          <Callout tone="warning" title="El correo no está activo en este servidor">
-            Falta la clave de Resend (RESEND_API_KEY) en el servidor de Beliapp. Pídesela al equipo de Beliapp.
+        {!resendKey && (
+          <Callout tone="warning" title="Primero conecta tu cuenta de Resend">
+            Los correos salen con tu propia cuenta de Resend (resend.com), y ahí se cobran. Crea una clave con acceso completo en
+            Resend → API Keys y pégala en Credenciales.
+            <span className="mt-3 block">
+              <Link href="/settings/credentials" className={buttonClass("secondary", "sm")}>
+                Ir a Credenciales
+              </Link>
+            </span>
+          </Callout>
+        )}
+        {resendKey && domain && !domain.webhookId && (
+          <Callout tone="warning" title="Falta el aviso de Resend">
+            No se pudo crear en tu cuenta de Resend el webhook que informa entregas, aperturas y rebotes. Revisa que la clave tenga
+            acceso completo y toca “Revisar DNS” para reintentar.
           </Callout>
         )}
 
-        {!domain ? (
+        {!domain && !resendKey ? null : !domain ? (
           <Panel icon={<Globe />} title="Dominio de envío" description="Los correos salen a nombre de tu empresa y desde tu dominio, no desde Beliapp.">
             <ConnectDomainForm fromName={fromName} />
           </Panel>

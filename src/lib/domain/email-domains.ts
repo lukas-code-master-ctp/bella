@@ -1,15 +1,32 @@
 import type { EmailDomain } from "@prisma/client";
+import { credential, decryptValue, encryptValue } from "../credentials";
 import { db, rootDb } from "../db";
+import { APP_URL, resendBatchSenderWith, resendSenderWith } from "../email";
 import { currentCompanyId } from "../tenant";
 import { DomainError } from "./leads";
 
 /**
  * Dominio de envío de cada empresa para sus envíos masivos por correo. Los avisos del equipo
  * siguen saliendo del dominio de Beliapp (src/lib/email.ts); los newsletters salen del dominio
- * de la empresa, así la reputación de una no afecta a las demás ni a los avisos. Todos los
- * dominios viven en la cuenta Resend de la plataforma (RESEND_API_KEY): la empresa solo agrega
- * en su DNS los registros que entrega Resend.
+ * de la empresa, así la reputación de una no afecta a las demás ni a los avisos. Cada empresa usa
+ * su propia cuenta de Resend (su clave en Configuración → Credenciales): ahí Beliapp crea el
+ * dominio y el webhook de entregas, aperturas y rebotes, y ahí se cobran sus envíos.
  */
+
+const NO_KEY = "Primero pega la clave de Resend de tu empresa en Configuración → Credenciales.";
+
+/** Clave de Resend de la empresa actual. Nunca la de la plataforma. */
+export const companyResendKey = () => credential("RESEND_EMAIL_API_KEY");
+
+/** Envíos con la cuenta de Resend de la empresa actual. */
+export const companyResendSender = resendSenderWith(companyResendKey, NO_KEY);
+export const companyResendBatchSender = resendBatchSenderWith(companyResendKey, NO_KEY);
+
+/** Avisos de Resend que Beliapp necesita para las métricas, las bajas y la reputación. */
+export const WEBHOOK_EVENTS = ["email.delivered", "email.opened", "email.clicked", "email.bounced", "email.complained"];
+
+/** Dirección del webhook de una empresa: la empresa va en la ruta y firma con su propio secreto. */
+export const emailWebhookUrl = (companyId: string) => `${APP_URL}/api/webhooks/resend/${companyId}`;
 
 /** Registro DNS que pide Resend (SPF, DKIM, MX de rebotes…). */
 export type DnsRecord = {
@@ -32,17 +49,22 @@ export type EmailDomainsApi = {
   /** Activa el seguimiento de aperturas y clics (para las métricas de cada envío). */
   track(id: string): Promise<void>;
   remove(id: string): Promise<void>;
+  createWebhook(endpoint: string, events: string[]): Promise<{ id: string; signing_secret: string }>;
+  removeWebhook(id: string): Promise<void>;
 };
 
 async function resend<T>(method: string, path: string, body?: object): Promise<T> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) throw new DomainError("Falta RESEND_API_KEY en el servidor de Beliapp.");
+  const key = await companyResendKey();
+  if (!key) throw new DomainError(NO_KEY);
   const res = await fetch(`https://api.resend.com${path}`, {
     method,
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = (await res.json().catch(() => ({}))) as T & { message?: string };
+  if (res.status === 401 || res.status === 403) {
+    throw new DomainError(`Resend no aceptó la clave de tu empresa (${json.message ?? `HTTP ${res.status}`}). Revisa que tenga acceso completo (Full access).`);
+  }
   if (!res.ok) throw new DomainError(`Resend respondió: ${json.message ?? `HTTP ${res.status}`}`);
   return json;
 }
@@ -58,6 +80,10 @@ export const resendDomainsApi: EmailDomainsApi = {
   },
   remove: async (id) => {
     await resend("DELETE", `/domains/${id}`);
+  },
+  createWebhook: (endpoint, events) => resend("POST", "/webhooks", { endpoint, events }),
+  removeWebhook: async (id) => {
+    await resend("DELETE", `/webhooks/${id}`);
   },
 };
 
@@ -108,9 +134,37 @@ export async function connectEmailDomain(input: { domain: string } & SenderInput
   }
   const created = await api.create(domain);
   await api.track(created.id);
-  return db.emailDomain.create({
+  await db.emailDomain.create({
     data: { domain, resendId: created.id, status: created.status, records: created.records ?? [], ...sender },
   });
+  await ensureEmailWebhook(api);
+  return (await getEmailDomain())!;
+}
+
+/**
+ * Crea en la cuenta de Resend de la empresa el webhook que avisa entregas, aperturas, clics,
+ * rebotes y quejas, y guarda su secreto cifrado. Si falla no corta nada: se reintenta al revisar
+ * el dominio, y la página de Correo muestra que falta.
+ */
+export async function ensureEmailWebhook(api: EmailDomainsApi = resendDomainsApi): Promise<boolean> {
+  const current = await getEmailDomain();
+  if (!current) return false;
+  if (current.webhookId) return true;
+  if (!APP_URL) return false;
+  try {
+    const hook = await api.createWebhook(emailWebhookUrl(await currentCompanyId()), WEBHOOK_EVENTS);
+    await db.emailDomain.update({ where: { id: current.id }, data: { webhookId: hook.id, webhookSecret: encryptValue(hook.signing_secret) } });
+    return true;
+  } catch (e) {
+    console.error("[correo] no se pudo crear el webhook de Resend:", e);
+    return false;
+  }
+}
+
+/** Secreto con que Resend firma los avisos de la empresa actual, o undefined si aún no hay webhook. */
+export async function emailWebhookSecret(): Promise<string | undefined> {
+  const d = await db.emailDomain.findFirst({ select: { webhookSecret: true } });
+  return (d?.webhookSecret && decryptValue(d.webhookSecret)) || undefined;
 }
 
 /** Pide a Resend revisar el DNS y guarda el estado. Devuelve el dominio actualizado. */
@@ -119,6 +173,7 @@ export async function checkEmailDomain(api: EmailDomainsApi = resendDomainsApi):
   if (!current) throw new DomainError("Aún no conectas un dominio de envío.");
   if (current.status !== "verified") await api.verify(current.resendId);
   const fresh = await api.get(current.resendId);
+  await ensureEmailWebhook(api);
   return db.emailDomain.update({
     where: { id: current.id },
     data: {
@@ -140,11 +195,11 @@ export async function updateEmailSender(input: SenderInput) {
 export async function removeEmailDomain(api: EmailDomainsApi = resendDomainsApi) {
   const current = await getEmailDomain();
   if (!current) return;
-  try {
-    await api.remove(current.resendId);
-  } catch (e) {
+  const gone = (e: unknown) => {
     if (!(e instanceof DomainError && /not.?found|404/i.test(e.message))) throw e;
-  }
+  };
+  if (current.webhookId) await api.removeWebhook(current.webhookId).catch(gone);
+  await api.remove(current.resendId).catch(gone);
   await db.emailDomain.delete({ where: { id: current.id } });
 }
 

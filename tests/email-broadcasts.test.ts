@@ -17,9 +17,11 @@ import {
 } from "@/lib/domain/email-broadcasts";
 import { handleResendEvent, suppressEmail } from "@/lib/domain/email-suppression";
 import { createLead } from "@/lib/domain/leads";
+import { saveCredentials } from "@/lib/credentials";
 import { executive, seedFunnel } from "./factories";
 
-async function verifiedDomain() {
+async function verifiedDomain({ key = true } = {}) {
+  if (key) await saveCredentials({ RESEND_EMAIL_API_KEY: "re_empresa" });
   await db.emailDomain.create({
     data: { domain: "noticias.motos.cl", resendId: "rs", status: "verified", fromName: "Motos del Sur", verifiedAt: new Date() },
   });
@@ -112,8 +114,16 @@ describe("envíos por correo", () => {
     await expect(createEmailBroadcast(input({ kind: "rows", rows: [{ email: "a@x.cl" }] }), "u")).rejects.toThrow("{{comuna}}");
   });
 
-  it("sin dominio verificado no deja crear el envío", async () => {
+  it("sin dominio verificado o sin la clave de Resend de la empresa no deja crear el envío", async () => {
     await expect(createEmailBroadcast(input(rows(["ana@x.cl"])), "u")).rejects.toThrow("verifica tu dominio");
+    // La clave de la plataforma (avisos) nunca sirve para los envíos de una empresa.
+    process.env.RESEND_API_KEY = "re_plataforma";
+    try {
+      await verifiedDomain({ key: false });
+      await expect(createEmailBroadcast(input(rows(["ana@x.cl"])), "u")).rejects.toThrow("clave de Resend");
+    } finally {
+      delete process.env.RESEND_API_KEY;
+    }
   });
 
   it("toma correos del funnel (contactos con correo)", async () => {

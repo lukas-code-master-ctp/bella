@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach } from "vitest";
 process.env.DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/bella_test";
 process.env.SESSION_SECRET ??= "test-secret-test-secret";
+process.env.APP_URL ??= "https://app.beliapp.test";
 
 const { db, rootDb } = await import("@/lib/db");
 const { clearCredentialCache } = await import("@/lib/credentials");

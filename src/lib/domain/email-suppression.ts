@@ -167,11 +167,12 @@ async function recordRecipientEvent(type: keyof typeof EVENT_FIELD, resendId: st
  * fuera de los próximos envíos. Los rebotes temporales (buzón lleno) no. Devuelve cuántas
  * direcciones quedaron fuera.
  */
-export async function handleResendEvent(event: ResendEvent): Promise<number> {
+export async function handleResendEvent(event: ResendEvent, expectedCompanyId?: string): Promise<number> {
   const { type, data } = event;
   if (!type || !data?.from || !(type in EVENT_FIELD)) return 0;
   const companyId = await companyForSender(data.from);
-  if (!companyId) return 0;
+  // El webhook de una empresa solo toca los datos de esa empresa.
+  if (!companyId || (expectedCompanyId && companyId !== expectedCompanyId)) return 0;
   const permanentBounce = type === "email.bounced" && data.bounce?.type === "Permanent";
   const at = event.created_at ? new Date(event.created_at) : new Date();
   const to = (Array.isArray(data.to) ? data.to : data.to ? [data.to] : []).map((t) => t.match(/<([^>]+)>/)?.[1] ?? t);

@@ -2,9 +2,9 @@ import { Prisma, type EmailBroadcast, type EmailRecipient, type LeadStatus } fro
 import { db } from "../db";
 import { parseLocalDateTime } from "../dates";
 import { currentCompanyId } from "../tenant";
-import { EmailError, RESEND_BATCH_MAX, resendBatchSender, resendSender, type Email, type EmailBatchSender, type EmailSender } from "../email";
+import { EmailError, RESEND_BATCH_MAX, type Email, type EmailBatchSender, type EmailSender } from "../email";
 import { contentError, personalize, renderEmailHtml, renderEmailText, usedVars, varsFor, type EmailBlock, type EmailContent } from "../email-content";
-import { companyEmailSender, getEmailDomain } from "./email-domains";
+import { companyEmailSender, companyResendBatchSender, companyResendKey, companyResendSender, getEmailDomain } from "./email-domains";
 import { normalizeEmail, suppressedAmong, unsubscribeLinks } from "./email-suppression";
 import { DomainError } from "./leads";
 
@@ -166,6 +166,7 @@ async function validate(input: EmailBroadcastInput) {
   const scheduledAt = scheduleOf(input);
   const sender = await companyEmailSender();
   if (!sender) throw new DomainError("Primero conecta y verifica tu dominio en Configuración → Canales → Correo.");
+  if (!(await companyResendKey())) throw new DomainError("Primero pega la clave de Resend de tu empresa en Configuración → Credenciales.");
   return { sender, scheduledAt };
 }
 
@@ -326,7 +327,7 @@ async function reputationProblem(broadcastId: string): Promise<string | null> {
  * escriben dos veces.
  */
 export async function runEmailBroadcasts(
-  { sender: batchSender = resendBatchSender, deadline = Date.now() + 240_000 }: { sender?: EmailBatchSender; deadline?: number } = {},
+  { sender: batchSender = companyResendBatchSender, deadline = Date.now() + 240_000 }: { sender?: EmailBatchSender; deadline?: number } = {},
 ): Promise<EmailBroadcastRun> {
   const result: EmailBroadcastRun = { sent: 0, skipped: 0 };
   await db.emailRecipient.updateMany({
@@ -407,7 +408,7 @@ export async function runEmailBroadcasts(
 }
 
 /** Correo de prueba a alguien del equipo: no queda en el envío. */
-export async function sendEmailBroadcastTest(input: EmailBroadcastInput, to: string, { sender: one = resendSender as EmailSender, testerName = "" } = {}) {
+export async function sendEmailBroadcastTest(input: EmailBroadcastInput, to: string, { sender: one = companyResendSender as EmailSender, testerName = "" } = {}) {
   const address = normalizeEmail(to);
   if (!EMAIL_RE.test(address)) throw new DomainError("Escribe un correo válido para la prueba.");
   const invalid = contentError(input);

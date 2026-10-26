@@ -1,16 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { emailWebhookSecret } from "@/lib/domain/email-domains";
 import { handleResendEvent, verifyResendSignature } from "@/lib/domain/email-suppression";
+import { withCompany } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Avisos de Resend de los envíos por correo de todas las empresas (entregado, abierto, clic,
- * rebote, queja): la empresa sale del dominio del remitente. Se configura una vez en Resend →
- * Webhooks con los eventos email.delivered, email.opened, email.clicked, email.bounced y
- * email.complained, y su secreto va en RESEND_WEBHOOK_SECRET.
+ * Avisos de Resend de los envíos por correo de una empresa (entregado, abierto, clic, rebote,
+ * queja). Beliapp crea este webhook en la cuenta de Resend de la empresa al conectar su dominio,
+ * y cada empresa firma con su propio secreto.
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ companyId: string }> }) {
+  const { companyId } = await params;
   const raw = await request.text();
+  const secret = await withCompany(companyId, () => emailWebhookSecret());
   const ok = verifyResendSignature(
     raw,
     {
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       timestamp: request.headers.get("svix-timestamp"),
       signature: request.headers.get("svix-signature"),
     },
-    process.env.RESEND_WEBHOOK_SECRET,
+    secret,
   );
   if (!ok) return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
   let event: Parameters<typeof handleResendEvent>[0];
@@ -27,6 +30,6 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
-  const suppressed = await handleResendEvent(event);
+  const suppressed = await handleResendEvent(event, companyId);
   return NextResponse.json({ ok: true, suppressed });
 }
