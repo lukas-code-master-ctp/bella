@@ -223,6 +223,7 @@ export async function createEmailBroadcast(input: EmailBroadcastInput, userId: s
           blocks: input.blocks as Prisma.InputJsonValue,
           color: input.color,
           footer: input.footer.trim(),
+          html: input.html?.trim() ? input.html : null,
           dailyLimit: input.dailyLimit,
           createdById: userId,
           ...(scheduledAt ? { status: "SCHEDULED" as const, scheduledAt } : {}),
@@ -284,6 +285,7 @@ const contentOf = (b: EmailBroadcast): EmailContent => ({
   blocks: b.blocks as EmailBlock[],
   color: b.color,
   footer: b.footer,
+  html: b.html,
 });
 
 /** El correo de una persona, con sus variables, su enlace de baja y las cabeceras de baja. */

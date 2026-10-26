@@ -21,12 +21,19 @@ export type EmailContent = {
   blocks: EmailBlock[];
   color: string;
   footer: string;
+  /** HTML propio pegado por la empresa; si está, reemplaza los bloques, el color y el pie. */
+  html?: string | null;
 };
 
 /** Datos de una persona para las variables: "nombre" y las columnas de su fila. */
 export type EmailVars = Record<string, string>;
 
 export const MAX_BLOCKS = 40;
+/** Gmail corta los correos de más de ~102 KB y muestra «Ver mensaje completo». */
+export const HTML_CLIP_BYTES = 100_000;
+const MAX_HTML_BYTES = 500_000;
+/** Donde va el enlace para darse de baja en un HTML propio. */
+const UNSUBSCRIBE_VAR = /\{\{\s*baja\s*\}\}/gi;
 
 const firstName = (name: string) => {
   const n = name.trim();
@@ -57,12 +64,13 @@ export function fillVars(text: string, vars: EmailVars): string {
 }
 
 /** Variables que usa el contenido (sin las que siempre existen). */
-export function usedVars(content: Pick<EmailContent, "subject" | "preheader" | "blocks">): string[] {
-  const texts = [content.subject, content.preheader, ...content.blocks.flatMap(blockTexts)];
+export function usedVars(content: Pick<EmailContent, "subject" | "preheader" | "blocks" | "html">): string[] {
+  const texts = [content.subject, content.preheader, ...(content.html ? [content.html] : content.blocks.flatMap(blockTexts))];
   const keys = new Set<string>();
   for (const t of texts) for (const m of t.matchAll(VAR_RE)) keys.add(normalizeVar(m[1]));
   keys.delete("nombre");
   keys.delete("nombre_completo");
+  keys.delete("baja");
   return [...keys];
 }
 
@@ -80,6 +88,11 @@ const COLOR_RE = /^#[0-9a-f]{6}$/i;
 export function contentError(c: EmailContent): string | null {
   if (!c.subject.trim()) return "Escribe el asunto del correo.";
   if (c.subject.length > 200) return "El asunto es muy largo (máximo 200 caracteres).";
+  if (c.html != null) {
+    if (!c.html.trim()) return "Pega el código HTML del correo.";
+    if (new TextEncoder().encode(c.html).length > MAX_HTML_BYTES) return "El HTML es muy pesado (máximo 500 KB). Saca las imágenes incrustadas y súbelas a internet.";
+    return null;
+  }
   if (!c.blocks.length) return "Agrega al menos un bloque al correo.";
   if (c.blocks.length > MAX_BLOCKS) return `Un correo puede tener hasta ${MAX_BLOCKS} bloques.`;
   if (!COLOR_RE.test(c.color)) return "Elige un color válido.";
@@ -126,6 +139,25 @@ function blockHtml(b: EmailBlock, color: string): string {
   }
 }
 
+/** Avisos sobre un HTML propio que igual se puede enviar. */
+export function htmlWarnings(html: string): string[] {
+  const warnings: string[] = [];
+  const bytes = new TextEncoder().encode(html).length;
+  if (bytes > HTML_CLIP_BYTES) warnings.push(`Pesa ${Math.round(bytes / 1000)} KB: Gmail corta los correos de más de 100 KB y muestra «Ver mensaje completo».`);
+  const srcs = [...html.matchAll(/<img\b[^>]*?\ssrc\s*=\s*["']?([^"'\s>]*)/gi)].map((m) => m[1]);
+  if (srcs.some((src) => !/^(https?:)?\/\//i.test(src) && !/\{\{/.test(src)))
+    warnings.push("Hay imágenes sin una dirección https:// (archivos locales o incrustados): la mayoría de los correos no las muestra.");
+  if (/<script\b/i.test(html)) warnings.push("Los correos no ejecutan JavaScript: los <script> se quitan al enviar.");
+  return warnings;
+}
+
+/** Variables dentro de un HTML: los datos se escapan y {{baja}} queda para el enlace de baja. */
+function fillHtml(html: string, vars: EmailVars): string {
+  return html.replace(VAR_RE, (all, key: string, fallback?: string) =>
+    normalizeVar(key) === "baja" ? all : escapeHtml(vars[normalizeVar(key)] || fallback || ""),
+  );
+}
+
 /** Bloques con las variables de la persona ya reemplazadas. */
 export function personalize(c: EmailContent, vars: EmailVars): EmailContent {
   const fill = (s: string) => fillVars(s, vars);
@@ -133,6 +165,7 @@ export function personalize(c: EmailContent, vars: EmailVars): EmailContent {
     ...c,
     subject: fill(c.subject),
     preheader: fill(c.preheader),
+    html: c.html != null ? fillHtml(c.html, vars) : c.html,
     blocks: c.blocks.map((b) => {
       if (b.type === "heading" || b.type === "text") return { ...b, text: fill(b.text) };
       if (b.type === "button") return { ...b, text: fill(b.text), url: fill(b.url) };
@@ -147,6 +180,7 @@ export function personalize(c: EmailContent, vars: EmailVars): EmailContent {
  * enlace de baja, que siempre va al pie.
  */
 export function renderEmailHtml(c: EmailContent, { sender, unsubscribeUrl }: { sender: string; unsubscribeUrl: string }): string {
+  if (c.html != null) return customHtml(c, sender, unsubscribeUrl);
   const footer = c.footer.trim() ? paragraphs(c.footer, `margin:0 0 8px;${FONT};font-size:12px;line-height:1.5;color:#64748b`) : "";
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(c.subject)}</title></head>
 <body style="margin:0;padding:0;background:#f1f5f9">
@@ -164,8 +198,54 @@ ${footer}<p style="margin:0;${FONT};font-size:12px;line-height:1.5;color:#64748b
 </body></html>`;
 }
 
+/**
+ * HTML pegado por la empresa: sin <script>, con el texto de vista previa al inicio y el enlace de
+ * baja donde dice {{baja}} o, si no lo puso, en un pie al final.
+ */
+function customHtml(c: EmailContent, sender: string, unsubscribeUrl: string): string {
+  let html = (c.html ?? "").replace(/<script\b[\s\S]*?<\/script\s*>/gi, "");
+  if (!/<html[\s>]/i.test(html)) {
+    html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(c.subject)}</title></head><body>${html}</body></html>`;
+  }
+  if (c.preheader.trim()) {
+    const pre = `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${escapeHtml(c.preheader)}</div>`;
+    html = /<body[^>]*>/i.test(html) ? html.replace(/<body[^>]*>/i, (tag) => tag + pre) : pre + html;
+  }
+  const url = escapeHtml(unsubscribeUrl);
+  if (html.search(UNSUBSCRIBE_VAR) >= 0) return html.replace(UNSUBSCRIBE_VAR, url);
+  const footer = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:20px 32px;text-align:center"><p style="margin:0;${FONT};font-size:12px;line-height:1.5;color:#64748b">Recibes este correo de ${escapeHtml(sender)}. <a href="${url}" style="color:#64748b;text-decoration:underline">Darte de baja</a></p></td></tr></table>`;
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${footer}</body>`) : html + footer;
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'", nbsp: " " };
+
+/** Texto legible de un HTML: párrafos, saltos y enlaces como «texto: dirección». */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(head|style|script|title)\b[\s\S]*?<\/\1\s*>/gi, "")
+    .replace(/<a\b[^>]*?href\s*=\s*["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_all, href: string, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, "").trim();
+      return /^https?:/i.test(href) && text && text !== href ? `${text}: ${href}` : text || href;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|tr|li|table|blockquote)>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#\d+|#x[0-9a-f]+|\w+);/gi, (all, e: string) =>
+      e[0] === "#" ? String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e.toLowerCase()] ?? all),
+    )
+    .split("\n")
+    .map((l) => l.replace(/[ \t\u00a0]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Versión de solo texto (la piden los filtros de spam y algunos lectores de correo). */
 export function renderEmailText(c: EmailContent, { sender, unsubscribeUrl }: { sender: string; unsubscribeUrl: string }): string {
+  if (c.html != null) {
+    const body = htmlToText(c.html.replace(UNSUBSCRIBE_VAR, unsubscribeUrl));
+    return `${body}\n\nRecibes este correo de ${sender}. Para darte de baja: ${unsubscribeUrl}`;
+  }
   const parts = c.blocks.map((b) => {
     if (b.type === "heading") return b.text.trim().toUpperCase();
     if (b.type === "text") return b.text.trim().replace(/\*\*(.+?)\*\*/g, "$1");

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import type { Email, EmailBatchSender, EmailSender } from "@/lib/email";
 import { EmailError } from "@/lib/email";
-import { contentError, fillVars, renderEmailHtml, renderEmailText, usedVars, varsFor, type EmailContent } from "@/lib/email-content";
+import { contentError, fillVars, htmlWarnings, personalize, renderEmailHtml, renderEmailText, usedVars, varsFor, type EmailContent } from "@/lib/email-content";
 import {
   cancelEmailBroadcast,
   createEmailBroadcast,
@@ -87,6 +87,39 @@ describe("contenido del correo", () => {
     expect(contentError({ ...content, blocks: [] })).toMatch("al menos un bloque");
     expect(contentError({ ...content, blocks: [{ type: "button", text: "Ir", url: "motos.cl" }] })).toMatch("https://");
     expect(contentError(content)).toBeNull();
+  });
+
+  it("HTML pegado: variables escapadas, enlace de baja en {{baja}} o al final, sin scripts y con texto plano", () => {
+    const ctx = { sender: "Motos", unsubscribeUrl: "https://app/baja/t" };
+    const custom = { ...content, blocks: [], html: '<html><body><h1>Hola {{nombre}}</h1><p>En {{comuna|tu comuna}} &amp; más</p><a href="https://motos.cl">Ver</a><script>alert(1)</script></body></html>' };
+    expect(contentError(custom)).toBeNull();
+    expect(contentError({ ...custom, html: " " })).toMatch("HTML");
+    expect(usedVars(custom)).toEqual(["comuna"]);
+
+    const c = personalize(custom, varsFor("<b>Ana</b>"));
+    const html = renderEmailHtml(c, ctx);
+    expect(html).toContain("Hola &lt;b&gt;Ana&lt;/b&gt;");
+    expect(html).toContain("En tu comuna");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("Lo nuevo de octubre");
+    expect(html.indexOf('href="https://app/baja/t"')).toBeGreaterThan(html.indexOf("Ver</a>"));
+    expect(html).toMatch(/<\/table><\/body><\/html>$/);
+
+    const own = renderEmailHtml({ ...c, html: '<p>Hola</p><a href="{{baja}}">Salir</a>' }, ctx);
+    expect(own).toContain('<a href="https://app/baja/t">Salir</a>');
+    expect(own).not.toContain("Darte de baja");
+    expect(own).toMatch(/^<!doctype html>/);
+
+    const text = renderEmailText(c, ctx);
+    expect(text).toContain("Hola <b>Ana</b>");
+    expect(text).toContain("En tu comuna & más");
+    expect(text).toContain("Ver: https://motos.cl");
+    expect(text).not.toContain("alert");
+    expect(text).toContain("Para darte de baja: https://app/baja/t");
+
+    expect(htmlWarnings('<img src="https://x.cl/a.png">')).toEqual([]);
+    expect(htmlWarnings('<img src="file:///C:/a.png"><script></script>')).toHaveLength(2);
+    expect(htmlWarnings("x".repeat(120_000))[0]).toMatch("Gmail");
   });
 });
 
@@ -293,5 +326,19 @@ describe("envíos por correo", () => {
     expect(again.resentFromId).toBe(first.id);
     await runEmailBroadcasts({ sender });
     expect(batches.at(-1)!.map((e) => [e.to[0], e.subject])).toEqual([["e@x.cl", "¿Lo viste?"]]);
+  });
+
+  it("envía un HTML pegado con los datos de cada persona y su enlace de baja", async () => {
+    await verifiedDomain();
+    const user = await executive("Ana");
+    const b = await createEmailBroadcast(input(rows(["a@x.cl"]), { blocks: [], html: "<p>Hola {{nombre}}, ofertas en {{comuna}}</p>" }), user.id);
+    expect(b.html).toBe("<p>Hola {{nombre}}, ofertas en {{comuna}}</p>");
+    const { sender, batches } = fakeBatch();
+    await runEmailBroadcasts({ sender });
+    const [email] = batches[0];
+    expect(email.html).toContain("<p>Hola Persona, ofertas en Ñuñoa</p>");
+    expect(email.html).toContain("/baja/");
+    expect(email.html).not.toContain("Av. Siempre Viva");
+    expect(email.text).toContain("Hola Persona, ofertas en Ñuñoa");
   });
 });
