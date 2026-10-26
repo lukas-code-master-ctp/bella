@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Ban, Bot, BotOff, CheckCheck, CircleX, Ellipsis, LoaderCircle, LockOpen, Merge, MessageCircleWarning, RotateCcw, Trophy, X } from "lucide-react";
+import { Ban, Bot, BotOff, CheckCheck, CircleX, Ellipsis, LoaderCircle, LockOpen, Merge, MessageCircleWarning, RotateCcw, Sparkles, Trophy, X } from "lucide-react";
 import { Button, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
@@ -10,6 +10,7 @@ import {
   closeLeadAction,
   dismissReplyAction,
   leadDuplicatesAction,
+  suggestResumeAction,
   mergeIntoLeadAction,
   reopenLeadAction,
   toggleAiAction,
@@ -229,6 +230,22 @@ export function AiPausedChip({ leadId, canResume }: { leadId: string; canResume:
  */
 export function WaitingChip({ leadId, ago, minResume }: { leadId: string; ago: string; minResume: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const [resumeAt, setResumeAt] = useState("");
+  const [notes, setNotes] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  // Una sola sugerencia de la IA por apertura, y no pisa lo que el ejecutivo ya escribió.
+  function open() {
+    dialogRef.current?.showModal();
+    setSuggesting(true);
+    suggestResumeAction(leadId)
+      .then((s) => {
+        if (!s) return;
+        if (s.date) setResumeAt((v) => v || s.date!);
+        if (s.note) setNotes((v) => v || s.note);
+      })
+      .catch(() => {})
+      .finally(() => setSuggesting(false));
+  }
   const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
     const result = await dismissReplyAction(leadId, prev, form);
     if (!result) {
@@ -243,7 +260,7 @@ export function WaitingChip({ leadId, ago, minResume }: { leadId: string; ago: s
       <button
         type="button"
         title="El cliente espera respuesta. Tócalo si no la necesita."
-        onClick={() => dialogRef.current?.showModal()}
+        onClick={open}
         className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200 transition-colors duration-150 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-brand-600 [&_svg]:size-3.5"
       >
         <MessageCircleWarning aria-hidden />
@@ -275,8 +292,20 @@ export function WaitingChip({ leadId, ago, minResume }: { leadId: string; ago: s
           </p>
           <label className="block text-sm font-medium text-slate-700">
             Retomar el <span className="font-normal text-slate-500">(opcional, te crea una tarea)</span>
-            <input type="date" name="resumeAt" min={minResume} className={`${inputClass} mt-1.5`} />
+            <input type="date" name="resumeAt" min={minResume} value={resumeAt} onChange={(e) => setResumeAt(e.target.value)} className={`${inputClass} mt-1.5`} />
           </label>
+          {resumeAt && (
+            <label className="block text-sm font-medium text-slate-700">
+              Nota de la tarea <span className="font-normal text-slate-500">(opcional)</span>
+              <textarea name="notes" rows={2} maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} className={`${inputClass} mt-1.5`} />
+            </label>
+          )}
+          {suggesting && (
+            <p className="flex items-center gap-1.5 text-xs text-slate-500">
+              <Sparkles aria-hidden className="size-3.5 animate-pulse text-brand-600" />
+              La IA está leyendo la conversación para sugerir cuándo retomar…
+            </p>
+          )}
           {error && <FormMessage>{error}</FormMessage>}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" type="button" onClick={close}>

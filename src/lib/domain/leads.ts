@@ -291,7 +291,7 @@ export async function setAiEnabled(leadId: string, enabled: boolean, by: ActorRe
  * `resumeAt`, agenda una tarea para retomar el contacto en esa fecha. Si el cliente vuelve a escribir,
  * se abre una espera nueva como siempre.
  */
-export async function dismissReply(leadId: string, by: ActorRef, opts: { resumeAt?: Date | null; now?: Date } = {}) {
+export async function dismissReply(leadId: string, by: ActorRef, opts: { resumeAt?: Date | null; notes?: string | null; now?: Date } = {}) {
   const now = opts.now ?? new Date();
   const { resumeAt } = opts;
   if (resumeAt && (Number.isNaN(resumeAt.getTime()) || resumeAt <= now)) throw new DomainError("Indica una fecha futura para retomar.");
@@ -310,7 +310,7 @@ export async function dismissReply(leadId: string, by: ActorRef, opts: { resumeA
       },
     });
     if (resumeAt) {
-      await createTaskTx(tx, leadId, { title: "Retomar contacto", dueAt: resumeAt, assigneeId: lead.assigneeId ?? by.userId ?? null }, by);
+      await createTaskTx(tx, leadId, { title: "Retomar contacto", notes: opts.notes, dueAt: resumeAt, assigneeId: lead.assigneeId ?? by.userId ?? null }, by);
     }
   });
 }
