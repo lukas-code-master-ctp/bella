@@ -1203,6 +1203,8 @@ model EmailBroadcast {
   color        String          @default("#3D9A4F")
   /// Pie del correo (dirección, redes); el enlace de baja se agrega siempre.
   footer       String          @default("")
+  /// HTML pegado por la empresa en vez de los bloques; null si se diseñó en Beliapp.
+  html         String?
   /// Máximo de correos por día sumando todos los envíos por correo de la empresa.
   dailyLimit   Int
   createdById  String?

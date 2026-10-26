@@ -12,9 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Code,
   FileSpreadsheet,
   Heading1,
   Image as ImageIcon,
+  LayoutTemplate,
   LoaderCircle,
   Minus,
   MousePointerClick,
@@ -27,7 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { EmailBroadcastInput } from "@/lib/domain/email-broadcasts";
-import { personalize, renderEmailHtml, varsFor, normalizeVar, type EmailBlock } from "@/lib/email-content";
+import { htmlWarnings, personalize, renderEmailHtml, varsFor, normalizeVar, type EmailBlock } from "@/lib/email-content";
 import { decodeCsv } from "@/lib/csv-text";
 import { normalize } from "@/lib/text";
 import { Button, Card, dropdownItemClass, Field, FormMessage, inputClass } from "@/components/ui";
@@ -52,7 +54,7 @@ export type EmailResend = {
   id: string;
   name: string;
   nonOpeners: number;
-  content: Pick<EmailBroadcastInput, "subject" | "preheader" | "color" | "footer" | "blocks">;
+  content: Pick<EmailBroadcastInput, "subject" | "preheader" | "color" | "footer" | "blocks" | "html">;
 };
 
 /** "ana@correo.cl, Ana" o solo el correo, uno por línea. */
@@ -135,6 +137,8 @@ export function EmailEditor({
       { type: "button", text: "", url: "https://" },
     ],
   );
+  const [mode, setMode] = useState<"design" | "html">(resend?.content.html ? "html" : "design");
+  const [html, setHtml] = useState(resend?.content.html ?? "");
   /** El último campo de texto que se tocó: ahí se inserta la variable. */
   const target = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; set: (v: string) => void } | null>(null);
 
@@ -193,6 +197,7 @@ export function EmailEditor({
       color,
       footer,
       blocks,
+      html: mode === "html" ? html : null,
       consent,
       dailyLimit: Number(dailyLimit),
       subjectB: abTest ? subjectB : null,
@@ -220,14 +225,15 @@ export function EmailEditor({
     const nameValue = source === "file" ? (nameCol ? r[nameCol] : "") : r.nombre;
     return varsFor(nameValue ?? "", source === "file" ? Object.fromEntries(columns.map((c) => [c, r[c] ?? ""])) : {});
   }, [rows, source, nameCol, columns]);
-  const html = useMemo(
+  const previewHtml = useMemo(
     () =>
-      renderEmailHtml(personalize({ subject, preheader, color, footer, blocks }, sampleVars), {
+      renderEmailHtml(personalize({ subject, preheader, color, footer, blocks, html: mode === "html" ? html : null }, sampleVars), {
         sender: companyName,
         unsubscribeUrl: "#",
       }),
-    [subject, preheader, color, footer, blocks, sampleVars, companyName],
+    [subject, preheader, color, footer, blocks, mode, html, sampleVars, companyName],
   );
+  const warnings = useMemo(() => (mode === "html" ? htmlWarnings(html) : []), [mode, html]);
 
   function update(i: number, patch: Partial<EmailBlock>) {
     setBlocks((bs) => bs.map((b, j) => (j === i ? ({ ...b, ...patch } as EmailBlock) : b)));
@@ -272,7 +278,7 @@ export function EmailEditor({
   const step1Ready =
     (source === "resend" ? Boolean(resend) : source === "funnel" ? Boolean(funnelId) : rows.length > 0 && (source === "paste" || Boolean(emailCol))) &&
     (source === "resend" || source === "funnel" || consent);
-  const step2Ready = Boolean(name.trim() && subject.trim() && (!abTest || subjectB.trim()) && blocks.length > 0);
+  const step2Ready = Boolean(name.trim() && subject.trim() && (!abTest || subjectB.trim()) && (mode === "html" ? html.trim() : blocks.length > 0));
 
   /** Los pasos de arriba se pueden apretar: hacia atrás siempre, hacia adelante si lo anterior está listo. */
   function canReach(i: number) {
@@ -540,6 +546,11 @@ export function EmailEditor({
                   </p>
                 </div>
 
+                <fieldset className="grid gap-3 sm:grid-cols-2">
+                  <legend className="sr-only">Cómo armar el correo</legend>
+                  <ChoiceCard name="mode" checked={mode === "design"} onChange={() => setMode("design")} icon={<LayoutTemplate />} title="Diseñar aquí" description="Con bloques de título, texto, imagen y botón." />
+                  <ChoiceCard name="mode" checked={mode === "html"} onChange={() => setMode("html")} icon={<Code />} title="Pegar HTML" description="Tu propio diseño, hecho en otra herramienta." />
+                </fieldset>
                 <Field label="Nombre del envío" hint="Solo para reconocerlo en Beliapp.">
                   <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="Ej. Newsletter octubre" className={inputClass} />
                 </Field>
@@ -565,88 +576,118 @@ export function EmailEditor({
                   <input value={preheader} onChange={(e) => setPreheader(e.target.value)} {...varField(setPreheader)} maxLength={150} className={inputClass} />
                 </Field>
 
-                <ol className="space-y-3">
-                  {blocks.map((b, i) => (
-                    <li key={i} className="rounded-lg border border-slate-200 p-3">
-                      <div className="mb-2 flex items-center gap-1 text-xs font-semibold text-slate-600 [&_svg]:size-4">
-                        {BLOCK_LABEL[b.type].icon}
-                        <span className="ml-1 flex-1">{BLOCK_LABEL[b.type].label}</span>
-                        <Button type="button" variant="ghost" size="icon" className="size-8" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Subir bloque">
-                          <ArrowUp aria-hidden />
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" className="size-8" disabled={i === blocks.length - 1} onClick={() => move(i, 1)} aria-label="Bajar bloque">
-                          <ArrowDown aria-hidden />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-8"
-                          onClick={() => ((target.current = null), setBlocks((bs) => bs.filter((_, j) => j !== i)))}
-                          aria-label="Quitar bloque"
-                        >
-                          <Trash2 aria-hidden />
-                        </Button>
-                      </div>
-                      {b.type === "heading" && (
-                        <input value={b.text} onChange={(e) => update(i, { text: e.target.value })} {...varField((text) => update(i, { text }))} aria-label="Título" placeholder="Título" className={inputClass} />
-                      )}
-                      {b.type === "text" && (
-                        <textarea
-                          value={b.text}
-                          onChange={(e) => update(i, { text: e.target.value })}
-                          {...varField((text) => update(i, { text }))}
-                          rows={5}
-                          aria-label="Texto"
-                          placeholder="Escribe el mensaje. Una línea en blanco separa párrafos; **así** queda en negrita."
-                          className={inputClass}
-                        />
-                      )}
-                      {b.type === "button" && (
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <input value={b.text} onChange={(e) => update(i, { text: e.target.value })} {...varField((text) => update(i, { text }))} aria-label="Texto del botón" placeholder="Texto del botón" className={inputClass} />
-                          <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} {...varField((url) => update(i, { url }))} aria-label="Enlace del botón" placeholder="https://" className={inputClass} />
-                        </div>
-                      )}
-                      {b.type === "image" && (
-                        <div className="grid gap-2">
-                          {images.length > 0 && (
-                            <select value={images.some((im) => im.url === b.url) ? b.url : ""} onChange={(e) => update(i, { url: e.target.value })} aria-label="Imagen de la biblioteca" className={inputClass}>
-                              <option value="">Elegir de tus archivos…</option>
-                              {images.map((im) => (
-                                <option key={im.url} value={im.url}>
-                                  {im.label}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} aria-label="Dirección de la imagen" placeholder="https://… (dirección de la imagen)" className={inputClass} />
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <input value={b.alt ?? ""} onChange={(e) => update(i, { alt: e.target.value })} aria-label="Descripción de la imagen" placeholder="Descripción (si no se carga)" className={inputClass} />
-                            <input value={b.href ?? ""} onChange={(e) => update(i, { href: e.target.value || undefined })} aria-label="Enlace al apretar la imagen" placeholder="Enlace al apretarla (opcional)" className={inputClass} />
+                {mode === "html" ? (
+                  <>
+                    <Field
+                      label="Código HTML"
+                      hint="El enlace para darse de baja se agrega solo al final. Si lo quieres en otro lugar, escribe {{baja}} donde vaya (ej. en el href de un enlace)."
+                    >
+                      <textarea
+                        value={html}
+                        onChange={(e) => setHtml(e.target.value)}
+                        {...varField(setHtml)}
+                        rows={18}
+                        spellCheck={false}
+                        placeholder={"<!doctype html>\n<html>…</html>"}
+                        className={`${inputClass} font-mono text-[13px]`}
+                      />
+                    </Field>
+                    {warnings.length > 0 && (
+                      <Callout tone="warning">
+                        <ul className="list-disc space-y-1 pl-4">
+                          {warnings.map((w) => (
+                            <li key={w}>{w}</li>
+                          ))}
+                        </ul>
+                      </Callout>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <ol className="space-y-3">
+                      {blocks.map((b, i) => (
+                        <li key={i} className="rounded-lg border border-slate-200 p-3">
+                          <div className="mb-2 flex items-center gap-1 text-xs font-semibold text-slate-600 [&_svg]:size-4">
+                            {BLOCK_LABEL[b.type].icon}
+                            <span className="ml-1 flex-1">{BLOCK_LABEL[b.type].label}</span>
+                            <Button type="button" variant="ghost" size="icon" className="size-8" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Subir bloque">
+                              <ArrowUp aria-hidden />
+                            </Button>
+                            <Button type="button" variant="ghost" size="icon" className="size-8" disabled={i === blocks.length - 1} onClick={() => move(i, 1)} aria-label="Bajar bloque">
+                              <ArrowDown aria-hidden />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => ((target.current = null), setBlocks((bs) => bs.filter((_, j) => j !== i)))}
+                              aria-label="Quitar bloque"
+                            >
+                              <Trash2 aria-hidden />
+                            </Button>
                           </div>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-                <div className="flex flex-wrap gap-2">
-                  {(Object.keys(NEW_BLOCK) as EmailBlock["type"][]).map((t) => (
-                    <Button key={t} type="button" variant="secondary" size="sm" onClick={() => setBlocks((bs) => [...bs, NEW_BLOCK[t]])}>
-                      {BLOCK_LABEL[t].icon}
-                      {BLOCK_LABEL[t].label}
-                    </Button>
-                  ))}
-                </div>
-                <Field label="Color">
-                  <span className="flex items-center gap-3">
-                    <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className={colorInputClass} aria-label="Color de botones y borde" />
-                    <span className="text-xs text-slate-600">Botones y borde superior del correo.</span>
-                  </span>
-                </Field>
-                <Field label="Pie del correo (opcional)" hint="Dirección, horario o redes. El enlace para darse de baja se agrega solo.">
-                  <textarea value={footer} onChange={(e) => setFooter(e.target.value)} {...varField(setFooter)} rows={2} maxLength={500} className={inputClass} />
-                </Field>
+                          {b.type === "heading" && (
+                            <input value={b.text} onChange={(e) => update(i, { text: e.target.value })} {...varField((text) => update(i, { text }))} aria-label="Título" placeholder="Título" className={inputClass} />
+                          )}
+                          {b.type === "text" && (
+                            <textarea
+                              value={b.text}
+                              onChange={(e) => update(i, { text: e.target.value })}
+                              {...varField((text) => update(i, { text }))}
+                              rows={5}
+                              aria-label="Texto"
+                              placeholder="Escribe el mensaje. Una línea en blanco separa párrafos; **así** queda en negrita."
+                              className={inputClass}
+                            />
+                          )}
+                          {b.type === "button" && (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <input value={b.text} onChange={(e) => update(i, { text: e.target.value })} {...varField((text) => update(i, { text }))} aria-label="Texto del botón" placeholder="Texto del botón" className={inputClass} />
+                              <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} {...varField((url) => update(i, { url }))} aria-label="Enlace del botón" placeholder="https://" className={inputClass} />
+                            </div>
+                          )}
+                          {b.type === "image" && (
+                            <div className="grid gap-2">
+                              {images.length > 0 && (
+                                <select value={images.some((im) => im.url === b.url) ? b.url : ""} onChange={(e) => update(i, { url: e.target.value })} aria-label="Imagen de la biblioteca" className={inputClass}>
+                                  <option value="">Elegir de tus archivos…</option>
+                                  {images.map((im) => (
+                                    <option key={im.url} value={im.url}>
+                                      {im.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} aria-label="Dirección de la imagen" placeholder="https://… (dirección de la imagen)" className={inputClass} />
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <input value={b.alt ?? ""} onChange={(e) => update(i, { alt: e.target.value })} aria-label="Descripción de la imagen" placeholder="Descripción (si no se carga)" className={inputClass} />
+                                <input value={b.href ?? ""} onChange={(e) => update(i, { href: e.target.value || undefined })} aria-label="Enlace al apretar la imagen" placeholder="Enlace al apretarla (opcional)" className={inputClass} />
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                    <div className="flex flex-wrap gap-2">
+                      {(Object.keys(NEW_BLOCK) as EmailBlock["type"][]).map((t) => (
+                        <Button key={t} type="button" variant="secondary" size="sm" onClick={() => setBlocks((bs) => [...bs, NEW_BLOCK[t]])}>
+                          {BLOCK_LABEL[t].icon}
+                          {BLOCK_LABEL[t].label}
+                        </Button>
+                      ))}
+                    </div>
+                    <Field label="Color">
+                      <span className="flex items-center gap-3">
+                        <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className={colorInputClass} aria-label="Color de botones y borde" />
+                        <span className="text-xs text-slate-600">Botones y borde superior del correo.</span>
+                      </span>
+                    </Field>
+                    <Field label="Pie del correo (opcional)" hint="Dirección, horario o redes. El enlace para darse de baja se agrega solo.">
+                      <textarea value={footer} onChange={(e) => setFooter(e.target.value)} {...varField(setFooter)} rows={2} maxLength={500} className={inputClass} />
+                    </Field>
+                  </>
+                )}
               </div>
 
               <div className="space-y-2 self-start rounded-xl bg-slate-100 p-3 lg:sticky lg:top-4">
@@ -654,7 +695,7 @@ export function EmailEditor({
                   De: {sender}
                   {rows[0] ? " · con los datos de la primera persona" : ""}
                 </p>
-                <iframe title="Vista previa del correo" srcDoc={html} sandbox="" className="h-[640px] w-full rounded-lg bg-white" />
+                <iframe title="Vista previa del correo" srcDoc={previewHtml} sandbox="" className="h-[640px] w-full rounded-lg bg-white" />
               </div>
             </div>
           </PanelBody>
@@ -705,6 +746,15 @@ export function EmailEditor({
                 {preview.missingColumns.length > 0 && (
                   <Callout tone="warning">
                     El correo usa {preview.missingColumns.map((c) => `{{${c}}}`).join(", ")}, pero la lista no tiene esa columna. Corrígelo en Contenido.
+                  </Callout>
+                )}
+                {warnings.length > 0 && (
+                  <Callout tone="warning" title="Revisa tu HTML">
+                    <ul className="list-disc space-y-1 pl-4">
+                      {warnings.map((w) => (
+                        <li key={w}>{w}</li>
+                      ))}
+                    </ul>
                   </Callout>
                 )}
               </div>

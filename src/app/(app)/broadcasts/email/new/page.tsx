@@ -19,7 +19,7 @@ async function resendOf(id: string | undefined): Promise<EmailResend | null> {
     id: b.id,
     name: b.name,
     nonOpeners: await emailNonOpenersCount(b.id),
-    content: { subject: b.subject, preheader: b.preheader, color: b.color, footer: b.footer, blocks: b.blocks as EmailBlock[] },
+    content: { subject: b.subject, preheader: b.preheader, color: b.color, footer: b.footer, blocks: b.blocks as EmailBlock[], html: b.html },
   };
 }
 
