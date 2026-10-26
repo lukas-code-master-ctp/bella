@@ -1,13 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Ban, Bot, BotOff, CircleX, Ellipsis, LoaderCircle, LockOpen, Merge, RotateCcw, Trophy, X } from "lucide-react";
+import { Ban, Bot, BotOff, CheckCheck, CircleX, Ellipsis, LoaderCircle, LockOpen, Merge, MessageCircleWarning, RotateCcw, Trophy, X } from "lucide-react";
 import { Button, FormMessage, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { toast } from "@/components/toast";
 import {
   blockContactAction,
   closeLeadAction,
+  dismissReplyAction,
   leadDuplicatesAction,
   mergeIntoLeadAction,
   reopenLeadAction,
@@ -219,6 +220,76 @@ export function AiPausedChip({ leadId, canResume }: { leadId: string; canResume:
     >
       {content}
     </button>
+  );
+}
+
+/**
+ * Chip "Sin atender" de la cabecera. Al tocarlo se puede marcar que el mensaje del cliente no requiere
+ * respuesta (ej. se despidió): deja de contar como espera para el SLA y, si se indica, agenda retomar.
+ */
+export function WaitingChip({ leadId, ago, minResume }: { leadId: string; ago: string; minResume: string }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [error, action] = useActionState(async (prev: string | null, form: FormData) => {
+    const result = await dismissReplyAction(leadId, prev, form);
+    if (!result) {
+      toast("Marcado como no requiere respuesta");
+      dialogRef.current?.close();
+    }
+    return result;
+  }, null);
+  const close = () => dialogRef.current?.close();
+  return (
+    <>
+      <button
+        type="button"
+        title="El cliente espera respuesta. Tócalo si no la necesita."
+        onClick={() => dialogRef.current?.showModal()}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200 transition-colors duration-150 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-brand-600 [&_svg]:size-3.5"
+      >
+        <MessageCircleWarning aria-hidden />
+        Sin atender · {ago}
+      </button>
+      <dialog
+        ref={dialogRef}
+        onClick={(e) => e.target === dialogRef.current && close()}
+        aria-labelledby="no-reply-title"
+        className="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-900/40 open:animate-pop"
+      >
+        <form action={action} className="space-y-3 p-5">
+          <div className="flex items-start gap-3">
+            <h2 id="no-reply-title" className="flex-1 text-base font-semibold text-slate-900">
+              No requiere respuesta
+            </h2>
+            <button
+              type="button"
+              aria-label="Cerrar"
+              onClick={close}
+              className="-mr-2 -mt-2 flex size-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            >
+              <X aria-hidden className="size-5" />
+            </button>
+          </div>
+          <p className="text-sm text-slate-600">
+            Úsalo cuando el cliente cerró la conversación (ej. &ldquo;gracias, saludos&rdquo;). No se le envía nada, deja de estar sin atender y
+            cuenta como atendido en tus tiempos de respuesta. Si vuelve a escribir, queda esperando como siempre.
+          </p>
+          <label className="block text-sm font-medium text-slate-700">
+            Retomar el <span className="font-normal text-slate-500">(opcional, te crea una tarea)</span>
+            <input type="date" name="resumeAt" min={minResume} className={`${inputClass} mt-1.5`} />
+          </label>
+          {error && <FormMessage>{error}</FormMessage>}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" type="button" onClick={close}>
+              Cancelar
+            </Button>
+            <SubmitButton pendingText="Guardando…">
+              <CheckCheck aria-hidden />
+              Marcar
+            </SubmitButton>
+          </div>
+        </form>
+      </dialog>
+    </>
   );
 }
 

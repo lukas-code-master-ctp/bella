@@ -17,11 +17,14 @@ export type AttentionInput = {
   aiEnabled: boolean;
   requiresHuman: boolean;
   lastMessage: { author: MessageAuthor; createdAt: Date } | null;
+  /** Un ejecutivo marcó que no requiere respuesta: los mensajes hasta esta fecha ya no esperan. */
+  noReplyNeededAt?: Date | null;
 };
 
-export function attentionOf({ aiEnabled, requiresHuman, lastMessage }: AttentionInput, now = new Date()): Attention {
+export function attentionOf({ aiEnabled, requiresHuman, lastMessage, noReplyNeededAt }: AttentionInput, now = new Date()): Attention {
   const human = !aiEnabled || requiresHuman;
-  if (lastMessage?.author === "CONTACT" && (human || now.getTime() - lastMessage.createdAt.getTime() > AI_GRACE_MS)) {
+  const dismissed = noReplyNeededAt && lastMessage && lastMessage.createdAt <= noReplyNeededAt;
+  if (lastMessage?.author === "CONTACT" && !dismissed && (human || now.getTime() - lastMessage.createdAt.getTime() > AI_GRACE_MS)) {
     return "waiting";
   }
   return human ? "human" : "ai";

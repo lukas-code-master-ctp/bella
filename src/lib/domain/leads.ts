@@ -8,7 +8,7 @@ import { deliverPendingConversions, queuePurchaseTx, queueQualifiedTx } from "./
 import { notifyAssignedTx, notifyHumanStageTx, notifyWonAmountTx } from "./notifications";
 import { entryStage } from "./funnels";
 import { pickVariant } from "./ab-tests";
-import { moveOpenTasksTx } from "./tasks";
+import { createTaskTx, moveOpenTasksTx } from "./tasks";
 import { deliverPendingWebhooks, queueStageWebhooksTx } from "./webhooks";
 
 export type ActorRef = { actor: Actor; userId?: string | null };
@@ -282,6 +282,36 @@ export async function setAiEnabled(leadId: string, enabled: boolean, by: ActorRe
         userId: by.userId ?? null,
       },
     });
+  });
+}
+
+/**
+ * El ejecutivo marca que el último mensaje del cliente no requiere respuesta (ej. se despidió con un
+ * "gracias, saludos"): deja de estar "Sin atender" y su espera cuenta como atendida para el SLA. Con
+ * `resumeAt`, agenda una tarea para retomar el contacto en esa fecha. Si el cliente vuelve a escribir,
+ * se abre una espera nueva como siempre.
+ */
+export async function dismissReply(leadId: string, by: ActorRef, opts: { resumeAt?: Date | null; now?: Date } = {}) {
+  const now = opts.now ?? new Date();
+  const { resumeAt } = opts;
+  if (resumeAt && (Number.isNaN(resumeAt.getTime()) || resumeAt <= now)) throw new DomainError("Indica una fecha futura para retomar.");
+  await db.$transaction(async (tx) => {
+    const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
+    if (lead.status !== "OPEN") throw new DomainError("El lead está cerrado.");
+    await tx.lead.update({ where: { id: leadId }, data: { noReplyNeededAt: now } });
+    await tx.leadEvent.create({
+      data: {
+        leadId,
+        type: "NO_REPLY_NEEDED",
+        actor: by.actor,
+        userId: by.userId ?? null,
+        data: resumeAt ? { resumeAt: resumeAt.toISOString() } : {},
+        createdAt: now,
+      },
+    });
+    if (resumeAt) {
+      await createTaskTx(tx, leadId, { title: "Retomar contacto", dueAt: resumeAt, assigneeId: lead.assigneeId ?? by.userId ?? null }, by);
+    }
   });
 }
 

@@ -61,7 +61,7 @@ export async function listChats(
 ): Promise<{ total: number; items: ChatItem[] }> {
   const candidates = await db.lead.findMany({
     where: whereOf(f, viewer),
-    select: { id: true, aiEnabled: true, score: true, createdAt: true, stage: { select: { requiresHuman: true } } },
+    select: { id: true, aiEnabled: true, noReplyNeededAt: true, score: true, createdAt: true, stage: { select: { requiresHuman: true } } },
   });
   if (candidates.length === 0) return { total: 0, items: [] };
 
@@ -75,7 +75,7 @@ export async function listChats(
   const rows = candidates
     .map((c) => {
       const last = lastOf.get(c.id) ?? null;
-      const attention = attentionOf({ aiEnabled: c.aiEnabled, requiresHuman: c.stage.requiresHuman, lastMessage: last }, now);
+      const attention = attentionOf({ aiEnabled: c.aiEnabled, requiresHuman: c.stage.requiresHuman, lastMessage: last, noReplyNeededAt: c.noReplyNeededAt }, now);
       return { ...c, last, attention, at: last?.createdAt ?? c.createdAt };
     })
     .filter((r) => (!range.gte || r.at >= range.gte) && (!range.lt || r.at < range.lt))

@@ -26,4 +26,10 @@ describe("estado de atención del lead", () => {
     expect(attentionOf({ aiEnabled: true, requiresHuman: false, lastMessage: fresh }, now)).toBe("ai");
     expect(attentionOf({ aiEnabled: true, requiresHuman: false, lastMessage: stale }, now)).toBe("waiting");
   });
+
+  it("si un ejecutivo marcó que no requiere respuesta, deja de esperar hasta que el cliente vuelva a escribir", () => {
+    const last = { author: "CONTACT" as const, createdAt: ago(60_000) };
+    expect(attentionOf({ aiEnabled: false, requiresHuman: true, lastMessage: last, noReplyNeededAt: ago(1000) }, now)).toBe("human");
+    expect(attentionOf({ aiEnabled: false, requiresHuman: true, lastMessage: last, noReplyNeededAt: ago(120_000) }, now)).toBe("waiting");
+  });
 });

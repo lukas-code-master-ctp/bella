@@ -328,6 +328,9 @@ model Lead {
   followUpCount  Int        @default(0)
   /// Motivo cuando la IA agendó el recontacto para una fecha; vacío si es automático.
   followUpReason String?
+  /// Un ejecutivo marcó que el último mensaje del cliente no requiere respuesta (ej. "gracias, saludos"):
+  /// los mensajes hasta esta fecha ya no cuentan como "Sin atender" (ver dismissReply en src/lib/domain/leads.ts).
+  noReplyNeededAt DateTime?
 
   /// Resumen de una línea de dónde quedó la conversación, hecho por la IA (ver src/lib/ai/insights.ts).
   aiSummary      String?

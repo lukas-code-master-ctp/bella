@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseLocalDateTime } from "@/lib/dates";
 import { afterInCompany } from "@/lib/company-request";
 import { canAccessLead, requireAdmin, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -20,6 +21,7 @@ import { createLesson, draftLesson, type LessonDraft } from "@/lib/domain/ai-les
 import {
   addTag,
   closeLead,
+  dismissReply,
   DomainError,
   moveStage,
   removeTag,
@@ -164,6 +166,23 @@ export async function setAssigneeAction(leadId: string, form: FormData) {
   if (user.role !== "ADMIN") throw new Error("Solo un admin puede reasignar.");
   await setAssignee(leadId, String(form.get("assigneeId") || "") || null, by);
   done(leadId);
+}
+
+/** "No requiere respuesta": saca al lead de "Sin atender" sin escribirle; opcionalmente agenda retomarlo. */
+export async function dismissReplyAction(leadId: string, _prev: string | null, form: FormData): Promise<string | null> {
+  const { by } = await authorize(leadId);
+  const raw = String(form.get("resumeAt") ?? "");
+  // Solo la fecha: la tarea vence ese día a las 10:00 (Chile).
+  const resumeAt = raw ? parseLocalDateTime(`${raw}T10:00`) : null;
+  if (raw && !resumeAt) return "Indica una fecha válida para retomar.";
+  try {
+    await dismissReply(leadId, by, { resumeAt });
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  done(leadId);
+  return null;
 }
 
 export async function toggleAiAction(leadId: string, enabled: boolean) {

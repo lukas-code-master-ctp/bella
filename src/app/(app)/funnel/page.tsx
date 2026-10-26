@@ -85,7 +85,7 @@ export default async function FunnelPage({
   const humanStages = new Set(stages.filter((s) => s.requiresHuman).map((s) => s.id));
   const cards = leads.map((l) => {
     const last = l.messages[0] ?? null;
-    const attention = attentionOf({ aiEnabled: l.aiEnabled, requiresHuman: humanStages.has(l.stageId), lastMessage: last }, now);
+    const attention = attentionOf({ aiEnabled: l.aiEnabled, requiresHuman: humanStages.has(l.stageId), lastMessage: last, noReplyNeededAt: l.noReplyNeededAt }, now);
     return { lead: l, last, attention, waitingSince: attention === "waiting" && last ? last.createdAt : null };
   });
   // Sin atender primero, el que lleva más tiempo esperando arriba; el resto queda como venía.

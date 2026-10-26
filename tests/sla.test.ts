@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { parseLocalDateTime } from "@/lib/dates";
-import { createLead, moveStage, setAiEnabled, setAssignee } from "@/lib/domain/leads";
+import { createLead, dismissReply, moveStage, setAiEnabled, setAssignee } from "@/lib/domain/leads";
 import { businessMs, DEFAULT_SLA, getSlaReport, lateLeads, notifyLateWaits, pendingWaits, reassignLateWaits, saveSlaSettings, waitsOf, type LeadHistory, type SlaSettings } from "@/lib/domain/sla";
 import { executive, seedFunnel } from "./factories";
 
@@ -71,6 +71,44 @@ describe("SLA de ejecutivos", () => {
     expect(waitsOf(history(quiet), HUMAN)).toEqual([]);
     const pending = [ev("CREATED", 0, { stage: "Nuevo" }), msg("CONTACT", 0), ev("AI_PAUSED", 5, {}, "USER"), msg("USER", 9, "ana")];
     expect(waitsOf(history(pending), HUMAN).map((w) => [w.kind, w.startedAt, w.answeredAt])).toEqual([["reply", at(5), at(9)]]);
+  });
+
+  it("'No requiere respuesta' cierra la espera como atendida y un mensaje nuevo abre otra", () => {
+    const waits = waitsOf(
+      history([
+        ev("CREATED", 0, { stage: "Atención humana" }),
+        ev("ASSIGNED", 0, { assigneeId: "ana" }),
+        msg("USER", 5, "ana"),
+        msg("CONTACT", 10),
+        ev("NO_REPLY_NEEDED", 25, {}, "USER"),
+        msg("CONTACT", 60),
+      ]),
+      HUMAN,
+    );
+    expect(waits.map((w) => [w.kind, w.startedAt, w.answeredAt])).toEqual([
+      ["first", at(0), at(5)],
+      ["reply", at(10), at(25)],
+      ["reply", at(60), null],
+    ]);
+  });
+
+  it("marcar 'No requiere respuesta' saca al lead de los que esperan y agenda retomar", async () => {
+    const [, , , human] = await seedFunnel();
+    const ana = await executive("Ana");
+    const lead = await createLead({ name: "Juan", channel: "WHATSAPP", externalId: "1" });
+    await setAssignee(lead.id, ana.id, { actor: "SYSTEM" });
+    await moveStage(lead.id, human.id, { actor: "AI" });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Gracias, saludos", createdAt: new Date(Date.now() - 5 * MIN) } });
+    expect((await pendingWaits(allDay)).some((w) => w.leadId === lead.id)).toBe(true);
+
+    const resumeAt = new Date(Date.now() + 30 * 24 * 60 * MIN);
+    await dismissReply(lead.id, { actor: "USER", userId: ana.id }, { resumeAt });
+
+    expect((await pendingWaits(allDay)).some((w) => w.leadId === lead.id)).toBe(false);
+    const saved = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { tasks: true } });
+    expect(saved.noReplyNeededAt).not.toBeNull();
+    expect(saved.tasks.map((t) => [t.title, t.dueAt.getTime(), t.assigneeId])).toEqual([["Retomar contacto", resumeAt.getTime(), ana.id]]);
+    await expect(dismissReply(lead.id, { actor: "USER" }, { resumeAt: new Date(Date.now() - MIN) })).rejects.toThrow("fecha futura");
   });
 
   it("cuenta solo el tiempo dentro del horario laboral", () => {
