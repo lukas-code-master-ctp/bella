@@ -29,13 +29,14 @@ import {
   Zap,
 } from "lucide-react";
 import type { EmailBroadcastInput } from "@/lib/domain/email-broadcasts";
+import { setImageSrc, withImagePicking } from "@/lib/email-html-images";
 import { htmlWarnings, personalize, renderEmailHtml, varsFor, normalizeVar, type EmailBlock } from "@/lib/email-content";
 import { decodeCsv } from "@/lib/csv-text";
 import { normalize } from "@/lib/text";
 import { Button, Card, dropdownItemClass, Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, colorInputClass, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { Dropdown } from "@/components/dropdown";
-import { EmailImages } from "./email-images";
+import { ImagePicker } from "./email-images";
 import { createEmailBroadcastAction, previewEmailBroadcastAction, sendEmailTestAction, type EmailPreviewResult } from "../actions";
 
 type Option = { id: string; label: string };
@@ -144,6 +145,17 @@ export function EmailEditor({
   );
   const [mode, setMode] = useState<"design" | "html">(resend?.content.html ? "html" : "design");
   const [html, setHtml] = useState(resend?.content.html ?? "");
+  /** Imagen que se está eligiendo: la de un bloque o la n-ésima del HTML pegado. */
+  const [picker, setPicker] = useState<{ block: number } | { html: number } | null>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== frame.current?.contentWindow || typeof e.data?.beliappImage !== "number") return;
+      setPicker({ html: e.data.beliappImage });
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
   /** El último campo de texto que se tocó: ahí se inserta la variable. */
   const target = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; set: (v: string) => void } | null>(null);
 
@@ -269,31 +281,11 @@ export function EmailEditor({
     else setSubject((s) => `${s}${token}`);
   }
 
-  /**
-   * Imagen subida o elegida: en el HTML va donde estaba el cursor (o al final, como imagen); en el
-   * diseño llena la dirección de la imagen que se estaba editando o agrega un bloque de imagen.
-   */
-  function insertImage(url: string) {
-    const el = target.current?.el;
-    if (mode === "html") {
-      if (el?.isConnected && el.value === html && insertAtCursor(url)) return;
-      setHtml((h) => `${h.trimEnd()}\n<img src="${url}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0">\n`);
-    } else if (el?.isConnected && el.dataset.imageUrl !== undefined && insertAtCursor(url, true)) {
-      return;
-    } else {
-      setBlocks((bs) => [...bs, { type: "image", url, alt: "" }]);
-    }
-  }
-
-  /** Inserta el texto en el último campo que se tocó; `replace` cambia todo su valor. */
-  function insertAtCursor(token: string, replace = false) {
+  /** Inserta el texto en el último campo que se tocó. */
+  function insertAtCursor(token: string) {
     const t = target.current;
     if (!t || !t.el.isConnected) return false;
     const { el, set } = t;
-    if (replace) {
-      set(token);
-      return true;
-    }
     const from = el.selectionStart ?? el.value.length;
     const to = el.selectionEnd ?? from;
     set(el.value.slice(0, from) + token + el.value.slice(to));
@@ -570,9 +562,8 @@ export function EmailEditor({
                       </button>
                     ))}
                   </Dropdown>
-                  <EmailImages companyId={companyId} onPick={insertImage} buttonClassName={TOOL_BUTTON} />
-                  <p className="min-w-0 basis-full text-xs text-slate-600">
-                    Se ponen donde dejaste el cursor. Con {"{{nombre|cliente}}"} dice «cliente» si falta el dato. Las imágenes subidas aquí no las usa la IA.
+                  <p className="min-w-0 flex-1 text-xs text-slate-600">
+                    Se pone donde dejaste el cursor. Con {"{{nombre|cliente}}"} dice «cliente» si falta el dato.
                   </p>
                 </div>
 
@@ -679,17 +670,26 @@ export function EmailEditor({
                           )}
                           {b.type === "image" && (
                             <div className="grid gap-2">
-                              {images.length > 0 && (
-                                <select value={images.some((im) => im.url === b.url) ? b.url : ""} onChange={(e) => update(i, { url: e.target.value })} aria-label="Imagen de la biblioteca" className={inputClass}>
-                                  <option value="">Elegir de tus archivos…</option>
-                                  {images.map((im) => (
-                                    <option key={im.url} value={im.url}>
-                                      {im.label}
-                                    </option>
-                                  ))}
-                                </select>
+                              {b.url ? (
+                                <div className="flex items-center gap-3 rounded-lg border border-slate-200 p-2">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={b.url} alt="" className="h-16 w-24 shrink-0 rounded bg-slate-100 object-cover" />
+                                  <span className="min-w-0 flex-1 truncate text-xs text-slate-600">{b.url.split("/").pop()}</span>
+                                  <Button type="button" variant="secondary" size="sm" onClick={() => setPicker({ block: i })}>
+                                    Cambiar
+                                  </Button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setPicker({ block: i })}
+                                  className="flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center transition-colors duration-150 hover:border-brand-400 hover:bg-brand-50/40 focus-visible:outline-2 focus-visible:outline-brand-600"
+                                >
+                                  <ImageIcon aria-hidden className="size-7 text-brand-600" />
+                                  <span className="text-sm font-semibold text-slate-900">Elige una imagen o súbela desde tu computador</span>
+                                  <span className="text-xs text-slate-600">De las ya cargadas en Beliapp o una nueva.</span>
+                                </button>
                               )}
-                              <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} {...varField((url) => update(i, { url }))} data-image-url="" aria-label="Dirección de la imagen" placeholder="https://… (dirección de la imagen)" className={inputClass} />
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <input value={b.alt ?? ""} onChange={(e) => update(i, { alt: e.target.value })} aria-label="Descripción de la imagen" placeholder="Descripción (si no se carga)" className={inputClass} />
                                 <input value={b.href ?? ""} onChange={(e) => update(i, { href: e.target.value || undefined })} aria-label="Enlace al apretar la imagen" placeholder="Enlace al apretarla (opcional)" className={inputClass} />
@@ -725,7 +725,15 @@ export function EmailEditor({
                   De: {sender}
                   {rows[0] ? " · con los datos de la primera persona" : ""}
                 </p>
-                <iframe title="Vista previa del correo" srcDoc={previewHtml} sandbox="" className="h-[640px] w-full rounded-lg bg-white" />
+                <iframe
+                  ref={frame}
+                  title="Vista previa del correo"
+                  srcDoc={mode === "html" ? withImagePicking(previewHtml) : previewHtml}
+                  // En el HTML pegado, un script propio (aislado: sin acceso a Beliapp) avisa qué imagen se apretó.
+                  sandbox={mode === "html" ? "allow-scripts" : ""}
+                  className="h-[640px] w-full rounded-lg bg-white"
+                />
+                {mode === "html" && <p className="text-xs text-slate-600">Haz clic en una imagen de la vista previa para agregarla o cambiarla.</p>}
               </div>
             </div>
           </PanelBody>
@@ -862,6 +870,17 @@ export function EmailEditor({
           )}
         </PanelFooter>
       </Card>
+      <ImagePicker
+        open={picker !== null}
+        companyId={companyId}
+        library={images}
+        onClose={() => setPicker(null)}
+        onPick={(url) => {
+          if (!picker) return;
+          if ("block" in picker) update(picker.block, { url });
+          else setHtml((h) => setImageSrc(h, picker.html, url));
+        }}
+      />
     </div>
   );
 }
