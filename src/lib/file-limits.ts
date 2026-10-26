@@ -10,3 +10,9 @@ export const UPLOAD_MAX_BYTES = META_MAX_BYTES.document;
 
 /** Carpeta de Vercel Blob donde quedan los archivos que el equipo manda a un lead. */
 export const leadUploadFolder = (leadId: string) => `leads/${leadId}/archivos`;
+
+/** Tope de una imagen para un correo masivo: más pesada, el correo tarda en abrir. */
+export const EMAIL_IMAGE_MAX_BYTES = 5 * MB;
+
+/** Carpeta de Vercel Blob con las imágenes de los correos masivos de una empresa (la IA no las usa). */
+export const emailImageFolder = (companyId: string) => `correo/${companyId}/imagenes`;
