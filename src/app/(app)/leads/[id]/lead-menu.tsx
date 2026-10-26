@@ -450,8 +450,7 @@ function MergeForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
         {duplicates.otherLeads > 0 && (
           <p className="text-sm text-slate-600">
             Este contacto tiene {duplicates.otherLeads === 1 ? "otro lead" : `otros ${duplicates.otherLeads} leads`} (se abre uno nuevo cada vez
-            que vuelve a escribir después de cerrarse el anterior). Aparecen como chats aparte en Chats, pero son el mismo contacto, así que
-            no hay nada que fusionar.
+            que vuelve a escribir después de cerrarse el anterior). Son del mismo contacto, así que no hay nada que fusionar.
           </p>
         )}
         <div className="flex justify-end">
