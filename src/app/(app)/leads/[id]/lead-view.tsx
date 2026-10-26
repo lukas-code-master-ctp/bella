@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import type { LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Ban, BellOff, Bot, BotOff, CircleX, MessageCircleWarning, ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
+import { ArrowLeft, Ban, BellOff, Bot, BotOff, CircleX, ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { displayFieldValue } from "@/lib/domain/fields";
@@ -29,7 +29,7 @@ import {
   setAssigneeAction,
 } from "./actions";
 import { FollowUpNowButton, LeadChat, RefreshInsightsForm, type ChatEvent } from "./client";
-import { AiPausedChip, ConfirmAmountForm, LeadMenu } from "./lead-menu";
+import { AiPausedChip, ConfirmAmountForm, LeadMenu, WaitingChip } from "./lead-menu";
 import { LeadTabs } from "./lead-tabs";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
@@ -49,6 +49,7 @@ const EVENT_LABEL: Record<string, string> = {
   HANDOFF: "Derivado a humano",
   AI_PAUSED: "IA pausada",
   AI_RESUMED: "IA reactivada",
+  NO_REPLY_NEEDED: "Marcado como no requiere respuesta",
   WON: "Ganado",
   LOST: "Perdido",
   REOPENED: "Reabierto",
@@ -80,6 +81,7 @@ const CHAT_EVENTS: Record<string, ChatEvent["tone"]> = {
   HANDOFF: "neutral",
   AI_PAUSED: "neutral",
   AI_RESUMED: "neutral",
+  NO_REPLY_NEEDED: "neutral",
   WON: "success",
   LOST: "danger",
   REOPENED: "neutral",
@@ -98,6 +100,9 @@ function eventText(type: string, data: Record<string, unknown>) {
   const label = (EVENT_LABEL[type] ?? type).replace(/:$/, "");
   let detail = describe(data);
   if (type === "TASK_CREATED" && typeof data.dueAt === "string") detail += ` · vence ${formatLocal(new Date(data.dueAt))}`;
+  if (type === "NO_REPLY_NEEDED" && typeof data.resumeAt === "string") {
+    detail = `retomar el ${new Date(data.resumeAt).toLocaleDateString("es-CL", { day: "numeric", month: "long", timeZone: TIME_ZONE })}`;
+  }
   return detail ? `${label}: ${detail}` : label;
 }
 
@@ -178,7 +183,7 @@ export async function LeadView({
     ["WHATSAPP", "INSTAGRAM", "FACEBOOK"].includes(lead.contact.channel) &&
     (!lastFromContact || Date.now() - lastFromContact.createdAt.getTime() > 24 * 60 * 60 * 1000);
   const waitingSince =
-    isOpen && attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage }) === "waiting"
+    isOpen && attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage, noReplyNeededAt: lead.noReplyNeededAt }) === "waiting"
       ? lastMessage!.createdAt
       : null;
   const now = new Date();
@@ -242,10 +247,7 @@ export async function LeadView({
               </Badge>
             )}
             {waitingSince && (
-              <Badge tone="warning">
-                <MessageCircleWarning aria-hidden />
-                Sin atender · {formatAgo(waitingSince, new Date())}
-              </Badge>
+              <WaitingChip leadId={lead.id} ago={formatAgo(waitingSince, now)} minResume={toLocalInput(startOfLocalDay(now, 1)).slice(0, 10)} />
             )}
             {lead.aiEnabled ? (
               <Badge tone="success">

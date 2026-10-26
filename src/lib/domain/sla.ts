@@ -101,12 +101,12 @@ export type LeadHistory = {
   id: string;
   status: string;
   assigneeId: string | null;
-  events: { type: string; actor: string; data: unknown; createdAt: Date }[];
+  events: { type: string; actor: string; userId?: string | null; data: unknown; createdAt: Date }[];
   messages: { author: MessageAuthor; userId: string | null; createdAt: Date }[];
 };
 
 /** Eventos que cambian quién atiende el lead o quién es su ejecutivo. */
-export const SLA_EVENTS = ["CREATED", "STAGE_CHANGED", "AI_PAUSED", "AI_RESUMED", "ASSIGNED", "UNASSIGNED"];
+export const SLA_EVENTS = ["CREATED", "STAGE_CHANGED", "AI_PAUSED", "AI_RESUMED", "ASSIGNED", "UNASSIGNED", "NO_REPLY_NEEDED"];
 
 /** Recorre la historia de un lead y devuelve sus esperas. `humanStages`: nombres de las etapas de atención humana. */
 export function waitsOf(lead: LeadHistory, humanStages: Set<string>): Wait[] {
@@ -143,6 +143,14 @@ export function waitsOf(lead: LeadHistory, humanStages: Set<string>): Wait[] {
     }
     const e = item.event;
     const data = (e.data ?? {}) as { stage?: string; to?: string; assigneeId?: string };
+    if (e.type === "NO_REPLY_NEEDED") {
+      // Un ejecutivo marcó que el mensaje del cliente no requiere respuesta (ej. "gracias, saludos"):
+      // cuenta como atendido en ese momento.
+      if (open) waits.push({ leadId: lead.id, ...open, answeredAt: e.createdAt, reassignedAt: null, assigneeId: assigneeId ?? e.userId ?? null });
+      open = null;
+      contactPending = false;
+      continue;
+    }
     const wasHuman = !aiEnabled || inHumanStage;
     if (e.type === "ASSIGNED") {
       const next: string | null = data.assigneeId ?? assigneeId;
@@ -182,7 +190,7 @@ const historySelect = {
   id: true,
   status: true,
   assigneeId: true,
-  events: { where: { type: { in: SLA_EVENTS } }, orderBy: { createdAt: "asc" }, select: { type: true, actor: true, data: true, createdAt: true } },
+  events: { where: { type: { in: SLA_EVENTS } }, orderBy: { createdAt: "asc" }, select: { type: true, actor: true, userId: true, data: true, createdAt: true } },
   messages: { select: { author: true, userId: true, createdAt: true } },
 } as const;
 
