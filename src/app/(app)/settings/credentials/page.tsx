@@ -1,4 +1,4 @@
-import { Bot, MessageCircle, Share2 } from "lucide-react";
+import { Bot, Mail, MessageCircle, Share2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { CREDENTIALS, credentialStatus, type CredentialGroup } from "@/lib/credentials";
 import { Badge, inputClass, PageHeader } from "@/components/ui";
@@ -10,6 +10,7 @@ const GROUPS: { id: CredentialGroup; title: string; description: string; icon: R
   { id: "whatsapp", title: "WhatsApp", description: "API oficial de WhatsApp Cloud, con la app de Meta de la empresa.", icon: <MessageCircle /> },
   { id: "meta", title: "Meta", description: "App de Meta, página de Facebook, Instagram, anuncios y píxel.", icon: <Share2 /> },
   { id: "ai", title: "Inteligencia artificial", description: "La clave del proveedor que se elige en Asistente IA.", icon: <Bot /> },
+  { id: "email", title: "Correo", description: "Tu cuenta de Resend, para los newsletters y envíos masivos por correo. Los envíos se cobran en esa cuenta.", icon: <Mail /> },
 ];
 
 export default async function CredentialsPage() {

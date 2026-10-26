@@ -2,8 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Globe } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { emailConfigured } from "@/lib/email";
-import { companyEmailSender, getEmailDomain } from "@/lib/domain/email-domains";
+import { companyEmailSender, companyResendKey, getEmailDomain } from "@/lib/domain/email-domains";
 import { emailNonOpenersCount, suggestedDailyLimit } from "@/lib/domain/email-broadcasts";
 import type { EmailBlock } from "@/lib/email-content";
 import { listFunnels, stageOptions } from "@/lib/domain/funnels";
@@ -27,7 +26,7 @@ async function resendOf(id: string | undefined): Promise<EmailResend | null> {
 export default async function NewEmailBroadcastPage({ searchParams }: { searchParams: Promise<{ reenviar?: string }> }) {
   await requireAdmin();
   const { reenviar } = await searchParams;
-  const [sender, domain, funnels, stages, tags, files, dailyLimit, resend] = await Promise.all([
+  const [sender, domain, funnels, stages, tags, files, dailyLimit, resend, resendKey] = await Promise.all([
     companyEmailSender(),
     getEmailDomain(),
     listFunnels(),
@@ -36,6 +35,7 @@ export default async function NewEmailBroadcastPage({ searchParams }: { searchPa
     db.mediaFile.findMany({ orderBy: [{ product: "asc" }, { title: "asc" }], select: { url: true, title: true, product: true, mimeType: true } }),
     suggestedDailyLimit(),
     resendOf(reenviar),
+    companyResendKey(),
   ]);
 
   return (
@@ -52,10 +52,13 @@ export default async function NewEmailBroadcastPage({ searchParams }: { searchPa
             : "Arma el correo, elige a quiénes y revisa antes de enviar. Nada sale hasta que confirmes."
         }
       />
-      {!sender || !emailConfigured() ? (
+      {!sender || !resendKey ? (
         <Card className="animate-rise">
-          <EmptyState icon={<Globe />} title={domain ? "Tu dominio aún no está verificado" : "Primero conecta tu dominio"}>
-            Los correos salen desde el dominio de tu empresa. Conéctalo y agrega los registros DNS en Configuración → Canales → Correo.
+          <EmptyState
+            icon={<Globe />}
+            title={!resendKey ? "Primero conecta tu cuenta de Resend" : domain ? "Tu dominio aún no está verificado" : "Primero conecta tu dominio"}
+          >
+            Los correos salen con tu cuenta de Resend y desde el dominio de tu empresa. Configúralos en Configuración → Canales → Correo.
             <Link href="/settings/channels/email" className={buttonClass("primary", "md", "mt-4")}>
               Ir a Correo
             </Link>

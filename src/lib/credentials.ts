@@ -11,7 +11,7 @@ import { currentCompanyId, DEFAULT_COMPANY_ID } from "./tenant";
  * a cargar las credenciales.
  */
 
-export type CredentialGroup = "whatsapp" | "meta" | "ai";
+export type CredentialGroup = "whatsapp" | "meta" | "ai" | "email";
 
 type CredentialDef = {
   key: string;
@@ -113,6 +113,15 @@ export const CREDENTIALS = [
     group: "ai",
     secret: true,
     help: "Opcional: solo si eliges Anthropic como proveedor en Asistente.",
+  },
+  {
+    // Nombre distinto de RESEND_API_KEY (la de la plataforma, para los avisos): así una empresa
+    // nunca manda sus newsletters con la cuenta de Beliapp.
+    key: "RESEND_EMAIL_API_KEY",
+    label: "Clave de Resend",
+    group: "email",
+    secret: true,
+    help: "resend.com → API Keys → Create API Key, con acceso completo (Full access). Con ella se conecta tu dominio en Canales → Correo y salen tus envíos masivos por correo.",
   },
 ] as const satisfies readonly CredentialDef[];
 

@@ -5,6 +5,7 @@ import {
   checkEmailDomain,
   companyEmailSender,
   connectEmailDomain,
+  emailWebhookSecret,
   removeEmailDomain,
   updateEmailSender,
   type EmailDomainsApi,
@@ -50,6 +51,13 @@ function fakeApi(status = "not_started") {
     async remove(id) {
       calls.push(`remove ${id}`);
     },
+    async createWebhook(endpoint, events) {
+      calls.push(`webhook ${endpoint} ${events.length}`);
+      return { id: "wh_1", signing_secret: "whsec_c2VjcmV0bw==" };
+    },
+    async removeWebhook(id) {
+      calls.push(`remove webhook ${id}`);
+    },
   };
   return { api, calls, setStatus: (s: string) => (status = s) };
 }
@@ -61,21 +69,44 @@ describe("dominio de envío por correo", () => {
     const { api, calls, setStatus } = fakeApi();
     const d = await connectEmailDomain({ domain: " https://Noticias.Motos.cl/ ", ...sender }, api);
     expect(d).toMatchObject({ domain: "noticias.motos.cl", resendId: "rs_1", status: "not_started", companyId: TEST_COMPANY_ID });
-    expect(calls).toEqual(["create noticias.motos.cl", "track rs_1"]);
+    const hook = `webhook https://app.beliapp.test/api/webhooks/resend/${TEST_COMPANY_ID} 5`;
+    expect(calls).toEqual(["create noticias.motos.cl", "track rs_1", hook]);
+    expect(d.webhookId).toBe("wh_1");
+    // El secreto del webhook se guarda cifrado.
+    expect(d.webhookSecret).not.toContain("whsec_");
+    expect(await emailWebhookSecret()).toBe("whsec_c2VjcmV0bw==");
     expect(await companyEmailSender()).toBeNull();
 
     setStatus("verified");
     const checked = await checkEmailDomain(api);
     expect(checked.status).toBe("verified");
     expect(checked.verifiedAt).toBeInstanceOf(Date);
-    expect(calls).toEqual(["create noticias.motos.cl", "track rs_1", "verify rs_1", "get rs_1"]);
+    expect(calls).toEqual(["create noticias.motos.cl", "track rs_1", hook, "verify rs_1", "get rs_1"]);
 
     await updateEmailSender({ fromName: "Motos <Sur>", fromLocal: "Hola", replyTo: "ventas@motos.cl" });
     expect(await companyEmailSender()).toEqual({ from: "Motos Sur <hola@noticias.motos.cl>", replyTo: "ventas@motos.cl" });
 
     await removeEmailDomain(api);
-    expect(calls.at(-1)).toBe("remove rs_1");
+    expect(calls.slice(-2)).toEqual(["remove webhook wh_1", "remove rs_1"]);
     expect(await db.emailDomain.count()).toBe(0);
+  });
+
+  it("si no se puede crear el webhook, el dominio queda igual y se reintenta al revisar", async () => {
+    const { api, calls } = fakeApi();
+    let fail = true;
+    const flaky: EmailDomainsApi = {
+      ...api,
+      async createWebhook(endpoint, events) {
+        if (fail) throw new Error("Resend caído");
+        return api.createWebhook(endpoint, events);
+      },
+    };
+    const d = await connectEmailDomain({ domain: "noticias.motos.cl", ...sender }, flaky);
+    expect(d.webhookId).toBeNull();
+    fail = false;
+    expect((await checkEmailDomain(flaky)).webhookId).toBe("wh_1");
+    await checkEmailDomain(flaky);
+    expect(calls.filter((c) => c.startsWith("webhook"))).toHaveLength(1);
   });
 
   it("rechaza dominios inválidos, de Beliapp, repetidos o un segundo dominio", async () => {
@@ -147,6 +178,8 @@ describe("bajas y rebotes", () => {
     expect(await handleResendEvent({ type: "email.complained", data: { from, to: ["Beto <b@x.cl>"] } })).toBe(1);
     expect(await handleResendEvent({ type: "email.complained", data: { from: "x@otro.cl", to: ["c@x.cl"] } })).toBe(0);
     expect(await handleResendEvent({ type: "email.delivered", data: { from, to: ["d@x.cl"] } })).toBe(0);
+    // El webhook de otra empresa no puede tocar las bajas de esta.
+    expect(await handleResendEvent({ type: "email.complained", data: { from, to: ["e@x.cl"] } }, "empresa-a")).toBe(0);
 
     const rows = await db.emailSuppression.findMany({ orderBy: { email: "asc" } });
     expect(rows.map((r) => [r.email, r.reason, r.detail])).toEqual([
