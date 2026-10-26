@@ -35,6 +35,7 @@ import { normalize } from "@/lib/text";
 import { Button, Card, dropdownItemClass, Field, FormMessage, inputClass } from "@/components/ui";
 import { Callout, ChoiceCard, colorInputClass, PanelBody, PanelFooter } from "@/components/settings-ui";
 import { Dropdown } from "@/components/dropdown";
+import { EmailImages } from "./email-images";
 import { createEmailBroadcastAction, previewEmailBroadcastAction, sendEmailTestAction, type EmailPreviewResult } from "../actions";
 
 type Option = { id: string; label: string };
@@ -46,6 +47,8 @@ const NAME_ALIASES = ["nombre", "name", "nombre completo", "cliente", "contacto"
 const guess = (headers: string[], aliases: string[]) => headers.find((h) => aliases.includes(normalize(h).trim())) ?? "";
 const TEST_EMAIL_KEY = "beliapp:prueba-correo";
 const STEPS = ["Destinatarios", "Contenido", "Revisar y enviar"] as const;
+const TOOL_BUTTON =
+  "inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 shadow-xs transition-colors duration-150 hover:bg-slate-50 [&_svg]:size-4";
 /** Valor de un <input type="datetime-local"> en la hora del navegador. */
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
@@ -93,6 +96,7 @@ export function EmailEditor({
   dailyLimit: initialLimit,
   sender,
   companyName,
+  companyId,
   resend,
 }: {
   funnels: Option[];
@@ -102,6 +106,7 @@ export function EmailEditor({
   dailyLimit: number;
   sender: string;
   companyName: string;
+  companyId: string;
   resend?: EmailResend | null;
 }) {
   const [step, setStep] = useState(0);
@@ -258,14 +263,37 @@ export function EmailEditor({
   /** Pone {{variable}} donde estaba el cursor; si no se ha tocado ningún campo, al final del primer texto. */
   function insertVar(key: string) {
     const token = `{{${key}}}`;
-    const t = target.current;
-    if (!t || !t.el.isConnected) {
-      const i = blocks.findIndex((b) => b.type === "text");
-      if (i >= 0) update(i, { text: `${(blocks[i] as { text: string }).text}${token}` });
-      else setSubject((s) => `${s}${token}`);
+    if (insertAtCursor(token)) return;
+    const i = blocks.findIndex((b) => b.type === "text");
+    if (i >= 0) update(i, { text: `${(blocks[i] as { text: string }).text}${token}` });
+    else setSubject((s) => `${s}${token}`);
+  }
+
+  /**
+   * Imagen subida o elegida: en el HTML va donde estaba el cursor (o al final, como imagen); en el
+   * diseño llena la dirección de la imagen que se estaba editando o agrega un bloque de imagen.
+   */
+  function insertImage(url: string) {
+    const el = target.current?.el;
+    if (mode === "html") {
+      if (el?.isConnected && el.value === html && insertAtCursor(url)) return;
+      setHtml((h) => `${h.trimEnd()}\n<img src="${url}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0">\n`);
+    } else if (el?.isConnected && el.dataset.imageUrl !== undefined && insertAtCursor(url, true)) {
       return;
+    } else {
+      setBlocks((bs) => [...bs, { type: "image", url, alt: "" }]);
     }
+  }
+
+  /** Inserta el texto en el último campo que se tocó; `replace` cambia todo su valor. */
+  function insertAtCursor(token: string, replace = false) {
+    const t = target.current;
+    if (!t || !t.el.isConnected) return false;
     const { el, set } = t;
+    if (replace) {
+      set(token);
+      return true;
+    }
     const from = el.selectionStart ?? el.value.length;
     const to = el.selectionEnd ?? from;
     set(el.value.slice(0, from) + token + el.value.slice(to));
@@ -273,6 +301,7 @@ export function EmailEditor({
       el.focus();
       el.setSelectionRange(from + token.length, from + token.length);
     });
+    return true;
   }
 
   const step1Ready =
@@ -525,7 +554,7 @@ export function EmailEditor({
                     label="Insertar variable"
                     align="left"
                     width="w-80"
-                    buttonClassName="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 shadow-xs transition-colors duration-150 hover:bg-slate-50 [&_svg]:size-4"
+                    buttonClassName={TOOL_BUTTON}
                     button={
                       <>
                         <Braces aria-hidden className="text-brand-600" />
@@ -541,8 +570,9 @@ export function EmailEditor({
                       </button>
                     ))}
                   </Dropdown>
-                  <p className="min-w-0 flex-1 text-xs text-slate-600">
-                    Se pone donde dejaste el cursor. Con {"{{nombre|cliente}}"} dice «cliente» si falta el dato.
+                  <EmailImages companyId={companyId} onPick={insertImage} buttonClassName={TOOL_BUTTON} />
+                  <p className="min-w-0 basis-full text-xs text-slate-600">
+                    Se ponen donde dejaste el cursor. Con {"{{nombre|cliente}}"} dice «cliente» si falta el dato. Las imágenes subidas aquí no las usa la IA.
                   </p>
                 </div>
 
@@ -659,7 +689,7 @@ export function EmailEditor({
                                   ))}
                                 </select>
                               )}
-                              <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} aria-label="Dirección de la imagen" placeholder="https://… (dirección de la imagen)" className={inputClass} />
+                              <input value={b.url} onChange={(e) => update(i, { url: e.target.value })} {...varField((url) => update(i, { url }))} data-image-url="" aria-label="Dirección de la imagen" placeholder="https://… (dirección de la imagen)" className={inputClass} />
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <input value={b.alt ?? ""} onChange={(e) => update(i, { alt: e.target.value })} aria-label="Descripción de la imagen" placeholder="Descripción (si no se carga)" className={inputClass} />
                                 <input value={b.href ?? ""} onChange={(e) => update(i, { href: e.target.value || undefined })} aria-label="Enlace al apretar la imagen" placeholder="Enlace al apretarla (opcional)" className={inputClass} />

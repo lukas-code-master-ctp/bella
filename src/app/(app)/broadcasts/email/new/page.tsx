@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Globe } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { currentCompanyId } from "@/lib/tenant";
 import { companyEmailSender, companyResendKey, getEmailDomain } from "@/lib/domain/email-domains";
 import { emailNonOpenersCount, suggestedDailyLimit } from "@/lib/domain/email-broadcasts";
 import type { EmailBlock } from "@/lib/email-content";
@@ -75,6 +76,7 @@ export default async function NewEmailBroadcastPage({ searchParams }: { searchPa
           dailyLimit={dailyLimit}
           sender={sender.from}
           companyName={domain?.fromName ?? ""}
+          companyId={await currentCompanyId()}
           resend={resend}
         />
       )}

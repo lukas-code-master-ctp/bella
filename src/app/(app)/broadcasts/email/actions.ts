@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { list } from "@vercel/blob";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { afterInCompany } from "@/lib/company-request";
@@ -16,6 +17,8 @@ import {
   type EmailBroadcastInput,
 } from "@/lib/domain/email-broadcasts";
 import { DomainError } from "@/lib/domain/leads";
+import { emailImageFolder } from "@/lib/file-limits";
+import { currentCompanyId } from "@/lib/tenant";
 
 export type EmailPreviewResult = Awaited<ReturnType<typeof previewEmailBroadcast>> | { error: string };
 
@@ -79,4 +82,21 @@ export async function cancelEmailBroadcastAction(id: string) {
   await requireAdmin();
   await cancelEmailBroadcast(id);
   revalidatePath(`/broadcasts/email/${id}`);
+}
+
+export type EmailImage = { url: string; name: string };
+
+/** Imágenes que la empresa ya subió para sus correos, de la más nueva a la más antigua. */
+export async function emailImagesAction(): Promise<EmailImage[]> {
+  await requireAdmin();
+  if (!process.env.BLOB_STORE_ID && !process.env.BLOB_READ_WRITE_TOKEN) return [];
+  try {
+    const { blobs } = await list({ prefix: `${emailImageFolder(await currentCompanyId())}/`, limit: 100 });
+    return blobs
+      .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime())
+      .map((b) => ({ url: b.url, name: b.pathname.split("/").pop()!.replace(/-[A-Za-z0-9]{20,}(?=\.\w+$)/, "") }));
+  } catch (err) {
+    console.error("[correo] no se pudieron listar las imágenes:", err);
+    return [];
+  }
 }
