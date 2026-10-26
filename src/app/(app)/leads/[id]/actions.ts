@@ -15,6 +15,7 @@ import { findDuplicatesOf, mergeContacts } from "@/lib/domain/contact-import";
 import { cancelFollowUp } from "@/lib/domain/follow-ups";
 import { refreshLeadInsights } from "@/lib/ai/insights";
 import { draftExecutiveReply } from "@/lib/ai/draft-reply";
+import { suggestResume, type ResumeSuggestion } from "@/lib/ai/resume-suggestion";
 import { loadRunView } from "@/lib/ai/trace";
 import { setContactFields } from "@/lib/domain/fields";
 import { createLesson, draftLesson, type LessonDraft } from "@/lib/domain/ai-lessons";
@@ -176,13 +177,25 @@ export async function dismissReplyAction(leadId: string, _prev: string | null, f
   const resumeAt = raw ? parseLocalDateTime(`${raw}T10:00`) : null;
   if (raw && !resumeAt) return "Indica una fecha válida para retomar.";
   try {
-    await dismissReply(leadId, by, { resumeAt });
+    await dismissReply(leadId, by, { resumeAt, notes: String(form.get("notes") ?? "").slice(0, 1000) });
   } catch (e) {
     if (e instanceof DomainError) return e.message;
     throw e;
   }
   done(leadId);
   return null;
+}
+
+/** Al abrir "No requiere respuesta": la IA sugiere cuándo retomar y la nota. Sin IA configurada, nada. */
+export async function suggestResumeAction(leadId: string): Promise<ResumeSuggestion | null> {
+  await authorize(leadId);
+  if (await missingKeyMessage((await getAiConfig()).provider)) return null;
+  try {
+    return await suggestResume(leadId);
+  } catch (e) {
+    console.error("[retomar] lead", leadId, e);
+    return null;
+  }
 }
 
 export async function toggleAiAction(leadId: string, enabled: boolean) {

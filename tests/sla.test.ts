@@ -102,12 +102,12 @@ describe("SLA de ejecutivos", () => {
     expect((await pendingWaits(allDay)).some((w) => w.leadId === lead.id)).toBe(true);
 
     const resumeAt = new Date(Date.now() + 30 * 24 * 60 * MIN);
-    await dismissReply(lead.id, { actor: "USER", userId: ana.id }, { resumeAt });
+    await dismissReply(lead.id, { actor: "USER", userId: ana.id }, { resumeAt, notes: "Quiere visitar en diciembre" });
 
     expect((await pendingWaits(allDay)).some((w) => w.leadId === lead.id)).toBe(false);
     const saved = await db.lead.findUniqueOrThrow({ where: { id: lead.id }, include: { tasks: true } });
     expect(saved.noReplyNeededAt).not.toBeNull();
-    expect(saved.tasks.map((t) => [t.title, t.dueAt.getTime(), t.assigneeId])).toEqual([["Retomar contacto", resumeAt.getTime(), ana.id]]);
+    expect(saved.tasks.map((t) => [t.title, t.notes, t.dueAt.getTime(), t.assigneeId])).toEqual([["Retomar contacto", "Quiere visitar en diciembre", resumeAt.getTime(), ana.id]]);
     await expect(dismissReply(lead.id, { actor: "USER" }, { resumeAt: new Date(Date.now() - MIN) })).rejects.toThrow("fecha futura");
   });
 
