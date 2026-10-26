@@ -34,6 +34,7 @@ import { LeadTabs } from "./lead-tabs";
 import { LeadFieldsForm } from "./fields-form";
 import { TaskForm } from "../../tasks/task-form";
 import { TaskItem } from "../../tasks/task-item";
+import { openWaitStarts } from "@/lib/domain/sla";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 const EVENT_LABEL: Record<string, string> = {
@@ -182,10 +183,16 @@ export async function LeadView({
   const windowClosed =
     ["WHATSAPP", "INSTAGRAM", "FACEBOOK"].includes(lead.contact.channel) &&
     (!lastFromContact || Date.now() - lastFromContact.createdAt.getTime() > 24 * 60 * 60 * 1000);
+  const attention = isOpen
+    ? attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage, noReplyNeededAt: lead.noReplyNeededAt })
+    : null;
+  // Derivado a un ejecutivo que aún no responde, aunque lo último lo haya escrito la IA.
   const waitingSince =
-    isOpen && attentionOf({ aiEnabled: lead.aiEnabled, requiresHuman: lead.stage.requiresHuman, lastMessage, noReplyNeededAt: lead.noReplyNeededAt }) === "waiting"
+    attention === "waiting"
       ? lastMessage!.createdAt
-      : null;
+      : attention === "human" && lastMessage?.author !== "USER"
+        ? ((await openWaitStarts([lead.id])).get(lead.id) ?? null)
+        : null;
   const now = new Date();
   // Mañana a las 10:00 (Chile) como vencimiento sugerido.
   const defaultDue = toLocalInput(new Date(startOfLocalDay(now, 1).getTime() + 10 * 3_600_000));

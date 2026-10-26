@@ -10,7 +10,7 @@ import { formatDue } from "@/lib/dates";
 import { bucketOf } from "@/lib/domain/tasks";
 import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration } from "@/lib/domain/metrics";
-import { lateLeads } from "@/lib/domain/sla";
+import { lateLeads, openWaitStarts } from "@/lib/domain/sla";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, ClearFilters, EmptyState } from "@/components/ui";
 import { ParamSelect } from "./filters";
@@ -83,10 +83,16 @@ export default async function FunnelPage({
   const count = (s: string) => closed.find((c) => c.status === s)?._count._all ?? 0;
   const now = new Date();
   const humanStages = new Set(stages.filter((s) => s.requiresHuman).map((s) => s.id));
-  const cards = leads.map((l) => {
+  const base = leads.map((l) => {
     const last = l.messages[0] ?? null;
     const attention = attentionOf({ aiEnabled: l.aiEnabled, requiresHuman: humanStages.has(l.stageId), lastMessage: last, noReplyNeededAt: l.noReplyNeededAt }, now);
     return { lead: l, last, attention, waitingSince: attention === "waiting" && last ? last.createdAt : null };
+  });
+  // Derivado a un ejecutivo que aún no responde, aunque lo último lo haya escrito la IA.
+  const openWaits = await openWaitStarts(base.filter((c) => c.attention === "human" && c.last?.author !== "USER").map((c) => c.lead.id), now);
+  const cards = base.map((c) => {
+    const since = openWaits.get(c.lead.id);
+    return since ? { ...c, attention: "waiting" as const, waitingSince: since } : c;
   });
   // Sin atender primero, el que lleva más tiempo esperando arriba; el resto queda como venía.
   if (waitingFirst) {

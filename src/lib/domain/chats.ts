@@ -2,7 +2,7 @@ import type { Channel, LeadStatus, MessageAuthor, Prisma, Role } from "@prisma/c
 import { db } from "../db";
 import { attentionOf, type Attention } from "./attention";
 import { chatDateRange, type ChatFilters } from "./chat-filters";
-import { lateLeads } from "./sla";
+import { lateLeads, openWaitStarts } from "./sla";
 
 /**
  * Bandeja de chats: todas las conversaciones de leads con sus filtros (ver chat-filters.ts).
@@ -72,12 +72,15 @@ export async function listChats(
   const lastOf = new Map(lastRows.map((r) => [r.leadId, r]));
 
   const range = chatDateRange(f, now);
-  const rows = candidates
-    .map((c) => {
-      const last = lastOf.get(c.id) ?? null;
-      const attention = attentionOf({ aiEnabled: c.aiEnabled, requiresHuman: c.stage.requiresHuman, lastMessage: last, noReplyNeededAt: c.noReplyNeededAt }, now);
-      return { ...c, last, attention, at: last?.createdAt ?? c.createdAt };
-    })
+  const withAttention = candidates.map((c) => {
+    const last = lastOf.get(c.id) ?? null;
+    const attention = attentionOf({ aiEnabled: c.aiEnabled, requiresHuman: c.stage.requiresHuman, lastMessage: last, noReplyNeededAt: c.noReplyNeededAt }, now);
+    return { ...c, last, attention, at: last?.createdAt ?? c.createdAt };
+  });
+  // Derivado a un ejecutivo que aún no responde, aunque lo último lo haya escrito la IA.
+  const open = await openWaitStarts(withAttention.filter((r) => r.attention === "human" && r.last?.author !== "USER").map((r) => r.id), now);
+  const rows = withAttention
+    .map((r) => (open.has(r.id) ? { ...r, attention: "waiting" as const } : r))
     .filter((r) => (!range.gte || r.at >= range.gte) && (!range.lt || r.at < range.lt))
     .filter((r) => !f.attention.length || f.attention.includes(r.attention));
 
