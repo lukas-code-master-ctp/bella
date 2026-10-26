@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { uploadPresigned } from "@vercel/blob/client";
 import { FileText, FolderOpen, Image as ImageIcon, Paperclip, Send, Upload, Video, X } from "lucide-react";
 import { Button, FormMessage, inputClass } from "@/components/ui";
-import { Callout } from "@/components/settings-ui";
 import { toast } from "@/components/toast";
 import { leadUploadFolder, META_MAX_BYTES, UPLOAD_MAX_BYTES } from "@/lib/file-limits";
 import { libraryFilesAction, sendFilesAction } from "./actions";
@@ -64,7 +63,7 @@ function arrival(file: File): { icon: React.ReactNode; note: string | null } {
 }
 
 /** Clip del chat: abre la ventana para mandar archivos de la biblioteca o del equipo. */
-export function FileButton({ leadId, windowClosed, disabled }: { leadId: string; windowClosed: boolean; disabled?: boolean }) {
+export function FileButton({ leadId, disabled }: { leadId: string; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -79,12 +78,12 @@ export function FileButton({ leadId, windowClosed, disabled }: { leadId: string;
       >
         <Paperclip aria-hidden />
       </Button>
-      <FileDialog leadId={leadId} windowClosed={windowClosed} open={open} onClose={() => setOpen(false)} />
+      <FileDialog leadId={leadId} open={open} onClose={() => setOpen(false)} />
     </>
   );
 }
 
-function FileDialog({ leadId, windowClosed, open, onClose }: { leadId: string; windowClosed: boolean; open: boolean; onClose: () => void }) {
+function FileDialog({ leadId, open, onClose }: { leadId: string; open: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (open) ref.current?.showModal();
@@ -99,12 +98,12 @@ function FileDialog({ leadId, windowClosed, open, onClose }: { leadId: string; w
       aria-labelledby="file-dialog-title"
       className="m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl bg-white p-0 shadow-xl backdrop:bg-slate-900/40 open:animate-pop"
     >
-      {open && <FileForm leadId={leadId} windowClosed={windowClosed} onClose={onClose} />}
+      {open && <FileForm leadId={leadId} onClose={onClose} />}
     </dialog>
   );
 }
 
-function FileForm({ leadId, windowClosed, onClose }: { leadId: string; windowClosed: boolean; onClose: () => void }) {
+function FileForm({ leadId, onClose }: { leadId: string; onClose: () => void }) {
   const [tab, setTab] = useState<"library" | "device">("library");
   const [library, setLibrary] = useState<LibraryFile[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -201,11 +200,6 @@ function FileForm({ leadId, windowClosed, onClose }: { leadId: string; windowClo
       </div>
 
       <div className="space-y-4 overflow-y-auto px-5 py-4">
-        {windowClosed && (
-          <Callout tone="warning" title="Pasaron más de 24 horas desde el último mensaje del cliente">
-            El canal no deja mandarle archivos ni mensajes sueltos hasta que vuelva a escribir. Para retomar el contacto hay que usar una plantilla aprobada (un admin la manda desde Envíos masivos).
-          </Callout>
-        )}
 
         <div role="tablist" aria-label="Origen del archivo" className="flex w-full rounded-lg bg-slate-100 p-1">
           {(

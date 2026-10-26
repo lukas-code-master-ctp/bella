@@ -284,6 +284,8 @@ export async function LeadView({
           blocked={Boolean(lead.contact.blockedAt)}
           isAdmin={user.role === "ADMIN"}
           windowClosed={windowClosed}
+          channelName={CHANNEL_LABEL[lead.contact.channel]}
+          templatesAllowed={lead.contact.channel === "WHATSAPP"}
           quickReplies={quickReplies}
           ad={
             lead.source?.kind === "AD"
