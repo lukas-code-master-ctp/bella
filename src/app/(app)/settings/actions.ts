@@ -18,6 +18,7 @@ import { ChannelSendError, submitTemplate, subscribeWhatsAppApp } from "@/lib/ch
 import { addWhatsAppNumber, deleteWhatsAppNumber, updateWhatsAppNumber } from "@/lib/domain/whatsapp-numbers";
 import { MAX_REPLY_DELAY_SECONDS, saveChannelSettings } from "@/lib/domain/channels";
 import { saveWebWidgetSettings } from "@/lib/domain/web-widget";
+import { disconnectChannel, type DisconnectableChannel } from "@/lib/domain/channel-disconnect";
 import { checkEmailDomain, connectEmailDomain, removeEmailDomain, updateEmailSender } from "@/lib/domain/email-domains";
 import { resubscribeEmail } from "@/lib/domain/email-suppression";
 import { deliverPendingConversions, savePixelSettings } from "@/lib/domain/conversions";
@@ -291,6 +292,22 @@ export async function saveChannelsAction(form: FormData) {
     replyDelaySeconds: Math.min(Math.max(Math.round(Number(form.get("replyDelaySeconds")) || 0), 0), MAX_REPLY_DELAY_SECONDS),
   });
   revalidatePath("/settings/channels", "layout");
+}
+
+const DISCONNECTABLE: readonly DisconnectableChannel[] = ["WHATSAPP", "INSTAGRAM", "FACEBOOK", "WEB", "EMAIL"];
+
+export async function disconnectChannelAction(_prev: string | null, form: FormData): Promise<string | null> {
+  await requireAdmin();
+  const kind = str(form, "kind") as DisconnectableChannel;
+  if (!DISCONNECTABLE.includes(kind)) return "Canal inválido.";
+  try {
+    await disconnectChannel(kind);
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+  revalidatePath("/settings", "layout");
+  return null;
 }
 
 export async function saveWebWidgetAction(form: FormData) {
