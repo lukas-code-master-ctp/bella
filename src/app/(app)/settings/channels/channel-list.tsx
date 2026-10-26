@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bot, BotOff, CircleCheck, CircleDashed, Search, Settings2 } from "lucide-react";
 import { buttonClass, inputClass } from "@/components/ui";
 import { ChannelIcon, type ChannelKind } from "./channel-icon";
+import { DisconnectChannel } from "./disconnect-channel";
 
 export type ChannelRow = {
   kind: ChannelKind;
@@ -82,6 +83,7 @@ export function ChannelList({ rows }: { rows: ChannelRow[] }) {
                   <Link href={r.setup} title="Configurar" className={buttonClass("ghost", "icon", "size-8")}>
                     <Settings2 aria-label={`Configurar ${r.name}`} />
                   </Link>
+                  <DisconnectChannel kind={r.kind} name={r.name} />
                 </li>
               ))}
           </ul>
