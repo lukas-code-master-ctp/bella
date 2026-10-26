@@ -17,7 +17,7 @@ import {
 } from "./actions";
 
 type Dialog = "WON" | "LOST" | "block" | "merge";
-type Duplicate = Awaited<ReturnType<typeof leadDuplicatesAction>>[number];
+type Duplicates = Awaited<ReturnType<typeof leadDuplicatesAction>>;
 
 /**
  * Menú ⋯ de la ficha con las acciones que cierran o cambian el lead entero (ganar, perder,
@@ -401,7 +401,7 @@ function BlockForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
 }
 
 function MergeForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
-  const [duplicates, setDuplicates] = useState<Duplicate[] | null>(null);
+  const [duplicates, setDuplicates] = useState<Duplicates | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -414,10 +414,17 @@ function MergeForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
   }, [leadId]);
 
   if (!duplicates) return <p className="py-2 text-sm text-slate-500">Buscando contactos con el mismo teléfono o correo…</p>;
-  if (!duplicates.length) {
+  if (!duplicates.contacts.length) {
     return (
       <div className="space-y-4">
         <p className="text-sm text-slate-600">No hay otros contactos con el mismo teléfono o correo.</p>
+        {duplicates.otherLeads > 0 && (
+          <p className="text-sm text-slate-600">
+            Este contacto tiene {duplicates.otherLeads === 1 ? "otro lead" : `otros ${duplicates.otherLeads} leads`} (se abre uno nuevo cada vez
+            que vuelve a escribir después de cerrarse el anterior). Aparecen como chats aparte en Chats, pero son el mismo contacto, así que
+            no hay nada que fusionar.
+          </p>
+        )}
         <div className="flex justify-end">
           <Button variant="secondary" type="button" onClick={onDone}>
             Entendido
@@ -445,7 +452,7 @@ function MergeForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
       </p>
       <fieldset className="divide-y divide-slate-100 rounded-lg border border-slate-200">
         <legend className="sr-only">Contactos a fusionar</legend>
-        {duplicates.map((d) => (
+        {duplicates.contacts.map((d) => (
           <label key={d.id} className="flex cursor-pointer items-start gap-3 px-3 py-2.5 text-sm hover:bg-slate-50">
             <input type="checkbox" name="id" value={d.id} defaultChecked className="mt-0.5 size-4 accent-brand-600" />
             <span className="min-w-0">

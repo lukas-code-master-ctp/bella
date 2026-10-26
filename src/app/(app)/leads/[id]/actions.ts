@@ -352,12 +352,15 @@ export async function optBackInAction(leadId: string) {
 export async function leadDuplicatesAction(leadId: string) {
   await requireAdmin();
   const { lead } = await authorize(leadId);
-  return (await findDuplicatesOf(lead.contactId)).map((c) => ({
+  const contacts = (await findDuplicatesOf(lead.contactId)).map((c) => ({
     id: c.id,
     name: c.name,
     detail: [c.phone, c.email].filter(Boolean).join(" · "),
     leads: c.leads,
   }));
+  // Los leads anteriores del mismo contacto salen como chats aparte, pero no son duplicados.
+  const otherLeads = await db.lead.count({ where: { contactId: lead.contactId, id: { not: leadId } } });
+  return { contacts, otherLeads };
 }
 
 /** Fusiona en el contacto del lead los duplicados elegidos. */
