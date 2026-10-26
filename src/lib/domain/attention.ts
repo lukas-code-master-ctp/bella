@@ -19,12 +19,14 @@ export type AttentionInput = {
   lastMessage: { author: MessageAuthor; createdAt: Date } | null;
   /** Un ejecutivo marcó que no requiere respuesta: los mensajes hasta esta fecha ya no esperan. */
   noReplyNeededAt?: Date | null;
+  /** Está en una etapa de descarte (ej. "Perdidos"): ya no espera respuesta aunque siga abierto. */
+  discarded?: boolean;
 };
 
-export function attentionOf({ aiEnabled, requiresHuman, lastMessage, noReplyNeededAt }: AttentionInput, now = new Date()): Attention {
+export function attentionOf({ aiEnabled, requiresHuman, lastMessage, noReplyNeededAt, discarded }: AttentionInput, now = new Date()): Attention {
   const human = !aiEnabled || requiresHuman;
   const dismissed = noReplyNeededAt && lastMessage && lastMessage.createdAt <= noReplyNeededAt;
-  if (lastMessage?.author === "CONTACT" && !dismissed && (human || now.getTime() - lastMessage.createdAt.getTime() > AI_GRACE_MS)) {
+  if (lastMessage?.author === "CONTACT" && !dismissed && !discarded && (human || now.getTime() - lastMessage.createdAt.getTime() > AI_GRACE_MS)) {
     return "waiting";
   }
   return human ? "human" : "ai";

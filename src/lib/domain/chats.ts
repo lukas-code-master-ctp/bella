@@ -3,6 +3,7 @@ import { db } from "../db";
 import { attentionOf, type Attention } from "./attention";
 import { chatDateRange, type ChatFilters } from "./chat-filters";
 import { lateLeads, openWaitStarts } from "./sla";
+import { lostStageIdsInUse } from "./auto-close";
 
 /**
  * Bandeja de chats: las conversaciones de leads con sus filtros (ver chat-filters.ts), una por
@@ -64,7 +65,7 @@ export async function listChats(
 ): Promise<{ total: number; items: ChatItem[] }> {
   const candidates = await db.lead.findMany({
     where: whereOf(f, viewer),
-    select: { id: true, contactId: true, aiEnabled: true, noReplyNeededAt: true, score: true, createdAt: true, stage: { select: { requiresHuman: true } } },
+    select: { id: true, contactId: true, stageId: true, aiEnabled: true, noReplyNeededAt: true, score: true, createdAt: true, stage: { select: { requiresHuman: true } } },
   });
   if (candidates.length === 0) return { total: 0, items: [] };
 
@@ -75,9 +76,10 @@ export async function listChats(
   const lastOf = new Map(lastRows.map((r) => [r.leadId, r]));
 
   const range = chatDateRange(f, now);
+  const lost = new Set(await lostStageIdsInUse());
   const withAttention = candidates.map((c) => {
     const last = lastOf.get(c.id) ?? null;
-    const attention = attentionOf({ aiEnabled: c.aiEnabled, requiresHuman: c.stage.requiresHuman, lastMessage: last, noReplyNeededAt: c.noReplyNeededAt }, now);
+    const attention = attentionOf({ aiEnabled: c.aiEnabled, requiresHuman: c.stage.requiresHuman, lastMessage: last, noReplyNeededAt: c.noReplyNeededAt, discarded: lost.has(c.stageId) }, now);
     return { ...c, last, attention, at: last?.createdAt ?? c.createdAt };
   });
   // Derivado a un ejecutivo que aún no responde, aunque lo último lo haya escrito la IA.

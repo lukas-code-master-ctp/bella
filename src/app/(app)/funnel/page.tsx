@@ -11,6 +11,7 @@ import { bucketOf } from "@/lib/domain/tasks";
 import { listFunnels } from "@/lib/domain/funnels";
 import { formatDuration } from "@/lib/domain/metrics";
 import { lateLeads, openWaitStarts } from "@/lib/domain/sla";
+import { lostStageIdsInUse } from "@/lib/domain/auto-close";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { buttonClass, Card, ClearFilters, EmptyState } from "@/components/ui";
 import { ParamSelect } from "./filters";
@@ -83,9 +84,10 @@ export default async function FunnelPage({
   const count = (s: string) => closed.find((c) => c.status === s)?._count._all ?? 0;
   const now = new Date();
   const humanStages = new Set(stages.filter((s) => s.requiresHuman).map((s) => s.id));
+  const lostStages = new Set(await lostStageIdsInUse());
   const base = leads.map((l) => {
     const last = l.messages[0] ?? null;
-    const attention = attentionOf({ aiEnabled: l.aiEnabled, requiresHuman: humanStages.has(l.stageId), lastMessage: last, noReplyNeededAt: l.noReplyNeededAt }, now);
+    const attention = attentionOf({ aiEnabled: l.aiEnabled, requiresHuman: humanStages.has(l.stageId), lastMessage: last, noReplyNeededAt: l.noReplyNeededAt, discarded: lostStages.has(l.stageId) }, now);
     return { lead: l, last, attention, waitingSince: attention === "waiting" && last ? last.createdAt : null };
   });
   // Derivado a un ejecutivo que aún no responde, aunque lo último lo haya escrito la IA.
