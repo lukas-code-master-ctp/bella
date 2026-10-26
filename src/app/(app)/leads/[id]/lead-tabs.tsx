@@ -45,7 +45,7 @@ export function LeadTabs({ tabs }: { tabs: LeadTab[] }) {
         role="tablist"
         aria-label="Secciones de la ficha"
         onKeyDown={onKeyDown}
-        className="z-10 flex @3xl:sticky @3xl:top-0 gap-1 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xs backdrop-blur"
+        className="z-10 flex @3xl:sticky @3xl:top-0 gap-0.5 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-xs backdrop-blur"
       >
         {tabs.map((t) => {
           const active = t.id === current;
@@ -62,13 +62,13 @@ export function LeadTabs({ tabs }: { tabs: LeadTab[] }) {
               aria-controls={`panel-${t.id}`}
               tabIndex={active ? 0 : -1}
               onClick={() => select(t.id)}
-              className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-600 ${
+              className={`flex min-h-9 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg px-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-600 ${
                 active ? "bg-brand-50 text-brand-800" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              {t.label}
+              <span className="truncate">{t.label}</span>
               {t.count ? (
-                <span className={`rounded-full px-1.5 text-xs tabular-nums ${active ? "bg-brand-100 text-brand-800" : "bg-slate-100 text-slate-600"}`}>
+                <span className={`shrink-0 rounded-full px-1.5 text-xs tabular-nums ${active ? "bg-brand-100 text-brand-800" : "bg-slate-100 text-slate-600"}`}>
                   {t.count}
                 </span>
               ) : null}
