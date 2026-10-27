@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { saveCredentials } from "@/lib/credentials";
 import { db } from "@/lib/db";
 import type { WaCall, WaWebhook } from "@/lib/channels/whatsapp";
-import type { CallingApi } from "@/lib/channels/whatsapp-calls";
-import { ChannelSendError } from "@/lib/channels/whatsapp";
+import type { CallingApi, CallPermission } from "@/lib/channels/whatsapp-calls";
+import { ChannelSendError, describeMessage } from "@/lib/channels/whatsapp";
 import {
   answerCall,
+  callOption,
   callsForUser,
+  requestCallPermission,
+  startCall,
   getCallSettings,
   hangUpCall,
   receiveWhatsAppCalls,
@@ -54,7 +57,7 @@ const terminate = (id = "wacid.1", extra: Partial<WaCall> = {}): WaCall => ({
 });
 
 /** API de llamadas falsa: anota lo que se le pidió a Meta. */
-function fakeApi(fail?: { setCalling?: string }) {
+function fakeApi(fail?: { setCalling?: string }, permission: CallPermission = { status: "no_permission", canCall: false, canRequest: true }) {
   const log: string[] = [];
   const api: CallingApi = {
     async setCalling(id, enabled) {
@@ -69,6 +72,17 @@ function fakeApi(fail?: { setCalling?: string }) {
     },
     async terminate(id, callId) {
       log.push(`terminate ${callId}`);
+    },
+    async connect(id, to, sdp) {
+      log.push(`connect ${to} ${sdp}`);
+      return "wacid.out";
+    },
+    async permission() {
+      return permission;
+    },
+    async requestPermission(id, to, body) {
+      log.push(`permiso ${to} ${body}`);
+      return "wamid.permiso";
     },
   };
   return { api, log };
@@ -208,4 +222,84 @@ describe("Llamadas de WhatsApp: entrantes", () => {
     expect(log).toEqual([]);
     expect(await db.call.count()).toBe(0);
   });
+});
+
+describe("Llamadas de WhatsApp: llamar al cliente", () => {
+  async function waLead() {
+    // Escribió hace poco: lead de WhatsApp con la ventana de 24 h abierta.
+    const contact = await db.contact.create({ data: { name: "Ana Pérez", channel: "WHATSAPP", externalId: FROM, phone: `+${FROM}` } });
+    const stage = await db.stage.findFirstOrThrow();
+    const lead = await db.lead.create({ data: { contactId: contact.id, stageId: stage.id } });
+    await db.message.create({ data: { leadId: lead.id, author: "CONTACT", body: "Hola" } });
+    await setSetting("calls", { enabled: true });
+    return lead;
+  }
+
+  it("sin permiso ofrece pedirlo y la solicitud queda en el chat", async () => {
+    const lead = await waLead();
+    const luis = await executive("Luis");
+    const { api, log } = fakeApi();
+    expect(await callOption(lead.id, api)).toEqual({ kind: "request" });
+    await requestCallPermission(lead.id, luis.id, api);
+    expect(log[0]).toMatch(new RegExp(`^permiso ${FROM} `));
+    expect(await db.message.findFirstOrThrow({ where: { author: "USER" } })).toMatchObject({ externalId: "wamid.permiso", userId: luis.id });
+  });
+
+  it("si ya se pidió hace poco o la ventana cerró, explica por qué no", async () => {
+    const lead = await waLead();
+    expect((await callOption(lead.id, fakeApi(undefined, { status: "no_permission", canCall: false, canRequest: false }).api)).kind).toBe("unavailable");
+    await db.message.updateMany({ data: { createdAt: new Date(Date.now() - 25 * 3600_000) } });
+    const option = await callOption(lead.id, fakeApi().api);
+    expect(option).toMatchObject({ kind: "unavailable", reason: expect.stringMatching(/24 horas/) });
+  });
+
+  it("con permiso llama; la respuesta de audio llega al navegador y queda la nota al cortar", async () => {
+    const lead = await waLead();
+    const luis = await executive("Luis");
+    const { api, log } = fakeApi(undefined, { status: "temporary", canCall: true, canRequest: false });
+    expect(await callOption(lead.id, api)).toEqual({ kind: "call" });
+
+    const id = await startCall(lead.id, luis.id, "v=0 oferta", api);
+    expect(log).toContain(`connect ${FROM} v=0 oferta`);
+    expect(await db.call.findUniqueOrThrow({ where: { id } })).toMatchObject({ direction: "OUTBOUND", status: "RINGING", answeredById: luis.id });
+    // No le suena a nadie: la hizo Luis.
+    expect((await callsForUser(luis.id)).ringing).toEqual([]);
+
+    const out = (extra: object) => ({
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "calls", value: { metadata: { phone_number_id: PHONE_ID }, ...extra } }] }],
+    }) as WaWebhook;
+    await receiveWhatsAppCalls(out({ calls: [{ id: "wacid.out", event: "connect", direction: "BUSINESS_INITIATED", session: { sdp_type: "answer", sdp: "v=0 respuesta" } }] }), api);
+    await receiveWhatsAppCalls(out({ statuses: [{ id: "wacid.out", type: "call", status: "ACCEPTED" }] }), api);
+    expect(await callsForUser(luis.id, id)).toMatchObject({ currentStatus: "ANSWERED", currentAnswer: "v=0 respuesta" });
+
+    await receiveWhatsAppCalls(out({ calls: [{ id: "wacid.out", event: "terminate", direction: "BUSINESS_INITIATED", status: "COMPLETED", duration: 30 }] }), api);
+    const events = await db.leadEvent.findMany({ where: { leadId: lead.id, type: { startsWith: "CALL_" } } });
+    expect(events).toMatchObject([{ type: "CALL_ENDED", data: { direction: "OUTBOUND", duration: 30, userName: "Luis" } }]);
+  });
+
+  it("si el cliente rechaza, queda como sin respuesta y sin aviso de llamada perdida", async () => {
+    const lead = await waLead();
+    const luis = await executive("Luis");
+    const { api } = fakeApi(undefined, { status: "permanent", canCall: true, canRequest: false });
+    const id = await startCall(lead.id, luis.id, "v=0 oferta", api);
+    const out = (extra: object) => ({
+      object: "whatsapp_business_account",
+      entry: [{ changes: [{ field: "calls", value: { metadata: { phone_number_id: PHONE_ID }, ...extra } }] }],
+    }) as WaWebhook;
+    await receiveWhatsAppCalls(out({ statuses: [{ id: "wacid.out", type: "call", status: "REJECTED" }] }), api);
+    expect((await callsForUser(luis.id, id)).currentStatus).toBe("REJECTED");
+    await receiveWhatsAppCalls(out({ calls: [{ id: "wacid.out", event: "terminate", direction: "BUSINESS_INITIATED", status: "COMPLETED" }] }), api);
+    const event = await db.leadEvent.findFirstOrThrow({ where: { leadId: lead.id, type: "CALL_MISSED" } });
+    expect(event.data).toMatchObject({ direction: "OUTBOUND", declined: true });
+    expect(await db.notification.count({ where: { leadId: lead.id } })).toBe(0);
+  });
+});
+
+it("la respuesta del cliente a la solicitud queda legible en el chat", () => {
+  const reply = (response: string, is_permanent = false) =>
+    describeMessage({ from: FROM, id: "w", type: "interactive", interactive: { type: "call_permission_reply", call_permission_reply: { response, is_permanent } } });
+  expect(reply("accept")).toBe("[Aceptó que lo llamen por WhatsApp]");
+  expect(reply("accept", true)).toBe("[Aceptó que lo llamen por WhatsApp, sin plazo]");
+  expect(reply("reject")).toBe("[No aceptó que lo llamen por WhatsApp]");
 });

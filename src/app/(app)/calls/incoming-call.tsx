@@ -6,12 +6,19 @@ import { Mic, MicOff, Phone, PhoneOff } from "lucide-react";
 import type { RingingCall } from "@/lib/domain/calls";
 import { Avatar, Button } from "@/components/ui";
 import { toast } from "@/components/toast";
-import { answerCallAction, hangUpCallAction, myCallsAction, rejectCallAction } from "./actions";
+import { answerCallAction, hangUpCallAction, myCallsAction, rejectCallAction, startCallAction } from "./actions";
 
 /** Cada cuánto se pregunta por llamadas con la pestaña a la vista; el push avisa antes si llega. */
 const POLL_MS = 4000;
 
-type Active = { call: RingingCall; pc: RTCPeerConnection; stream: MediaStream; since: number | null };
+/** `outgoing`: la hizo esta persona; `answered` marca que ya se puso la respuesta de audio del cliente. */
+type Active = { call: RingingCall; pc: RTCPeerConnection; stream: MediaStream; since: number | null; outgoing?: boolean; answered?: boolean };
+
+/** Evento para llamar a un lead desde cualquier parte de la app (el botón del chat). */
+export const START_CALL_EVENT = "beliapp:call";
+export type StartCallDetail = { leadId: string; name: string; phone: string | null };
+
+const TERMINAL = ["ENDED", "MISSED", "REJECTED", "FAILED"];
 
 /** Espera a que el navegador junte sus candidatos de red: Meta pide la respuesta completa, de una vez. */
 function iceGathered(pc: RTCPeerConnection, timeoutMs = 3000) {
@@ -94,7 +101,21 @@ export function IncomingCall() {
       const res = await myCallsAction(activeRef.current?.call.id ?? null);
       setRinging(res.ringing);
       const a = activeRef.current;
-      if (a && a.since && res.currentStatus && res.currentStatus !== "ANSWERED") finish("La llamada terminó.");
+      if (!a || !res.currentStatus) return;
+      if (a.since) {
+        if (res.currentStatus !== "ANSWERED") finish("La llamada terminó.");
+      } else if (a.outgoing) {
+        if (res.currentAnswer && !a.answered) {
+          a.answered = true;
+          await a.pc.setRemoteDescription({ type: "answer", sdp: res.currentAnswer });
+        }
+        if (res.currentStatus === "ANSWERED") {
+          setActive({ ...a, since: Date.now() });
+          setNow(Date.now());
+        } else if (TERMINAL.includes(res.currentStatus)) {
+          finish(res.currentStatus === "REJECTED" ? "El cliente rechazó la llamada." : "El cliente no contestó.");
+        }
+      }
     } catch {
       // Sin red por un momento: se reintenta en la próxima vuelta.
     }
@@ -114,6 +135,14 @@ export function IncomingCall() {
       navigator.serviceWorker?.removeEventListener("message", onPush);
     };
   }, [poll]);
+
+  // Mientras suena una llamada saliente se pregunta más seguido, para conectar el audio apenas contesten.
+  const dialing = Boolean(active?.outgoing && !active.since);
+  useEffect(() => {
+    if (!dialing) return;
+    const timer = setInterval(poll, 1000);
+    return () => clearInterval(timer);
+  }, [dialing, poll]);
 
   const call = active ? null : ringing.find((c) => !dismissed.has(c.id));
 
@@ -135,32 +164,75 @@ export function IncomingCall() {
     return () => window.removeEventListener("pagehide", onUnload);
   }, []);
 
-  async function answer(c: RingingCall) {
-    setConnecting(true);
-    let stream: MediaStream | null = null;
-    let pc: RTCPeerConnection | null = null;
+  /** Micrófono y conexión de audio; null si el navegador no dio permiso para el micrófono. */
+  async function openAudio() {
+    let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setConnecting(false);
       toast("Beliapp necesita permiso para usar el micrófono. Actívalo en el candado de la barra de direcciones.", "error");
-      return;
+      return null;
     }
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+    for (const track of stream.getTracks()) pc.addTrack(track, stream);
+    pc.ontrack = (e) => {
+      if (audio.current) {
+        audio.current.srcObject = e.streams[0] ?? new MediaStream([e.track]);
+        audio.current.play().catch(() => {});
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      const a = activeRef.current;
+      if (["failed", "closed"].includes(pc.connectionState) && a?.pc === pc) {
+        hangUpCallAction(a.call.id);
+        finish("Se cortó la llamada.");
+      }
+    };
+    return { stream, pc };
+  }
+
+  async function dial(d: StartCallDetail) {
+    if (activeRef.current) return toast("Ya estás en una llamada.", "error");
+    setConnecting(true);
+    const media = await openAudio();
+    if (!media) return setConnecting(false);
+    const { stream, pc } = media;
     try {
-      pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
-      for (const track of stream.getTracks()) pc.addTrack(track, stream);
-      pc.ontrack = (e) => {
-        if (audio.current) {
-          audio.current.srcObject = e.streams[0] ?? new MediaStream([e.track]);
-          audio.current.play().catch(() => {});
-        }
-      };
-      pc.onconnectionstatechange = () => {
-        if (pc && ["failed", "closed"].includes(pc.connectionState) && activeRef.current?.pc === pc) {
-          hangUpCallAction(c.id);
-          finish("Se cortó la llamada.");
-        }
-      };
+      await pc.setLocalDescription(await pc.createOffer());
+      await iceGathered(pc);
+      const res = await startCallAction(d.leadId, pc.localDescription?.sdp ?? "");
+      if ("error" in res) {
+        pc.close();
+        stream.getTracks().forEach((t) => t.stop());
+        toast(res.error, "error");
+        return;
+      }
+      const next: Active = { call: { id: res.callId, leadId: d.leadId, name: d.name, phone: d.phone, sdpOffer: "", createdAt: "" }, pc, stream, since: null, outgoing: true };
+      activeRef.current = next;
+      setActive(next);
+    } catch {
+      pc.close();
+      stream.getTracks().forEach((t) => t.stop());
+      toast("No se pudo iniciar la llamada.", "error");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  const dialRef = useRef(dial);
+  dialRef.current = dial;
+  useEffect(() => {
+    const onStart = (e: Event) => dialRef.current((e as CustomEvent<StartCallDetail>).detail);
+    window.addEventListener(START_CALL_EVENT, onStart);
+    return () => window.removeEventListener(START_CALL_EVENT, onStart);
+  }, []);
+
+  async function answer(c: RingingCall) {
+    setConnecting(true);
+    const media = await openAudio();
+    if (!media) return setConnecting(false);
+    const { stream, pc } = media;
+    try {
       await pc.setRemoteDescription({ type: "offer", sdp: c.sdpOffer });
       await pc.setLocalDescription(await pc.createAnswer());
       await iceGathered(pc);
@@ -176,7 +248,7 @@ export function IncomingCall() {
         setNow(Date.now());
       }
     } catch {
-      pc?.close();
+      pc.close();
       stream.getTracks().forEach((t) => t.stop());
       setActive(null);
       toast("No se pudo conectar el audio de la llamada.", "error");
@@ -228,7 +300,9 @@ export function IncomingCall() {
                 {active
                   ? active.since
                     ? `En llamada · ${clock(Math.max(0, Math.round((now - active.since) / 1000)))}`
-                    : "Conectando…"
+                    : active.outgoing
+                      ? "Llamando por WhatsApp…"
+                      : "Conectando…"
                   : `Llamada de WhatsApp${shown.phone ? ` · ${shown.phone}` : ""}`}
               </p>
             </div>
