@@ -19,6 +19,7 @@ import { suggestResume, type ResumeSuggestion } from "@/lib/ai/resume-suggestion
 import { loadRunView } from "@/lib/ai/trace";
 import { setContactFields } from "@/lib/domain/fields";
 import { createLesson, draftLesson, type LessonDraft } from "@/lib/domain/ai-lessons";
+import { explainReply, type ReplyAnalysis } from "@/lib/domain/reply-analysis";
 import {
   addTag,
   closeLead,
@@ -322,6 +323,21 @@ export async function refreshInsightsAction(leadId: string): Promise<string | nu
 export async function getAgentRunAction(leadId: string, messageId: string) {
   await authorize(leadId);
   return loadRunView(leadId, messageId);
+}
+
+/** "¿Por qué respondió esto?": solo admins, que son quienes ajustan la configuración de la IA. */
+export async function explainReplyAction(leadId: string, messageId: string): Promise<{ analysis: ReplyAnalysis } | { error: string }> {
+  const user = await authorizeAiMessage(leadId, messageId);
+  if (user.role !== "ADMIN") return { error: "Solo un admin puede analizar respuestas de la IA." };
+  const missing = await missingKeyMessage((await getAiConfig()).provider);
+  if (missing) return { error: missing };
+  try {
+    return { analysis: await explainReply({ leadId, messageId }) };
+  } catch (e) {
+    if (e instanceof DomainError) return { error: e.message };
+    console.error("[analizar respuesta]", e);
+    return { error: "La IA no pudo analizar la respuesta. Intenta de nuevo." };
+  }
 }
 
 export type CorrectionState = { error: string | null; feedback: string; draft: LessonDraft | null; saved: boolean };

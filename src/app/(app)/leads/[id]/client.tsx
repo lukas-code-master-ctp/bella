@@ -188,7 +188,7 @@ export function LeadChat({
       </div>
       )}
 
-      <ActivityPanel leadId={leadId} message={inspected} onClose={closeInspector} />
+      <ActivityPanel leadId={leadId} message={inspected} isAdmin={isAdmin} onClose={closeInspector} />
       <CorrectionDialog leadId={leadId} message={correcting} isAdmin={isAdmin} onClose={closeCorrection} />
     </>
   );
