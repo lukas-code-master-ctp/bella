@@ -37,6 +37,8 @@ import { TaskItem } from "../../tasks/task-item";
 import { openWaitStarts } from "@/lib/domain/sla";
 import { lostStageIdsInUse } from "@/lib/domain/auto-close";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { getCallSettings } from "@/lib/domain/calls";
+import { CallButton } from "../../calls/call-button";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -103,7 +105,7 @@ const CHAT_EVENTS: Record<string, ChatEvent["tone"]> = {
 
 /** Texto de un evento: "Cambio de etapa: Nuevo → Calificado". */
 function eventText(type: string, data: Record<string, unknown>) {
-  const label = (EVENT_LABEL[type] ?? type).replace(/:$/, "");
+  const label = (type === "CALL_MISSED" && data.direction === "OUTBOUND" ? "Llamada sin respuesta" : (EVENT_LABEL[type] ?? type)).replace(/:$/, "");
   let detail = describe(data);
   if (type === "TASK_CREATED" && typeof data.dueAt === "string") detail += ` · vence ${formatLocal(new Date(data.dueAt))}`;
   if (type === "NO_REPLY_NEEDED" && typeof data.resumeAt === "string") {
@@ -118,8 +120,9 @@ const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 function callDetail(data: Record<string, unknown>) {
   const parts: string[] = [];
   if (typeof data.duration === "number") parts.push(`${Math.floor(data.duration / 60)}:${String(data.duration % 60).padStart(2, "0")}`);
-  if (data.userName) parts.push(`contestó ${data.userName}`);
+  if (data.userName) parts.push(data.direction === "OUTBOUND" ? `llamó ${data.userName}` : `contestó ${data.userName}`);
   if (data.rejectedBy) parts.push(`rechazada por ${data.rejectedBy}`);
+  if (data.declined) parts.push("el cliente la rechazó");
   if (data.error) parts.push(String(data.error));
   return parts.join(" · ");
 }
@@ -174,7 +177,7 @@ export async function LeadView({
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages, quickReplies] = await Promise.all([
+  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages, quickReplies, , calls] = await Promise.all([
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -189,6 +192,7 @@ export async function LeadView({
     awaitingAmountStageIds(),
     listQuickReplies(user.id),
     markLeadNotificationsRead(user.id, lead.id),
+    getCallSettings(),
   ]);
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
@@ -279,6 +283,9 @@ export async function LeadView({
               </Badge>
             ) : (
               <AiPausedChip leadId={lead.id} canResume={isOpen && !lead.contact.blockedAt} />
+            )}
+            {calls.enabled && lead.contact.channel === "WHATSAPP" && !lead.contact.blockedAt && (
+              <CallButton leadId={lead.id} name={lead.contact.name} phone={lead.contact.phone} />
             )}
             <LeadMenu
               leadId={lead.id}

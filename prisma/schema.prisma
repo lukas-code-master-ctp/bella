@@ -1275,6 +1275,8 @@ model Call {
   phoneNumberId String
   /// Oferta de audio (SDP) de WhatsApp; el navegador de quien contesta arma la respuesta.
   sdpOffer      String?
+  /// Respuesta de audio del cliente en una llamada saliente; el navegador de quien llama la usa.
+  sdpAnswer     String?
   /// A quiénes les suena en Beliapp: el ejecutivo del lead o, si no tiene, los administradores.
   ringUserIds   String[]  @default([])
   answeredById  String?

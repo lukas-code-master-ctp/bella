@@ -84,6 +84,8 @@ export function describeMetaError(code: number | undefined, fallback: string): s
       return "WhatsApp no aceptó el archivo (formato o tamaño no soportado).";
     case 131056:
       return "Demasiados mensajes seguidos a este cliente; espera un momento.";
+    case 138006:
+      return "El cliente todavía no autoriza que lo llamen por WhatsApp (o su permiso venció).";
     case 190:
       return "El token de WhatsApp venció o no es válido (Configuración → Credenciales).";
     case 131031:
@@ -191,7 +193,13 @@ export type WaMessage = {
   sticker?: WaMedia;
   location?: { latitude: number; longitude: number; name?: string; address?: string };
   button?: { text: string };
-  interactive?: { button_reply?: { title: string }; list_reply?: { title: string } };
+  interactive?: {
+    type?: string;
+    button_reply?: { title: string };
+    list_reply?: { title: string };
+    /** Respuesta del cliente a la solicitud de permiso para llamarlo. */
+    call_permission_reply?: { response?: "accept" | "reject" | string; is_permanent?: boolean };
+  };
   reaction?: { emoji?: string };
   contacts?: { name?: { formatted_name?: string } }[];
   /** Viene en el primer mensaje cuando la persona escribió desde un anuncio o publicación (clic a WhatsApp). */
@@ -213,7 +221,9 @@ export type WaReferral = {
 
 export type WaStatus = {
   id: string;
-  status: "sent" | "delivered" | "read" | "failed";
+  /** "call" en los estados de una llamada que hace la empresa (RINGING, ACCEPTED, REJECTED). */
+  type?: string;
+  status: "sent" | "delivered" | "read" | "failed" | string;
   errors?: { code?: number; title?: string; message?: string; error_data?: { details?: string } }[];
 };
 
@@ -305,8 +315,14 @@ export function describeMessage(m: WaMessage): string | null {
       return `[Contacto compartido] ${m.contacts?.[0]?.name?.formatted_name ?? ""}`.trim();
     case "button":
       return m.button?.text ?? "";
-    case "interactive":
+    case "interactive": {
+      const call = m.interactive?.call_permission_reply;
+      if (call) {
+        if (call.response !== "accept") return "[No aceptó que lo llamen por WhatsApp]";
+        return call.is_permanent ? "[Aceptó que lo llamen por WhatsApp, sin plazo]" : "[Aceptó que lo llamen por WhatsApp]";
+      }
       return m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? "";
+    }
     case "reaction":
       // Una reacción no es un mensaje nuevo que responder.
       return null;

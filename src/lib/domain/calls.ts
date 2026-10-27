@@ -2,7 +2,9 @@ import { db } from "../db";
 import { getSetting, setSetting } from "../settings";
 import { deliverPendingPush } from "../push";
 import { webhookValues, type WaCall, type WaWebhook } from "../channels/whatsapp";
+import { ChannelSendError } from "../channels/whatsapp";
 import { callingApi, type CallingApi } from "../channels/whatsapp-calls";
+import { replyWindowClosed } from "./reply-window";
 import { openLeadFor } from "./channels";
 import { isBlocked } from "./contacts";
 import { DomainError } from "./leads";
@@ -62,10 +64,22 @@ export async function receiveWhatsAppCalls(payload: WaWebhook, api: CallingApi =
     if (!phoneNumberId) continue;
     const names = new Map((value.contacts ?? []).map((c) => [c.wa_id, c.profile?.name]));
     for (const c of value.calls ?? []) {
-      if (c.event === "connect" && c.direction !== "BUSINESS_INITIATED") {
+      if (c.event === "connect" && c.direction === "BUSINESS_INITIATED") {
+        // El cliente se conectó a la llamada que hizo la empresa: su respuesta de audio va al navegador.
+        if (c.session?.sdp) await db.call.updateMany({ where: { externalId: c.id }, data: { sdpAnswer: c.session.sdp } });
+      } else if (c.event === "connect") {
         await incomingCall(c, phoneNumberId, names.get(c.from ?? ""), enabled, api);
       } else if (c.event === "terminate") {
         await callEnded(c);
+      }
+    }
+    for (const s of value.statuses ?? []) {
+      if (s.type !== "call") continue;
+      const status = s.status.toUpperCase();
+      if (status === "ACCEPTED") {
+        await db.call.updateMany({ where: { externalId: s.id, status: "RINGING" }, data: { status: "ANSWERED", answeredAt: new Date() } });
+      } else if (status === "REJECTED") {
+        await db.call.updateMany({ where: { externalId: s.id, status: "RINGING" }, data: { status: "REJECTED" } });
       }
     }
   }
@@ -102,12 +116,14 @@ async function callEnded(c: WaCall) {
   const duration = Number(c.duration);
   const failed = callStatus(c) === "FAILED";
   const error = c.errors?.[0]?.error_data?.details || c.errors?.[0]?.message || null;
+  const outbound = call.direction === "OUTBOUND";
   await db.$transaction(async (tx) => {
     const answered = call.status === "ANSWERED";
-    const status = answered ? "ENDED" : failed && call.status === "RINGING" ? "FAILED" : "MISSED";
-    // Solo una vez: si Meta repite el aviso o el ejecutivo ya la rechazó, no se anota de nuevo.
+    const status = answered ? "ENDED" : failed && call.status === "RINGING" ? "FAILED" : outbound && call.status === "REJECTED" ? "REJECTED" : "MISSED";
+    // Solo una vez: si Meta repite el aviso o el ejecutivo ya la rechazó, no se anota de nuevo. En una
+    // saliente, el rechazo del cliente llega antes como estado y la nota se deja al terminar.
     const done = await tx.call.updateMany({
-      where: { id: call.id, status: { in: ["RINGING", "ANSWERED"] } },
+      where: { id: call.id, status: { in: outbound ? ["RINGING", "ANSWERED", "REJECTED"] : ["RINGING", "ANSWERED"] }, endedAt: null },
       data: {
         status,
         endedAt: c.end_time ? new Date(Number(c.end_time) * 1000) : new Date(),
@@ -124,6 +140,18 @@ async function callEnded(c: WaCall) {
           actor: "SYSTEM",
           userId: call.answeredById,
           data: { direction: call.direction, duration: Number.isFinite(duration) ? Math.round(duration) : null, userName: call.answeredBy?.name ?? null },
+        },
+      });
+      return;
+    }
+    if (outbound) {
+      await tx.leadEvent.create({
+        data: {
+          leadId: call.leadId,
+          type: "CALL_MISSED",
+          actor: "SYSTEM",
+          userId: call.answeredById,
+          data: { direction: call.direction, userName: call.answeredBy?.name ?? null, declined: status === "REJECTED", error },
         },
       });
       return;
@@ -147,7 +175,9 @@ export async function callsForUser(userId: string, currentCallId?: string | null
     include: { lead: { include: { contact: true } } },
     orderBy: { createdAt: "asc" },
   });
-  const current = currentCallId ? await db.call.findFirst({ where: { id: currentCallId, answeredById: userId }, select: { status: true } }) : null;
+  const current = currentCallId
+    ? await db.call.findFirst({ where: { id: currentCallId, answeredById: userId }, select: { status: true, sdpAnswer: true } })
+    : null;
   return {
     ringing: ringing.map(
       (c): RingingCall => ({
@@ -160,6 +190,8 @@ export async function callsForUser(userId: string, currentCallId?: string | null
       }),
     ),
     currentStatus: current?.status ?? null,
+    /** En una llamada saliente: la respuesta de audio del cliente, cuando ya se conectó. */
+    currentAnswer: current?.sdpAnswer ?? null,
   };
 }
 
@@ -207,6 +239,83 @@ export async function rejectCall(callId: string, userId: string, api: CallingApi
 /** Corta la llamada en curso. La nota con la duración queda cuando WhatsApp confirma el término. */
 export async function hangUpCall(callId: string, userId: string, api: CallingApi = callingApi) {
   const call = await db.call.findFirst({ where: { id: callId, answeredById: userId } });
-  if (!call || call.status !== "ANSWERED") return;
+  if (!call) return;
+  // Una saliente se puede cortar mientras suena.
+  if (call.status !== "ANSWERED" && !(call.direction === "OUTBOUND" && call.status === "RINGING")) return;
   await api.terminate(call.phoneNumberId, call.externalId);
+}
+
+// --- Llamar al cliente ---------------------------------------------------------------------
+
+/** Texto que acompaña la solicitud de permiso; WhatsApp agrega los botones para aceptar o no. */
+export const PERMISSION_REQUEST_TEXT = "¿Te podemos llamar por WhatsApp para conversarlo mejor?";
+
+/** Lo que el chat necesita para el botón de llamar: si se puede llamar ya, o pedir permiso. */
+export type CallOption =
+  | { kind: "call" }
+  | { kind: "request" }
+  | { kind: "unavailable"; reason: string };
+
+async function whatsappLead(leadId: string) {
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { contact: true } });
+  const { channel, externalId, waPhoneNumberId, blockedAt } = lead.contact;
+  if (channel !== "WHATSAPP" || !externalId) throw new DomainError("Solo se puede llamar a leads de WhatsApp.");
+  if (blockedAt) throw new DomainError("El contacto está bloqueado.");
+  if (!(await getCallSettings()).enabled) throw new DomainError("Las llamadas están apagadas en Configuración → Canales → WhatsApp.");
+  const phoneNumberId = waPhoneNumberId || (await whatsappPhoneIds())[0];
+  if (!phoneNumberId) throw new DomainError("Primero conecta un número de WhatsApp.");
+  return { lead, to: externalId, phoneNumberId };
+}
+
+/** Pregunta a Meta si el cliente dio permiso para llamarlo y, si no, si hoy se le puede pedir. */
+export async function callOption(leadId: string, api: CallingApi = callingApi): Promise<CallOption> {
+  try {
+    const { to, phoneNumberId } = await whatsappLead(leadId);
+    const p = await api.permission(phoneNumberId, to);
+    if (p.canCall) return { kind: "call" };
+    if (p.status !== "no_permission") {
+      return { kind: "unavailable", reason: "WhatsApp no deja llamar a este cliente por ahora (llegaste al límite de llamadas de hoy)." };
+    }
+    if (!p.canRequest) {
+      return { kind: "unavailable", reason: "El cliente no ha dado permiso y ya se le pidió hace poco (WhatsApp deja pedirlo 1 vez al día y 2 a la semana)." };
+    }
+    if (await replyWindowClosed(leadId)) {
+      return { kind: "unavailable", reason: "El cliente no ha dado permiso, y para pedírselo tiene que haber escrito en las últimas 24 horas." };
+    }
+    return { kind: "request" };
+  } catch (err) {
+    if (err instanceof DomainError || err instanceof ChannelSendError) return { kind: "unavailable", reason: err.message };
+    throw err;
+  }
+}
+
+/** Manda al cliente la solicitud de permiso para llamarlo; queda en el chat como mensaje del ejecutivo. */
+export async function requestCallPermission(leadId: string, userId: string, api: CallingApi = callingApi) {
+  const { to, phoneNumberId } = await whatsappLead(leadId);
+  if (await replyWindowClosed(leadId)) throw new DomainError("Para pedir permiso el cliente tiene que haber escrito en las últimas 24 horas.");
+  let externalId: string;
+  try {
+    externalId = await api.requestPermission(phoneNumberId, to, PERMISSION_REQUEST_TEXT);
+  } catch (err) {
+    throw new DomainError(err instanceof Error ? err.message : String(err));
+  }
+  await db.message.create({
+    data: { leadId, author: "USER", userId, body: `${PERMISSION_REQUEST_TEXT} [Solicitud de llamada]`, externalId, deliveryStatus: "SENT" },
+  });
+}
+
+/** Llama al cliente con la oferta de audio del navegador de quien llama. Devuelve el id de la llamada en Beliapp. */
+export async function startCall(leadId: string, userId: string, sdp: string, api: CallingApi = callingApi): Promise<string> {
+  const { to, phoneNumberId } = await whatsappLead(leadId);
+  if (!sdp.trim()) throw new DomainError("El navegador no pudo preparar el audio de la llamada.");
+  let externalId: string;
+  try {
+    externalId = await api.connect(phoneNumberId, to, sdp);
+  } catch (err) {
+    throw new DomainError(err instanceof Error ? err.message : String(err));
+  }
+  const call = await db.call.create({
+    data: { leadId, externalId, direction: "OUTBOUND", phoneNumberId, answeredById: userId },
+  });
+  return call.id;
 }
