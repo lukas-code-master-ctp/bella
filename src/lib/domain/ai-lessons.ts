@@ -56,7 +56,7 @@ export function lessonsPrompt(lessons: LessonForPrompt[]): string[] {
 const oneLine = (s: string) => s.trim().replace(/\s*\n+\s*/g, " ");
 
 /** La asistente tal como atiende a ese lead: con lo propio de su embudo y su variante A/B. */
-async function assistantForLead(leadId: string | null): Promise<AssistantSettings> {
+export async function assistantForLead(leadId: string | null): Promise<AssistantSettings> {
   const base = await getAssistantSettings();
   if (!leadId) return base;
   const lead = await db.lead.findUnique({

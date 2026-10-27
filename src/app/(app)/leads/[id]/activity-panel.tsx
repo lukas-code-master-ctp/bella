@@ -25,6 +25,7 @@ import {
 import type { RunView, TraceStep } from "@/lib/ai/trace";
 import { Badge, EmptyState } from "@/components/ui";
 import { getAgentRunAction } from "./actions";
+import { ReplyExplanation } from "./reply-explanation";
 
 const TOOL: Record<string, { label: string; icon: React.ReactNode; dot: string }> = {
   search_knowledge: { label: "Buscó en la base de conocimiento", icon: <BookOpen />, dot: "bg-sky-500" },
@@ -81,10 +82,12 @@ function pretty(text: string) {
 export function ActivityPanel({
   leadId,
   message,
+  isAdmin = false,
   onClose,
 }: {
   leadId: string;
   message: { id: string; body: string; time: string } | null;
+  isAdmin?: boolean;
   onClose: () => void;
 }) {
   const [run, setRun] = useState<RunView | null | undefined>(undefined);
@@ -157,7 +160,10 @@ export function ActivityPanel({
               Este mensaje no tiene detalle guardado (por ejemplo, si el historial de la IA se reinició al cambiar de proveedor).
             </EmptyState>
           ) : (
-            <RunDetail run={run} body={message.body} time={message.time} />
+            <>
+              {isAdmin && <ReplyExplanation key={message.id} leadId={leadId} messageId={message.id} />}
+              <RunDetail run={run} body={message.body} time={message.time} />
+            </>
           )}
         </div>
       </aside>
