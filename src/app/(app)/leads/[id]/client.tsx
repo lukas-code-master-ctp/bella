@@ -3,7 +3,7 @@
 import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, Download, ExternalLink, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, Play, RefreshCw, Send, Target } from "lucide-react";
+import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, Download, ExternalLink, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, Play, RefreshCw, Send, Sparkles, Target } from "lucide-react";
 import { Button, EmptyState, FormMessage, TypingDots, inputClass } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { refreshInsightsAction, sendAsContactAction, sendAsUserAction, sendFollowUpNowAction } from "./actions";
@@ -107,7 +107,6 @@ export function LeadChat({
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
-  const [fixing, setFixing] = useState(false);
   const [correcting, setCorrecting] = useState<ChatMessage | null>(null);
   const closeCorrection = useCallback(() => setCorrecting(null), []);
   // Optimista: se ve mientras dura el envío y se apaga solo cuando la acción termina.
@@ -141,24 +140,20 @@ export function LeadChat({
               key={item.id}
               message={item}
               animate={entersAnimated(item)}
-              onInspect={
-                item.author === "AI" && !item.pending
-                  ? () => {
-                      setFixing(false);
-                      setInspected(withSpokenText(item));
-                    }
-                  : undefined
-              }
+              // Un admin tiene un solo botón, "Analizar", que abre el panel (por qué respondió, el
+              // arreglo y el detalle del monitor). El resto abre el monitor tocando la burbuja y con
+              // "Corregir" propone un aprendizaje.
+              onInspect={item.author === "AI" && !item.pending && !isAdmin ? () => setInspected(withSpokenText(item)) : undefined}
               onCorrect={
-                item.author === "AI" && !item.pending && (item.body || item.audio?.transcript)
-                  ? () => {
-                      // Un admin corrige en el lugar que causó la respuesta; el resto propone un aprendizaje.
-                      if (!isAdmin) return setCorrecting(withSpokenText(item));
-                      setFixing(true);
-                      setInspected(withSpokenText(item));
-                    }
-                  : undefined
+                item.author !== "AI" || item.pending
+                  ? undefined
+                  : isAdmin
+                    ? () => setInspected(withSpokenText(item))
+                    : item.body || item.audio?.transcript
+                      ? () => setCorrecting(withSpokenText(item))
+                      : undefined
               }
+              correctLabel={isAdmin ? "Analizar" : "Corregir"}
             />
           ),
         )}
@@ -205,7 +200,7 @@ export function LeadChat({
       </div>
       )}
 
-      <ActivityPanel leadId={leadId} message={inspected} isAdmin={isAdmin} focusFix={fixing} onClose={closeInspector} />
+      <ActivityPanel leadId={leadId} message={inspected} isAdmin={isAdmin} onClose={closeInspector} />
       <CorrectionDialog leadId={leadId} message={correcting} isAdmin={isAdmin} onClose={closeCorrection} />
     </>
   );
@@ -310,11 +305,13 @@ function Bubble({
   animate,
   onInspect,
   onCorrect,
+  correctLabel = "Corregir",
 }: {
   message: ChatMessage;
   animate?: boolean;
   onInspect?: () => void;
   onCorrect?: () => void;
+  correctLabel?: string;
 }) {
   const fromContact = m.author === "CONTACT";
   const Wrapper = onInspect ? "button" : "div";
@@ -368,8 +365,8 @@ function Bubble({
           onClick={onCorrect}
           className="mt-0.5 inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-slate-500 transition-[opacity,color] hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
         >
-          <PencilLine aria-hidden className="size-3.5" />
-          Corregir
+          {correctLabel === "Analizar" ? <Sparkles aria-hidden className="size-3.5" /> : <PencilLine aria-hidden className="size-3.5" />}
+          {correctLabel}
         </button>
       )}
     </div>

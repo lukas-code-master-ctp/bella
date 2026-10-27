@@ -26,11 +26,11 @@ const TONE: Partial<Record<SourceKind, "brand" | "warning" | "neutral">> = {
  * Analizar una respuesta de la IA, arriba del monitor de actividad: por qué respondió así y, con lo
  * que se esperaba, el cambio en la configuración que lo corrige, probado antes de guardarlo.
  */
-export function ReplyAnalysisPanel({ leadId, message, focusFix }: { leadId: string; message: { id: string; body: string }; focusFix?: boolean }) {
+export function ReplyAnalysisPanel({ leadId, message }: { leadId: string; message: { id: string; body: string } }) {
   return (
     <div className="mb-4 space-y-3">
       <ReplyExplanation leadId={leadId} messageId={message.id} />
-      <ReplyFix leadId={leadId} message={message} autoFocus={focusFix} />
+      <ReplyFix leadId={leadId} message={message} />
     </div>
   );
 }
@@ -148,7 +148,7 @@ type Step = "idle" | "proposing" | "trying" | "applying";
  * "¿Qué esperabas?": la IA propone el cambio donde corresponde (instrucciones, embudo, regla de
  * etapa o aprendizaje). Se puede editar, probar repitiendo el turno sin enviar nada, y aplicar.
  */
-function ReplyFix({ leadId, message, autoFocus }: { leadId: string; message: { id: string; body: string }; autoFocus?: boolean }) {
+function ReplyFix({ leadId, message }: { leadId: string; message: { id: string; body: string } }) {
   const [expected, setExpected] = useState("");
   const [proposal, setProposal] = useState<FixProposal | null>(null);
   const [trial, setTrial] = useState<FixTrial | null>(null);
@@ -157,15 +157,17 @@ function ReplyFix({ leadId, message, autoFocus }: { leadId: string; message: { i
   const [step, setStep] = useState<Step>("idle");
   const [, start] = useTransition();
 
-  const run = <T,>(next: Step, call: () => Promise<T | { error: string }>, done: (result: T) => void) =>
+  const run = <T,>(next: Step, call: () => Promise<T | { error: string }>, done: (result: T) => void) => {
+    // Fuera de la transición: dentro, React no muestra el "cargando" hasta que termina.
+    setError(null);
+    setStep(next);
     start(async () => {
-      setError(null);
-      setStep(next);
       const result = await call().catch(() => ({ error: "No se pudo. Intenta de nuevo." }));
       setStep("idle");
       if (result && typeof result === "object" && "error" in result) setError(result.error);
       else done(result as T);
     });
+  };
 
   const propose = () =>
     run("proposing", () => proposeFixAction(leadId, message.id, expected), (r: { proposal: FixProposal }) => {
@@ -206,7 +208,6 @@ function ReplyFix({ leadId, message, autoFocus }: { leadId: string; message: { i
       <textarea
         aria-labelledby="fix-title"
         rows={3}
-        autoFocus={autoFocus}
         value={expected}
         onChange={(e) => setExpected(e.target.value)}
         placeholder="Ej. como le escribimos nosotros primero, debió hablarle del proyecto en vez de ofrecerle un ejecutivo."

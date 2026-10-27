@@ -83,14 +83,11 @@ export function ActivityPanel({
   leadId,
   message,
   isAdmin = false,
-  focusFix = false,
   onClose,
 }: {
   leadId: string;
   message: { id: string; body: string; time: string } | null;
   isAdmin?: boolean;
-  /** Se abrió desde "Corregir": el cursor parte en "¿Qué esperabas?". */
-  focusFix?: boolean;
   onClose: () => void;
 }) {
   const [run, setRun] = useState<RunView | null | undefined>(undefined);
@@ -164,7 +161,7 @@ export function ActivityPanel({
             </EmptyState>
           ) : (
             <>
-              {isAdmin && <ReplyAnalysisPanel key={message.id} leadId={leadId} message={message} focusFix={focusFix} />}
+              {isAdmin && <ReplyAnalysisPanel key={message.id} leadId={leadId} message={message} />}
               <RunDetail run={run} body={message.body} time={message.time} />
             </>
           )}
