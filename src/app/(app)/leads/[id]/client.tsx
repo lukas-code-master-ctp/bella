@@ -107,6 +107,7 @@ export function LeadChat({
 }) {
   const [shown, addPending] = useOptimistic(messages, (list, m: ChatMessage) => [...list, m]);
   const [inspected, setInspected] = useState<ChatMessage | null>(null);
+  const [fixing, setFixing] = useState(false);
   const [correcting, setCorrecting] = useState<ChatMessage | null>(null);
   const closeCorrection = useCallback(() => setCorrecting(null), []);
   // Optimista: se ve mientras dura el envío y se apaga solo cuando la acción termina.
@@ -140,8 +141,24 @@ export function LeadChat({
               key={item.id}
               message={item}
               animate={entersAnimated(item)}
-              onInspect={item.author === "AI" && !item.pending ? () => setInspected(withSpokenText(item)) : undefined}
-              onCorrect={item.author === "AI" && !item.pending && (item.body || item.audio?.transcript) ? () => setCorrecting(withSpokenText(item)) : undefined}
+              onInspect={
+                item.author === "AI" && !item.pending
+                  ? () => {
+                      setFixing(false);
+                      setInspected(withSpokenText(item));
+                    }
+                  : undefined
+              }
+              onCorrect={
+                item.author === "AI" && !item.pending && (item.body || item.audio?.transcript)
+                  ? () => {
+                      // Un admin corrige en el lugar que causó la respuesta; el resto propone un aprendizaje.
+                      if (!isAdmin) return setCorrecting(withSpokenText(item));
+                      setFixing(true);
+                      setInspected(withSpokenText(item));
+                    }
+                  : undefined
+              }
             />
           ),
         )}
@@ -188,7 +205,7 @@ export function LeadChat({
       </div>
       )}
 
-      <ActivityPanel leadId={leadId} message={inspected} isAdmin={isAdmin} onClose={closeInspector} />
+      <ActivityPanel leadId={leadId} message={inspected} isAdmin={isAdmin} focusFix={fixing} onClose={closeInspector} />
       <CorrectionDialog leadId={leadId} message={correcting} isAdmin={isAdmin} onClose={closeCorrection} />
     </>
   );

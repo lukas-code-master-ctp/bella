@@ -20,6 +20,7 @@ import { loadRunView } from "@/lib/ai/trace";
 import { setContactFields } from "@/lib/domain/fields";
 import { createLesson, draftLesson, type LessonDraft } from "@/lib/domain/ai-lessons";
 import { explainReply, type ReplyAnalysis } from "@/lib/domain/reply-analysis";
+import { applyFix, proposeFix, tryFix, type FixProposal, type FixTrial } from "@/lib/domain/reply-fix";
 import {
   addTag,
   closeLead,
@@ -325,19 +326,42 @@ export async function getAgentRunAction(leadId: string, messageId: string) {
   return loadRunView(leadId, messageId);
 }
 
-/** "¿Por qué respondió esto?": solo admins, que son quienes ajustan la configuración de la IA. */
-export async function explainReplyAction(leadId: string, messageId: string): Promise<{ analysis: ReplyAnalysis } | { error: string }> {
+/** Analizar y corregir respuestas de la IA: solo admins, que son quienes ajustan su configuración. */
+async function aiAdminCall<T>(leadId: string, messageId: string, label: string, run: (userName: string) => Promise<T>): Promise<T | { error: string }> {
   const user = await authorizeAiMessage(leadId, messageId);
-  if (user.role !== "ADMIN") return { error: "Solo un admin puede analizar respuestas de la IA." };
+  if (user.role !== "ADMIN") return { error: "Solo un admin puede analizar y corregir respuestas de la IA." };
   const missing = await missingKeyMessage((await getAiConfig()).provider);
   if (missing) return { error: missing };
   try {
-    return { analysis: await explainReply({ leadId, messageId }) };
+    return await run(user.name);
   } catch (e) {
     if (e instanceof DomainError) return { error: e.message };
-    console.error("[analizar respuesta]", e);
-    return { error: "La IA no pudo analizar la respuesta. Intenta de nuevo." };
+    console.error(`[analizar respuesta] ${label}:`, e);
+    return { error: "La IA no pudo hacerlo. Intenta de nuevo." };
   }
+}
+
+/** "¿Por qué respondió esto?" */
+export async function explainReplyAction(leadId: string, messageId: string) {
+  return aiAdminCall(leadId, messageId, "explicar", async () => ({ analysis: (await explainReply({ leadId, messageId })) as ReplyAnalysis }));
+}
+
+/** "¿Qué esperabas?": la IA propone el cambio en el lugar que causó la respuesta. */
+export async function proposeFixAction(leadId: string, messageId: string, expected: string) {
+  return aiAdminCall(leadId, messageId, "proponer", async () => ({ proposal: (await proposeFix({ leadId, messageId, expected })) as FixProposal }));
+}
+
+/** Repite el turno con el cambio, sin enviar nada. */
+export async function tryFixAction(leadId: string, messageId: string, fix: FixProposal) {
+  return aiAdminCall(leadId, messageId, "probar", async () => ({ trial: (await tryFix({ leadId, messageId, fix })) as FixTrial }));
+}
+
+export async function applyFixAction(leadId: string, messageId: string, fix: FixProposal) {
+  return aiAdminCall(leadId, messageId, "aplicar", async (createdBy) => {
+    await applyFix({ leadId, messageId, fix, createdBy });
+    revalidatePath("/settings", "layout");
+    return { applied: true as const };
+  });
 }
 
 export type CorrectionState = { error: string | null; feedback: string; draft: LessonDraft | null; saved: boolean };
