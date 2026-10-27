@@ -1,6 +1,7 @@
 import type { LeadSource, Message, Stage } from "@prisma/client";
 import { toLocalInput } from "../dates";
 import { db } from "../db";
+import { TEAM_AUTHOR, teamAuthor, type TeamAuthored } from "./team-author";
 import {
   agendaLine,
   describeDuration,
@@ -144,6 +145,12 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
       source: true,
       contact: { include: { tags: { include: { tag: true } } } },
       tasks: { where: { completedAt: null }, orderBy: { dueAt: "asc" } },
+      broadcasts: {
+        where: { sentAt: { not: null } },
+        orderBy: { sentAt: "desc" },
+        take: 1,
+        select: { sentAt: true, broadcast: { select: { name: true } } },
+      },
     },
   });
   const [stages, catalog, fields, previous] = await Promise.all([
@@ -167,6 +174,7 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
     `Correo: ${lead.contact.email ?? "sin registrar"}`,
     `Etapa actual: ${lead.stage.name}`,
     ...originLines(lead.source),
+    ...broadcastLines(lead.broadcasts[0]),
     `Etapas del funnel (en orden): ${stages
       .map((s) => (s.requiresHuman ? `${s.name} [atención humana]` : s.name))
       .join(" → ")}`,
@@ -230,6 +238,20 @@ export function originLines(source: LeadSource | null): string[] {
 }
 
 /**
+ * Si la empresa le escribió primero con un envío masivo, el cliente responde a ese mensaje: sin
+ * esta línea la IA lo trata como alguien que escribió por su cuenta (y, por ejemplo, se presenta
+ * desde cero).
+ */
+export function broadcastLines(sent: { sentAt: Date | null; broadcast: { name: string } } | undefined): string[] {
+  if (!sent?.sentAt) return [];
+  return [
+    `Envío masivo: el ${toLocalInput(sent.sentAt).replace("T", " ")} la empresa le escribió primero con el envío ` +
+      `masivo «${sent.broadcast.name}» (es el mensaje marcado "Empresa (envío masivo …)"). Lo que el cliente ` +
+      "escriba después responde a ese mensaje: sigue ese tema en vez de tratarlo como si hubiera escrito por su cuenta.",
+  ];
+}
+
+/**
  * Criterios que la empresa definió en Configuración para sacar al lead de cada etapa que atiende
  * la IA (sin destino nombrado, avanza a la siguiente) y para derivarlo a cada etapa humana.
  */
@@ -276,15 +298,15 @@ function contactText(m: Message) {
 }
 
 /** Mensaje de un ejecutivo tal como lo ve la IA (también puede ser una nota de voz o un archivo). */
-function userText(m: Message & { user: { name: string } | null }) {
-  const who = `Ejecutivo (${m.user?.name ?? "equipo"})`;
+function userText(m: Message & TeamAuthored) {
+  const who = teamAuthor(m);
   if (!m.mediaUrl) return `${who}: ${m.body}`;
   const caption = m.body ? `\n${m.body}` : "";
   if (fileKind(m.mediaType) !== "audio") return `${who}: [envió el archivo ${m.mediaName ?? ""}]${caption}`;
   return `${who}, nota de voz: ${m.transcript ?? "[no se pudo transcribir]"}${caption}`;
 }
 
-function formatPending(messages: (Message & { user: { name: string } | null })[], assistantName: string) {
+function formatPending(messages: (Message & TeamAuthored)[], assistantName: string) {
   return messages
     .map((m) =>
       m.author === "CONTACT"
@@ -377,7 +399,7 @@ async function runAgentOnce(leadId: string, clients: ProviderClients, followUp?:
     where: switched
       ? { leadId }
       : { leadId, author: { in: ["CONTACT", "USER"] }, createdAt: { gt: transcript.syncedUntil } },
-    include: { user: { select: { name: true } } },
+    include: TEAM_AUTHOR,
     orderBy: { createdAt: "asc" },
   });
   const unanswered = pending.some((m) => m.author === "CONTACT" && m.createdAt > transcript.syncedUntil);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AiLesson, AiLessonStatus } from "@prisma/client";
 import { db } from "../db";
+import { TEAM_AUTHOR, teamAuthor } from "../ai/team-author";
 import { buildSystemPrompt } from "../ai/agent";
 import { completeOnce, jsonIn } from "../ai/complete";
 import type { ProviderClients } from "../ai/providers";
@@ -70,7 +71,7 @@ async function assistantForLead(leadId: string | null): Promise<AssistantSetting
 async function conversationBefore(message: { leadId: string; createdAt: Date }, assistantName: string) {
   const messages = await db.message.findMany({
     where: { leadId: message.leadId, createdAt: { lt: message.createdAt } },
-    include: { user: { select: { name: true } } },
+    include: TEAM_AUTHOR,
     orderBy: { createdAt: "desc" },
     take: CONVERSATION_MESSAGES,
   });
@@ -79,7 +80,7 @@ async function conversationBefore(message: { leadId: string; createdAt: Date }, 
     .map((m) => {
       const body = m.transcript ?? m.body ?? "";
       const text = m.mediaUrl && !m.transcript ? `[archivo${m.mediaName ? ` ${m.mediaName}` : ""}] ${body}` : body;
-      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? `${assistantName} (asistente)` : `Ejecutivo (${m.user?.name ?? "equipo"})`;
+      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? `${assistantName} (asistente)` : teamAuthor(m);
       return `${who}: ${text.trim()}`;
     })
     .join("\n");

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "../db";
+import { TEAM_AUTHOR, teamAuthor } from "./team-author";
 import { getAssistantSettings } from "../settings";
 import { fileKind } from "../media";
 import { getAiConfig } from "./config";
@@ -71,7 +72,7 @@ export async function refreshLeadInsights(
       include: {
         stage: true,
         contact: { include: { tags: { include: { tag: true } } } },
-        messages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
+        messages: { include: TEAM_AUTHOR, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
       },
     });
     const latest = lead.messages[0];
@@ -83,7 +84,7 @@ export async function refreshLeadInsights(
     const conversation = [...lead.messages]
       .reverse()
       .map((m) => {
-        const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : `Ejecutivo (${m.user?.name ?? "equipo"})`;
+        const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : teamAuthor(m);
         const media = !m.mediaUrl
           ? ""
           : fileKind(m.mediaType) === "audio"
