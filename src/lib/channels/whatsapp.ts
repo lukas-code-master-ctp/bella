@@ -95,7 +95,7 @@ export function describeMetaError(code: number | undefined, fallback: string): s
   }
 }
 
-async function graph<T>(path: string, init: RequestInit = {}, what = "el envío"): Promise<T> {
+export async function graph<T>(path: string, init: RequestInit = {}, what = "el envío"): Promise<T> {
   const token = await credential("WHATSAPP_TOKEN");
   if (!token) throw new ChannelSendError("Falta el token de WhatsApp en Configuración → Credenciales.");
   const res = await fetch(`${GRAPH}/${path}`, {
@@ -222,6 +222,27 @@ export type WaValue = {
   contacts?: { wa_id: string; profile?: { name?: string } }[];
   messages?: WaMessage[];
   statuses?: WaStatus[];
+  /** Solo en el campo `calls`: llamadas que empiezan (connect) o terminan (terminate). */
+  calls?: WaCall[];
+};
+
+/** Evento de una llamada de WhatsApp (ver src/lib/domain/calls.ts). */
+export type WaCall = {
+  id: string;
+  from?: string;
+  to?: string;
+  event: "connect" | "terminate" | string;
+  direction?: "USER_INITIATED" | "BUSINESS_INITIATED" | string;
+  timestamp?: string;
+  /** Oferta de audio en una llamada entrante. */
+  session?: { sdp_type: string; sdp: string };
+  /** Al terminar: COMPLETED o FAILED (a veces viene como lista). */
+  status?: string | string[];
+  start_time?: string;
+  end_time?: string;
+  /** Segundos; solo si alguien contestó. */
+  duration?: number | string;
+  errors?: { code?: number; message?: string; error_data?: { details?: string } }[];
 };
 
 export type WaWebhook = {
@@ -230,15 +251,19 @@ export type WaWebhook = {
 };
 
 /**
- * Cambios de mensajes de los números configurados (ignora otros números de la misma cuenta).
- * Sin números configurados no filtra.
+ * Cambios de mensajes (o de llamadas, con `field = "calls"`) de los números configurados (ignora
+ * otros números de la misma cuenta). Sin números configurados no filtra.
  */
-export function webhookValues(payload: WaWebhook, phoneNumberIds: string | string[] | undefined): WaValue[] {
+export function webhookValues(
+  payload: WaWebhook,
+  phoneNumberIds: string | string[] | undefined,
+  field: "messages" | "calls" = "messages",
+): WaValue[] {
   if (payload.object !== "whatsapp_business_account") return [];
   const allowed = (Array.isArray(phoneNumberIds) ? phoneNumberIds : [phoneNumberIds]).filter((id): id is string => Boolean(id));
   return (payload.entry ?? [])
     .flatMap((e) => e.changes ?? [])
-    .filter((c) => c.field === "messages" && c.value)
+    .filter((c) => c.field === field && c.value)
     .map((c) => c.value!)
     .filter((v) => !allowed.length || !v.metadata?.phone_number_id || allowed.includes(v.metadata.phone_number_id));
 }
@@ -295,7 +320,7 @@ export function webhookPhoneIds(payload: WaWebhook): string[] {
   if (payload.object !== "whatsapp_business_account") return [];
   const ids = (payload.entry ?? [])
     .flatMap((e) => e.changes ?? [])
-    .filter((c) => c.field === "messages")
+    .filter((c) => c.field === "messages" || c.field === "calls")
     .map((c) => c.value?.metadata?.phone_number_id)
     .filter((id): id is string => Boolean(id));
   return [...new Set(ids)];

@@ -1,0 +1,212 @@
+import { db } from "../db";
+import { getSetting, setSetting } from "../settings";
+import { deliverPendingPush } from "../push";
+import { webhookValues, type WaCall, type WaWebhook } from "../channels/whatsapp";
+import { callingApi, type CallingApi } from "../channels/whatsapp-calls";
+import { openLeadFor } from "./channels";
+import { isBlocked } from "./contacts";
+import { DomainError } from "./leads";
+import { notifyCallTx } from "./notifications";
+import { funnelForNumber, whatsappPhoneIds } from "./whatsapp-numbers";
+
+/**
+ * Llamadas de WhatsApp. El cliente toca "llamar" en WhatsApp, Meta avisa al webhook (campo `calls`)
+ * con la oferta de audio y Beliapp la hace sonar en el navegador del ejecutivo del lead (o de los
+ * administradores, si no tiene). Quien contesta arma la respuesta de audio en su navegador y
+ * Beliapp se la pasa a Meta. Meta da entre 30 y 60 segundos para contestar.
+ */
+
+/** Recibir llamadas: apagado por defecto. Al prenderlo se activa el botón de llamar en cada número. */
+export type CallSettings = { enabled: boolean };
+
+export const DEFAULT_CALLS: CallSettings = { enabled: false };
+
+/** Una llamada que sigue sonando después de esto ya la cortó WhatsApp por falta de respuesta. */
+export const RING_TIMEOUT_MS = 60_000;
+
+export async function getCallSettings(): Promise<CallSettings> {
+  return { ...DEFAULT_CALLS, ...(await getSetting<Partial<CallSettings>>("calls", {})) };
+}
+
+/**
+ * Prende o apaga las llamadas en Meta para todos los números de la empresa y lo guarda. Al prender,
+ * si Meta rechaza algún número (por ejemplo, porque su límite de mensajería es menor a 2.000), no
+ * se guarda y se explica el motivo.
+ */
+export async function saveCallSettings(s: CallSettings, api: CallingApi = callingApi) {
+  const numbers = await whatsappPhoneIds();
+  if (s.enabled && !numbers.length) throw new DomainError("Primero conecta un número de WhatsApp.");
+  for (const id of numbers) {
+    try {
+      await api.setCalling(id, s.enabled);
+    } catch (err) {
+      // Al apagar se guarda igual: Beliapp rechaza las llamadas que lleguen.
+      if (s.enabled) {
+        await Promise.all(numbers.map((n) => api.setCalling(n, false).catch(() => null)));
+        throw new DomainError(`Meta no activó las llamadas: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+  await setSetting("calls", s);
+}
+
+const callStatus = (c: WaCall) => String(Array.isArray(c.status) ? c.status[0] : (c.status ?? "")).toUpperCase();
+
+/** Procesa los avisos de llamadas del webhook de WhatsApp. */
+export async function receiveWhatsAppCalls(payload: WaWebhook, api: CallingApi = callingApi) {
+  const values = webhookValues(payload, await whatsappPhoneIds(), "calls");
+  if (!values.length) return;
+  const { enabled } = await getCallSettings();
+  for (const value of values) {
+    const phoneNumberId = value.metadata?.phone_number_id;
+    if (!phoneNumberId) continue;
+    const names = new Map((value.contacts ?? []).map((c) => [c.wa_id, c.profile?.name]));
+    for (const c of value.calls ?? []) {
+      if (c.event === "connect" && c.direction !== "BUSINESS_INITIATED") {
+        await incomingCall(c, phoneNumberId, names.get(c.from ?? ""), enabled, api);
+      } else if (c.event === "terminate") {
+        await callEnded(c);
+      }
+    }
+  }
+  await deliverPendingPush();
+}
+
+async function incomingCall(c: WaCall, phoneNumberId: string, profileName: string | undefined, enabled: boolean, api: CallingApi) {
+  const from = c.from;
+  if (!from || !c.session?.sdp) return;
+  if (await db.call.findFirst({ where: { externalId: c.id } })) return;
+  // Apagadas en Beliapp (o contacto bloqueado): se rechaza para que no quede sonando sin nadie que conteste.
+  if (!enabled || (await isBlocked("WHATSAPP", from))) {
+    await api.reject(phoneNumberId, c.id).catch((err) => console.error("[llamadas] rechazar:", err));
+    return;
+  }
+  const leadId = await openLeadFor(
+    "WHATSAPP",
+    from,
+    async () => profileName?.trim() || `+${from}`,
+    false,
+    `+${from}`,
+    () => funnelForNumber(phoneNumberId),
+  );
+  await db.$transaction(async (tx) => {
+    const ringUserIds = await notifyCallTx(tx, leadId, "Te está llamando por WhatsApp");
+    await tx.call.create({ data: { leadId, externalId: c.id, phoneNumberId, sdpOffer: c.session!.sdp, ringUserIds } });
+  });
+}
+
+/** WhatsApp avisa que la llamada terminó: queda la nota en el chat y, si nadie contestó, el aviso de perdida. */
+async function callEnded(c: WaCall) {
+  const call = await db.call.findFirst({ where: { externalId: c.id }, include: { answeredBy: true } });
+  if (!call) return;
+  const duration = Number(c.duration);
+  const failed = callStatus(c) === "FAILED";
+  const error = c.errors?.[0]?.error_data?.details || c.errors?.[0]?.message || null;
+  await db.$transaction(async (tx) => {
+    const answered = call.status === "ANSWERED";
+    const status = answered ? "ENDED" : failed && call.status === "RINGING" ? "FAILED" : "MISSED";
+    // Solo una vez: si Meta repite el aviso o el ejecutivo ya la rechazó, no se anota de nuevo.
+    const done = await tx.call.updateMany({
+      where: { id: call.id, status: { in: ["RINGING", "ANSWERED"] } },
+      data: {
+        status,
+        endedAt: c.end_time ? new Date(Number(c.end_time) * 1000) : new Date(),
+        durationSec: Number.isFinite(duration) ? Math.round(duration) : null,
+        error,
+      },
+    });
+    if (!done.count) return;
+    if (answered) {
+      await tx.leadEvent.create({
+        data: {
+          leadId: call.leadId,
+          type: "CALL_ENDED",
+          actor: "SYSTEM",
+          userId: call.answeredById,
+          data: { direction: call.direction, duration: Number.isFinite(duration) ? Math.round(duration) : null, userName: call.answeredBy?.name ?? null },
+        },
+      });
+      return;
+    }
+    await tx.leadEvent.create({
+      data: { leadId: call.leadId, type: "CALL_MISSED", actor: "SYSTEM", data: { direction: call.direction, error } },
+    });
+    await notifyCallTx(tx, call.leadId, "Llamada perdida por WhatsApp", call.ringUserIds.length ? call.ringUserIds : undefined);
+  });
+}
+
+export type RingingCall = { id: string; leadId: string; name: string; phone: string | null; sdpOffer: string; createdAt: string };
+
+/**
+ * Lo que el navegador de esa persona necesita saber: las llamadas que le están sonando y, si está
+ * en una, si sigue en curso.
+ */
+export async function callsForUser(userId: string, currentCallId?: string | null, now = new Date()) {
+  const ringing = await db.call.findMany({
+    where: { status: "RINGING", ringUserIds: { has: userId }, createdAt: { gt: new Date(now.getTime() - RING_TIMEOUT_MS) } },
+    include: { lead: { include: { contact: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const current = currentCallId ? await db.call.findFirst({ where: { id: currentCallId, answeredById: userId }, select: { status: true } }) : null;
+  return {
+    ringing: ringing.map(
+      (c): RingingCall => ({
+        id: c.id,
+        leadId: c.leadId,
+        name: c.lead.contact.name,
+        phone: c.lead.contact.phone,
+        sdpOffer: c.sdpOffer ?? "",
+        createdAt: c.createdAt.toISOString(),
+      }),
+    ),
+    currentStatus: current?.status ?? null,
+  };
+}
+
+async function ringingFor(callId: string, userId: string) {
+  const call = await db.call.findFirst({ where: { id: callId, ringUserIds: { has: userId } } });
+  if (!call) throw new DomainError("Esa llamada no existe.");
+  return call;
+}
+
+/** Contesta con la respuesta de audio del navegador. Si otra persona contestó antes, avisa. */
+export async function answerCall(callId: string, userId: string, sdp: string, api: CallingApi = callingApi) {
+  const call = await ringingFor(callId, userId);
+  if (!sdp.trim()) throw new DomainError("El navegador no pudo preparar el audio de la llamada.");
+  const taken = await db.call.updateMany({
+    where: { id: call.id, status: "RINGING", answeredById: null },
+    data: { answeredById: userId },
+  });
+  if (!taken.count) throw new DomainError("La llamada ya no está sonando: la contestó otra persona o el cliente cortó.");
+  try {
+    await api.accept(call.phoneNumberId, call.externalId, sdp);
+  } catch (err) {
+    await db.call.update({ where: { id: call.id }, data: { status: "FAILED", error: err instanceof Error ? err.message : String(err) } });
+    throw err instanceof DomainError ? err : new DomainError(err instanceof Error ? err.message : String(err));
+  }
+  await db.call.update({ where: { id: call.id }, data: { status: "ANSWERED", answeredAt: new Date() } });
+  // Ya se atendió: el aviso de "te está llamando" deja de estar pendiente para todos.
+  await db.notification.updateMany({
+    where: { leadId: call.leadId, type: "CALL", readAt: null, userId: { in: call.ringUserIds } },
+    data: { readAt: new Date() },
+  });
+}
+
+/** Rechaza la llamada para todos: queda como perdida en el chat. */
+export async function rejectCall(callId: string, userId: string, api: CallingApi = callingApi) {
+  const call = await ringingFor(callId, userId);
+  const done = await db.call.updateMany({ where: { id: call.id, status: "RINGING" }, data: { status: "REJECTED", endedAt: new Date() } });
+  if (!done.count) return;
+  await api.reject(call.phoneNumberId, call.externalId).catch((err) => console.error("[llamadas] rechazar:", err));
+  const user = await db.user.findUnique({ where: { id: userId } });
+  await db.leadEvent.create({
+    data: { leadId: call.leadId, type: "CALL_MISSED", actor: "USER", userId, data: { direction: call.direction, rejectedBy: user?.name ?? null } },
+  });
+}
+
+/** Corta la llamada en curso. La nota con la duración queda cuando WhatsApp confirma el término. */
+export async function hangUpCall(callId: string, userId: string, api: CallingApi = callingApi) {
+  const call = await db.call.findFirst({ where: { id: callId, answeredById: userId } });
+  if (!call || call.status !== "ANSWERED") return;
+  await api.terminate(call.phoneNumberId, call.externalId);
+}

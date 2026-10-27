@@ -69,6 +69,8 @@ const EVENT_LABEL: Record<string, string> = {
   TASK_REOPENED: "Tarea pendiente otra vez:",
   TASK_DELETED: "Tarea eliminada:",
   SLA_LATE: "Pasó la meta de respuesta",
+  CALL_ENDED: "Llamada de WhatsApp",
+  CALL_MISSED: "Llamada perdida",
 };
 
 /**
@@ -95,6 +97,8 @@ const CHAT_EVENTS: Record<string, ChatEvent["tone"]> = {
   FOLLOW_UP_SCHEDULED: "neutral",
   FOLLOW_UP_CANCELED: "neutral",
   TASK_CREATED: "neutral",
+  CALL_ENDED: "neutral",
+  CALL_MISSED: "danger",
 };
 
 /** Texto de un evento: "Cambio de etapa: Nuevo → Calificado". */
@@ -110,7 +114,18 @@ function eventText(type: string, data: Record<string, unknown>) {
 
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 
+/** Detalle de una llamada: "3:12 · contestó Ana", "rechazada por Ana". */
+function callDetail(data: Record<string, unknown>) {
+  const parts: string[] = [];
+  if (typeof data.duration === "number") parts.push(`${Math.floor(data.duration / 60)}:${String(data.duration % 60).padStart(2, "0")}`);
+  if (data.userName) parts.push(`contestó ${data.userName}`);
+  if (data.rejectedBy) parts.push(`rechazada por ${data.rejectedBy}`);
+  if (data.error) parts.push(String(data.error));
+  return parts.join(" · ");
+}
+
 function describe(data: Record<string, unknown>) {
+  if (data.direction) return callDetail(data);
   if (Array.isArray(data.merged)) return data.merged.join(", ");
   if (data.field) return `${data.field}: ${data.value ?? "borrado"}`;
   if (data.from && data.to) return `${data.from} → ${data.to}`;

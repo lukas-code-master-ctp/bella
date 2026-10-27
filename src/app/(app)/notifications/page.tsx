@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Bell, CheckCheck, ClockAlert, Hand, Hourglass, Mail, MessageCircle, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, ClockAlert, Hand, Hourglass, Mail, MessageCircle, Phone, UserPlus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { vapidPublicKey } from "@/lib/push";
 import { emailConfigured } from "@/lib/email";
@@ -17,6 +17,7 @@ const ICON: Record<string, React.ReactNode> = {
   CONTACT_MESSAGE: <MessageCircle aria-hidden />,
   TASK_DUE: <ClockAlert aria-hidden />,
   SLA_LATE: <Hourglass aria-hidden />,
+  CALL: <Phone aria-hidden />,
 };
 
 const time = (d: Date) =>
