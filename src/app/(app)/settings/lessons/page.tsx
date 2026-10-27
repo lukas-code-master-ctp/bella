@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { GraduationCap, Merge, MessageSquareText, PencilLine } from "lucide-react";
+import { requireUser } from "@/lib/auth";
 import { listLessons } from "@/lib/domain/ai-lessons";
+import { markLessonNotificationsRead } from "@/lib/domain/notifications";
 import { formatChileDateTime } from "@/lib/domain/follow-ups";
 import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { Disclosure, StatusPill } from "@/components/settings-ui";
@@ -21,7 +23,8 @@ const STATUS = {
 } as const;
 
 export default async function LessonsPage() {
-  const lessons = await listLessons();
+  const user = await requireUser();
+  const [lessons] = await Promise.all([listLessons(), markLessonNotificationsRead(user.id)]);
   const activeCount = lessons.filter((l) => l.status === "ACTIVE").length;
   const groups = (["PENDING", "ACTIVE", "PAUSED", "INTEGRATED"] as const)
     .map((status) => ({ status, lessons: lessons.filter((l) => l.status === status) }))

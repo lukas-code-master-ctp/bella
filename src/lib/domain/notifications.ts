@@ -1,10 +1,11 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { deliverPendingPush } from "../push";
+import { LESSON_PENDING, notificationKey } from "./notification-links";
 
 type Tx = Prisma.TransactionClient;
 
-export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE" | "SLA_LATE";
+export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE" | "SLA_LATE" | typeof LESSON_PENDING;
 
 /**
  * Destinatarios de un aviso del lead: su ejecutivo asignado o, si no tiene (o está
@@ -34,7 +35,7 @@ async function upsertNotifications(
   const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId }, include: { contact: true } });
   for (const userId of userIds) {
     const data = { ...content, title: lead.contact.name, pushedAt: null, createdAt: new Date() };
-    const unread = await tx.notification.findFirst({ where: { userId, leadId, readAt: null } });
+    const unread = await tx.notification.findFirst({ where: { userId, leadId, readAt: null, type: { not: LESSON_PENDING } } });
     if (unread) await tx.notification.update({ where: { id: unread.id }, data });
     else await tx.notification.create({ data: { ...data, userId, leadId } });
   }
@@ -108,16 +109,52 @@ export async function notifySlaLateTx(tx: Tx, leadId: string, body: string, user
   await upsertNotifications(tx, leadId, userIds ?? (await recipients(tx, lead)), { type: "SLA_LATE", body });
 }
 
-/** Avisos de la página Avisos: solo el más reciente de cada lead. */
+/**
+ * Un ejecutivo propuso una regla para la IA (Corregir): avisa a los admins activos, menos a quien la
+ * propuso. Hay a lo más un aviso sin leer de reglas por admin; una regla nueva lo reemplaza.
+ */
+export async function notifyLessonPending(lesson: { leadId: string | null; rule: string; createdBy: string }, excludeUserId?: string) {
+  if (!lesson.leadId) return;
+  const leadId = lesson.leadId;
+  await db.$transaction(async (tx) => {
+    const admins = await tx.user.findMany({ where: { role: "ADMIN", active: true, id: { not: excludeUserId } }, select: { id: true } });
+    const pending = await tx.aiLesson.count({ where: { status: "PENDING" } });
+    const rule = lesson.rule.length > 120 ? `${lesson.rule.slice(0, 119)}…` : lesson.rule;
+    const data = {
+      type: LESSON_PENDING,
+      title: pending > 1 ? `${pending} reglas para la IA por revisar` : "Regla para la IA por revisar",
+      body: `${lesson.createdBy || "Un ejecutivo"} propuso: «${rule}»`,
+      leadId,
+      pushedAt: null,
+      createdAt: new Date(),
+    };
+    for (const { id: userId } of admins) {
+      const unread = await tx.notification.findFirst({ where: { userId, type: LESSON_PENDING, readAt: null } });
+      if (unread) await tx.notification.update({ where: { id: unread.id }, data });
+      else await tx.notification.create({ data: { ...data, userId } });
+    }
+  });
+  await deliverPendingPush();
+}
+
+/** Avisos de la página Avisos: solo el más reciente de cada lead (y uno para las reglas por revisar). */
 export async function latestNotificationPerLead(userId: string, limit = 100) {
   const all = await db.notification.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: limit * 5 });
   const seen = new Set<string>();
-  return all.filter((n) => !seen.has(n.leadId) && seen.add(n.leadId)).slice(0, limit);
+  return all.filter((n) => !seen.has(notificationKey(n)) && seen.add(notificationKey(n))).slice(0, limit);
 }
 
-/** Abrir un lead marca como leídos sus avisos. */
+/** Abrir un lead marca como leídos sus avisos (no el de reglas por revisar, que es de Aprendizajes). */
 export async function markLeadNotificationsRead(userId: string, leadId: string) {
-  await db.notification.updateMany({ where: { userId, leadId, readAt: null }, data: { readAt: new Date() } });
+  await db.notification.updateMany({
+    where: { userId, leadId, readAt: null, type: { not: LESSON_PENDING } },
+    data: { readAt: new Date() },
+  });
+}
+
+/** Abrir Aprendizajes marca como leído el aviso de reglas por revisar. */
+export async function markLessonNotificationsRead(userId: string) {
+  await db.notification.updateMany({ where: { userId, type: LESSON_PENDING, readAt: null }, data: { readAt: new Date() } });
 }
 
 export async function markAllNotificationsRead(userId: string) {
