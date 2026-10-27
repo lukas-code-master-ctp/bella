@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { createLead, handoffToHumanTx, moveStage, setAiEnabled, setAssignee } from "@/lib/domain/leads";
-import { latestNotificationPerLead, markLeadNotificationsRead, notifyContactMessage } from "@/lib/domain/notifications";
+import {
+  latestNotificationPerLead,
+  markLeadNotificationsRead,
+  markLessonNotificationsRead,
+  notifyContactMessage,
+  notifyLessonPending,
+} from "@/lib/domain/notifications";
+import { notificationUrl } from "@/lib/domain/notification-links";
 import { executive, seedFunnel } from "./factories";
 
 const notificationsOf = (userId: string) => db.notification.findMany({ where: { userId }, orderBy: { createdAt: "asc" } });
@@ -102,5 +109,28 @@ describe("avisos al ejecutivo", () => {
       ],
     });
     expect((await latestNotificationPerLead(ana.id)).map((n) => n.body)).toEqual(["nuevo", "pedro"]);
+  });
+
+  it("una regla propuesta por un ejecutivo avisa a los admins y lleva a Aprendizajes", async () => {
+    await seedFunnel();
+    const boss = await admin();
+    const ana = await executive("Ana");
+    const lead = await createLead({ name: "María", channel: "SIMULATOR" });
+    await db.notification.create({ data: { userId: boss.id, leadId: lead.id, type: "HUMAN_STAGE", title: "María", body: "x" } });
+    const rule = (r: string) => db.aiLesson.create({ data: { rule: r, leadId: lead.id, createdBy: "Ana" } });
+
+    await notifyLessonPending(await rule("Habla del proyecto"), ana.id);
+    await notifyLessonPending(await rule("No ofrezcas ejecutivo"), ana.id);
+
+    const [lessonNotice] = await db.notification.findMany({ where: { userId: boss.id, type: "LESSON_PENDING" } });
+    expect(lessonNotice).toMatchObject({ title: "2 reglas para la IA por revisar", body: "Ana propuso: «No ofrezcas ejecutivo»", readAt: null });
+    expect(notificationUrl(lessonNotice)).toBe("/settings/lessons");
+    expect(await db.notification.count({ where: { userId: ana.id, type: "LESSON_PENDING" } })).toBe(0);
+    // Se ve aparte del aviso del lead, y abrir el lead no lo marca como leído.
+    expect((await latestNotificationPerLead(boss.id)).map((n) => n.type).sort()).toEqual(["HUMAN_STAGE", "LESSON_PENDING"]);
+    await markLeadNotificationsRead(boss.id, lead.id);
+    expect(await db.notification.count({ where: { userId: boss.id, readAt: null } })).toBe(1);
+    await markLessonNotificationsRead(boss.id);
+    expect(await db.notification.count({ where: { userId: boss.id, readAt: null } })).toBe(0);
   });
 });

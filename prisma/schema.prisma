@@ -625,7 +625,7 @@ model Notification {
   companyId String    @default("default")
   userId    String
   leadId    String
-  /// HUMAN_STAGE, ASSIGNED, CONTACT_MESSAGE, TASK_DUE o SLA_LATE.
+  /// HUMAN_STAGE, ASSIGNED, CONTACT_MESSAGE, TASK_DUE, SLA_LATE o LESSON_PENDING (lleva a Aprendizajes, ver notification-links.ts).
   type      String
   title     String
   body      String

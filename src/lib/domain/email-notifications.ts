@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { notificationUrl } from "./notification-links";
 import { APP_URL, emailConfigured, emailFrom, escapeHtml, resendSender, type EmailSender } from "../email";
 
 /**
@@ -14,6 +15,7 @@ export const EMAIL_NOTIFICATION_TYPES = [
   { type: "TASK_DUE", label: "Una tarea mía está por vencer", adminOnly: false },
   { type: "SLA_LATE", label: "Un lead pasó la meta de tiempo de respuesta", adminOnly: false },
   { type: "CAMPAIGN_ALERT", label: "Una campaña pierde casi todos sus leads", adminOnly: true },
+  { type: "LESSON_PENDING", label: "Un ejecutivo propone una regla para la IA", adminOnly: true },
 ] as const;
 
 export type EmailNotificationType = (typeof EMAIL_NOTIFICATION_TYPES)[number]["type"];
@@ -78,7 +80,7 @@ export async function deliverPendingEmails({ sender = resendSender, now = new Da
       const { count } = await db.notification.updateMany({ where: { id: n.id, emailedAt: null }, data: { emailedAt: now } });
       if (!count) continue;
       try {
-        await sender.send({ from, to: [n.user.email], ...renderNotificationEmail({ title: n.title, body: n.body, url: `/leads/${n.leadId}` }) });
+        await sender.send({ from, to: [n.user.email], ...renderNotificationEmail({ title: n.title, body: n.body, url: notificationUrl(n) }) });
       } catch (e) {
         console.error("No se pudo mandar el aviso por correo", e);
       }

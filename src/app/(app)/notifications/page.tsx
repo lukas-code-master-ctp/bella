@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Bell, CheckCheck, ClockAlert, Hand, Hourglass, Mail, MessageCircle, Phone, UserPlus } from "lucide-react";
+import { Bell, CheckCheck, ClockAlert, GraduationCap, Hand, Hourglass, Mail, MessageCircle, Phone, UserPlus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { vapidPublicKey } from "@/lib/push";
 import { emailConfigured } from "@/lib/email";
 import { EMAIL_NOTIFICATION_TYPES } from "@/lib/domain/email-notifications";
 import { latestNotificationPerLead } from "@/lib/domain/notifications";
+import { notificationUrl } from "@/lib/domain/notification-links";
 import { Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { markAllReadAction, saveEmailPrefsAction } from "./actions";
@@ -18,6 +19,7 @@ const ICON: Record<string, React.ReactNode> = {
   TASK_DUE: <ClockAlert aria-hidden />,
   SLA_LATE: <Hourglass aria-hidden />,
   CALL: <Phone aria-hidden />,
+  LESSON_PENDING: <GraduationCap aria-hidden />,
 };
 
 const time = (d: Date) =>
@@ -34,7 +36,11 @@ export default async function NotificationsPage() {
     <>
       <PageHeader
         title="Avisos"
-        description="Leads que te asignaron, que pasaron a atención humana o que te escribieron mientras los atiendes tú."
+        description={
+          isAdmin
+            ? "Leads que te asignaron, que pasaron a atención humana o que te escribieron mientras los atiendes tú, y reglas para la IA que proponen los ejecutivos."
+            : "Leads que te asignaron, que pasaron a atención humana o que te escribieron mientras los atiendes tú."
+        }
       >
         {unread > 0 && (
           <form action={markAllReadAction}>
@@ -57,7 +63,7 @@ export default async function NotificationsPage() {
               {notifications.map((n) => (
                 <li key={n.id}>
                   <Link
-                    href={`/leads/${n.leadId}`}
+                    href={notificationUrl(n)}
                     className={`flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-slate-50 ${n.readAt ? "" : "bg-brand-50/60"}`}
                   >
                     <span
