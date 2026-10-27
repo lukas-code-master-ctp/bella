@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { TEAM_AUTHOR, teamAuthor } from "./team-author";
 import { activeLessons, lessonsPrompt } from "../domain/ai-lessons";
 import { DomainError } from "../domain/leads";
 import { searchInventory } from "../inventory";
@@ -52,7 +53,7 @@ export async function draftExecutiveReply(
     include: {
       stage: true,
       contact: { include: { tags: { include: { tag: true } } } },
-      messages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
+      messages: { include: TEAM_AUTHOR, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
     },
   });
   const messages = [...lead.messages].reverse();
@@ -74,7 +75,7 @@ export async function draftExecutiveReply(
 
   const conversation = messages
     .map((m) => {
-      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : `Ejecutivo (${m.user?.name ?? "equipo"})`;
+      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : teamAuthor(m);
       const text = m.mediaUrl ? `[${m.transcript ? "nota de voz" : "archivo"}] ${m.transcript ?? ""} ${m.body}`.trim() : m.body;
       return `${who}: ${text.slice(0, MAX_CHARS_PER_MESSAGE)}`;
     })

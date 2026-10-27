@@ -172,6 +172,36 @@ describe("asistente IA (Anthropic)", () => {
     expect(state).not.toContain("no-debería-aparecer");
   });
 
+  it("sabe que la conversación la empezó un envío masivo de la empresa", async () => {
+    await seedFunnel();
+    const lead = await createLead({ name: "Diego", channel: "SIMULATOR" });
+    const message = await db.message.create({
+      data: { leadId: lead.id, author: "USER", body: "Hola Diego, vimos que te interesó Vive Matanzas." },
+    });
+    const broadcast = await db.broadcast.create({
+      data: {
+        name: "Matanzas octubre",
+        templateName: "matanzas",
+        templateLanguage: "es",
+        templateText: "Hola {{1}}, vimos que te interesó Vive Matanzas.",
+        stageId: lead.stageId,
+        dailyLimit: 250,
+      },
+    });
+    await db.broadcastRecipient.create({
+      data: { broadcastId: broadcast.id, phone: "56911111111", name: "Diego", leadId: lead.id, messageId: message.id, status: "SENT", sentAt: new Date() },
+    });
+    await inbound(lead.id, "hola buenas tardes");
+
+    const { client, requests } = fakeAnthropic([{ stop_reason: "end_turn", content: [text("¡Hola!")] }]);
+    await runAgent(lead.id, client);
+
+    const turn = (requests[0].messages[0].content as { text: string }[])[0].text;
+    expect(turn).toContain("la empresa le escribió primero con el envío masivo «Matanzas octubre»");
+    expect(turn).toContain("Empresa (envío masivo «Matanzas octubre»): Hola Diego, vimos que te interesó Vive Matanzas.");
+    expect(turn).not.toContain("Ejecutivo (");
+  });
+
   it("ve la campaña del enlace con UTM y nada si el lead no tiene origen", async () => {
     await seedFunnel();
     const lead = await createLead({ name: "Pedro", channel: "SIMULATOR" });

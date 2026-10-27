@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { TEAM_AUTHOR, teamAuthor } from "./team-author";
 import { DAY_MS, toLocalInput } from "../dates";
 import { completeOnce, jsonIn } from "./complete";
 import type { ProviderClients } from "./providers";
@@ -39,13 +40,13 @@ export async function suggestResume(
     where: { id: leadId },
     include: {
       contact: { select: { name: true } },
-      messages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
+      messages: { include: TEAM_AUTHOR, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
     },
   });
   const conversation = [...lead.messages]
     .reverse()
     .map((m) => {
-      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : `Ejecutivo (${m.user?.name ?? "equipo"})`;
+      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : teamAuthor(m);
       return `${who} (${toLocalInput(m.createdAt).slice(0, 10)}): ${(m.transcript ?? m.body).slice(0, MAX_CHARS_PER_MESSAGE)}`;
     })
     .join("\n");
