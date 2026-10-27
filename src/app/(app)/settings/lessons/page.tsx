@@ -31,14 +31,14 @@ export default async function LessonsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Aprendizajes de la asistente"
-        description="Correcciones a respuestas de la IA convertidas en reglas. Se proponen desde el chat con «Corregir» bajo un mensaje de la IA; prueba cada una y apruébala para que la IA la use."
+        description="Reglas que la IA sigue además de sus instrucciones. Se crean al analizar una respuesta desde el chat, o las proponen los ejecutivos con «Corregir» y tú las apruebas aquí."
       />
 
       {groups.length === 0 && (
         <Card className="animate-rise">
           <EmptyState icon={<GraduationCap />} title="Aún no hay aprendizajes">
-            Cuando una respuesta de la IA no te guste, pasa el mouse sobre ella en el chat y toca «Corregir». La IA propone una regla y
-            aparece aquí para que la revises.
+            Cuando una respuesta de la IA no te guste, toca «Analizar» bajo ella en el chat. Si el arreglo es un aprendizaje, queda aquí; las
+            reglas que propongan los ejecutivos con «Corregir» también llegan aquí para que las revises.
           </EmptyState>
         </Card>
       )}
