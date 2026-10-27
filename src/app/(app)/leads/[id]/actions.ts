@@ -34,7 +34,7 @@ import {
 } from "@/lib/domain/leads";
 import { receiveContactAudio, sendUserAudio } from "@/lib/domain/messages";
 import { sendLibraryFiles, sendUploadedFile, type UploadedFile } from "@/lib/domain/files";
-import { notifyContactMessage } from "@/lib/domain/notifications";
+import { notifyContactMessage, notifyLessonPending } from "@/lib/domain/notifications";
 import { chatTemplates, replyWindowClosed, sendLeadTemplate, WINDOW_CLOSED_ERROR, type TemplateToSend } from "@/lib/domain/reply-window";
 import { BLOB_MISSING } from "@/lib/media";
 import { ChannelSendError } from "@/lib/channels/whatsapp";
@@ -395,7 +395,7 @@ export async function saveLessonAction(leadId: string, messageId: string, prev: 
   const user = await authorizeAiMessage(leadId, messageId);
   const str = (key: string) => String(form.get(key) ?? "");
   try {
-    await createLesson({
+    const lesson = await createLesson({
       messageId,
       rule: str("rule"),
       goodExample: str("goodExample"),
@@ -404,6 +404,7 @@ export async function saveLessonAction(leadId: string, messageId: string, prev: 
       conflict: str("conflict"),
       createdBy: user.name,
     });
+    await notifyLessonPending(lesson, user.id);
   } catch (e) {
     if (e instanceof DomainError) return { ...prev, error: e.message };
     throw e;

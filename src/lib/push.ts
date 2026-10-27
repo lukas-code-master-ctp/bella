@@ -2,6 +2,7 @@ import webpush from "web-push";
 import { db, rootDb } from "./db";
 import { currentCompanyId } from "./tenant";
 import { deliverPendingEmails } from "./domain/email-notifications";
+import { notificationKey, notificationUrl } from "./domain/notification-links";
 
 /**
  * Web Push al navegador. Requiere VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY (genéralas con
@@ -70,7 +71,7 @@ export async function deliverPendingPush() {
         subs
           .filter((s) => s.userId === n.userId)
           .map((s) => {
-            const payload: PushPayload = { title: n.title, body: n.body, url: `/leads/${n.leadId}`, tag: n.leadId };
+            const payload: PushPayload = { title: n.title, body: n.body, url: notificationUrl(n), tag: notificationKey(n) };
             return webpush
               .sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(payload), {
                 TTL: 60 * 60,
