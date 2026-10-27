@@ -111,6 +111,7 @@ model User {
   comments          SocialComment[]
   passwordResets    PasswordResetToken[]
   quickReplies      QuickReply[]
+  answeredCalls     Call[]
 
   @@index([companyId])
 }
@@ -361,6 +362,7 @@ model Lead {
   webhookCalls  WebhookDelivery[]
   variant       AssistantVariant?    @relation(fields: [variantId], references: [id], onDelete: SetNull)
   broadcasts    BroadcastRecipient[]
+  calls         Call[]
 
   @@index([contactId, status])
   @@index([stageId])
@@ -1254,4 +1256,39 @@ model EmailRecipient {
   @@unique([emailBroadcastId, email])
   @@index([emailBroadcastId, status])
   @@index([companyId, sentAt])
+}
+
+/// Llamada de WhatsApp (Cloud API Calling, ver src/lib/domain/calls.ts). Entrante: el cliente
+/// tocó "llamar" en WhatsApp; suena en Beliapp y un ejecutivo la contesta desde el navegador.
+model Call {
+  id            String    @id @default(cuid())
+  /// Empresa dueña del dato (ver src/lib/tenant.ts). "default" es la empresa de las instalaciones anteriores.
+  companyId     String    @default("default")
+  leadId        String
+  /// Id de la llamada en Meta.
+  externalId    String
+  /// INBOUND (la hizo el cliente) u OUTBOUND (la hizo la empresa).
+  direction     String    @default("INBOUND")
+  /// RINGING, ANSWERED (en curso), ENDED, MISSED, REJECTED o FAILED.
+  status        String    @default("RINGING")
+  /// Número de la empresa que recibió (o hizo) la llamada.
+  phoneNumberId String
+  /// Oferta de audio (SDP) de WhatsApp; el navegador de quien contesta arma la respuesta.
+  sdpOffer      String?
+  /// A quiénes les suena en Beliapp: el ejecutivo del lead o, si no tiene, los administradores.
+  ringUserIds   String[]  @default([])
+  answeredById  String?
+  answeredAt    DateTime?
+  endedAt       DateTime?
+  durationSec   Int?
+  /// Motivo cuando Meta no pudo conectar la llamada.
+  error         String?
+  createdAt     DateTime  @default(now())
+
+  lead       Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  answeredBy User? @relation(fields: [answeredById], references: [id])
+
+  @@unique([companyId, externalId])
+  @@index([companyId, status])
+  @@index([leadId, createdAt])
 }

@@ -5,6 +5,7 @@ import { answerLeadWhenQuiet } from "@/lib/ai/respond";
 import { validSignature, type WaWebhook } from "@/lib/channels/whatsapp";
 import { platformApp } from "@/lib/domain/whatsapp-signup";
 import { logWhatsAppWebhook, logWhatsAppWebhookError, receiveWhatsApp } from "@/lib/domain/channels";
+import { receiveWhatsAppCalls } from "@/lib/domain/calls";
 
 /** Meta verifica el webhook una vez, al registrarlo: hay que devolver el challenge. */
 export async function verifyWebhook(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function verifyWebhook(request: NextRequest) {
 }
 
 /**
- * Mensajes y estados de entrega de WhatsApp. Se guarda todo antes de contestar 200 (Meta
+ * Mensajes, estados de entrega y llamadas de WhatsApp. Se guarda todo antes de contestar 200 (Meta
  * reintenta si no) y la IA responde después, sin hacer esperar a Meta.
  */
 export async function receiveWebhook(request: NextRequest) {
@@ -39,6 +40,8 @@ export async function receiveWebhook(request: NextRequest) {
   await logWhatsAppWebhook(payload).catch((err) => console.error("[whatsapp] registro del webhook:", err));
   let leads: string[];
   try {
+    // Primero las llamadas: Meta da menos de un minuto para contestarlas.
+    await receiveWhatsAppCalls(payload);
     leads = await receiveWhatsApp(payload);
   } catch (err) {
     await logWhatsAppWebhookError(err).catch(() => null);

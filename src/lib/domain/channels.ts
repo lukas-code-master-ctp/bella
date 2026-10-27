@@ -133,7 +133,8 @@ export async function logWhatsAppWebhook(payload: WaWebhook | null, now = new Da
     const others = webhookPhoneIds(payload).filter((id) => !ids.includes(id));
     const messages = values.reduce((n, v) => n + (v.messages?.length ?? 0), 0);
     const statuses = values.reduce((n, v) => n + (v.statuses?.length ?? 0), 0);
-    if (!values.length && others.length) {
+    const calls = webhookValues(payload, ids, "calls").reduce((n, v) => n + (v.calls?.filter((c) => c.event === "connect").length ?? 0), 0);
+    if (!values.length && !calls && others.length) {
       entry = {
         at,
         result: "otro-numero",
@@ -143,6 +144,7 @@ export async function logWhatsAppWebhook(payload: WaWebhook | null, now = new Da
       const parts = [
         messages && `${messages} ${messages === 1 ? "mensaje" : "mensajes"}`,
         statuses && `${statuses} ${statuses === 1 ? "estado de entrega" : "estados de entrega"}`,
+        calls && `${calls} ${calls === 1 ? "llamada" : "llamadas"}`,
       ].filter(Boolean);
       entry = { at, result: "ok", detail: parts.length ? `Recibido: ${parts.join(" y ")}.` : "Aviso sin mensajes." };
       if (messages) entry.lastMessageAt = at;
@@ -172,7 +174,7 @@ export async function receiveWhatsApp(payload: WaWebhook, deps: InboundDeps = {}
  * Lead abierto del contacto en el canal; si no tiene (es nuevo o su último lead se cerró), uno
  * nuevo. `name` se pide solo al crear el contacto (en Instagram y Messenger es una llamada a Meta).
  */
-async function openLeadFor(
+export async function openLeadFor(
   channel: Exclude<Channel, "SIMULATOR">,
   externalId: string,
   name: () => Promise<string>,

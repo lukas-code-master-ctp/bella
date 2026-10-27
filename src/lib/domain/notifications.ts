@@ -5,7 +5,7 @@ import { LESSON_PENDING, notificationKey } from "./notification-links";
 
 type Tx = Prisma.TransactionClient;
 
-export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE" | "SLA_LATE" | typeof LESSON_PENDING;
+export type NotificationType = "HUMAN_STAGE" | "ASSIGNED" | "CONTACT_MESSAGE" | "TASK_DUE" | "SLA_LATE" | "CALL" | typeof LESSON_PENDING;
 
 /**
  * Destinatarios de un aviso del lead: su ejecutivo asignado o, si no tiene (o está
@@ -107,6 +107,17 @@ export async function notifyTaskDueTx(
 export async function notifySlaLateTx(tx: Tx, leadId: string, body: string, userIds?: string[]) {
   const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
   await upsertNotifications(tx, leadId, userIds ?? (await recipients(tx, lead)), { type: "SLA_LATE", body });
+}
+
+/**
+ * Llamada de WhatsApp: entrante (suena en Beliapp) o perdida. Sin `userIds` va a quienes reciben los
+ * avisos del lead. Devuelve a quiénes se avisó.
+ */
+export async function notifyCallTx(tx: Tx, leadId: string, body: string, userIds?: string[]) {
+  const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId } });
+  const to = userIds ?? (await recipients(tx, lead));
+  await upsertNotifications(tx, leadId, to, { type: "CALL", body });
+  return to;
 }
 
 /**

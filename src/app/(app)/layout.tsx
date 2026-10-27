@@ -22,6 +22,8 @@ import { Logo } from "@/components/logo";
 import { unreadNotificationCount } from "@/lib/domain/notifications";
 import { UnreadBadge } from "./notifications/unread-badge";
 import { PushClaim } from "./notifications/push-claim";
+import { getCallSettings } from "@/lib/domain/calls";
+import { IncomingCall } from "./calls/incoming-call";
 
 const countBadge = (n: number, tone: string, label: string) => (
   <span key={n} className={`animate-pop rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums text-white ${tone}`}>
@@ -40,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // vencidos se envían después de responder la página (como mucho cada 5 minutos).
   await afterInCompany(runDueFollowUpsIfStale);
   const companyId = await currentCompanyId();
-  const [urgentTasks, unread, pendingComments, newInsight, company, companies, cookieStore] = await Promise.all([
+  const [urgentTasks, unread, pendingComments, newInsight, company, companies, cookieStore, calls] = await Promise.all([
     countUrgentTasks(user.id),
     unreadNotificationCount(user.id),
     countPendingComments(),
@@ -48,6 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     companyName(companyId),
     user.superadmin ? companyOptions() : [],
     cookies(),
+    getCallSettings(),
   ]);
   const compact = cookieStore.get("nav")?.value === "compact";
 
@@ -89,6 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       className="group/shell min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:data-[compact=true]:grid-cols-[72px_minmax(0,1fr)]"
     >
       <PushClaim />
+      {calls.enabled && <IncomingCall />}
       <a
         href="#contenido"
         className="sr-only z-50 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-700 shadow-lg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"

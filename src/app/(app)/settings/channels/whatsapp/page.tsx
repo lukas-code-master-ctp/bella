@@ -14,9 +14,16 @@ import { ChannelPageActions, EnvList, ManualSetupHint, Webhook } from "../parts"
 import { WhatsAppStatus } from "../whatsapp-status";
 import { AddWhatsAppNumberForm, FunnelSelect } from "../whatsapp-numbers";
 import { WhatsAppSignup } from "../whatsapp-signup";
+import { WhatsAppCallsForm } from "../whatsapp-calls";
+import { getCallSettings } from "@/lib/domain/calls";
 
 export default async function WhatsAppChannelPage() {
-  const [numbers, funnels, waMissing] = await Promise.all([listWhatsAppNumbers(), listFunnels(), missingWhatsAppEnv()]);
+  const [numbers, funnels, waMissing, calls] = await Promise.all([
+    listWhatsAppNumbers(),
+    listFunnels(),
+    missingWhatsAppEnv(),
+    getCallSettings(),
+  ]);
   const funnelOptions = funnels.map(({ id, name }) => ({ id, name }));
   const h = await headers();
   const origin = `https://${h.get("x-forwarded-host") ?? h.get("host")}`;
@@ -48,7 +55,7 @@ export default async function WhatsAppChannelPage() {
           )}
           <ManualSetupHint />
           <EnvList keys={WHATSAPP_ENV} missing={waMissing} />
-          <Webhook url={urls.whatsappWebhook} where="WhatsApp → Configuración" fields="el campo messages" />
+          <Webhook url={urls.whatsappWebhook} where="WhatsApp → Configuración" fields="los campos messages y calls" />
           {connected && (
             <Suspense
               fallback={<div className="mt-4 h-28 animate-pulse rounded-lg bg-slate-100" aria-label="Revisando la conexión con Meta" />}
@@ -57,6 +64,15 @@ export default async function WhatsAppChannelPage() {
             </Suspense>
           )}
         </Card>
+
+        {connected && (
+          <Card className="p-5">
+            <CardHeader title="Llamadas" description="Contesta desde Beliapp las llamadas que los clientes hacen por WhatsApp.">
+              {calls.enabled ? <Badge tone="success">Activadas</Badge> : <Badge>Apagadas</Badge>}
+            </CardHeader>
+            <WhatsAppCallsForm settings={calls} />
+          </Card>
+        )}
 
         {connected && (
           <Card className="p-5">
