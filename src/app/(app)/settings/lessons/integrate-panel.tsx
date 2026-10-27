@@ -1,12 +1,12 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { CircleCheck, LoaderCircle, Merge } from "lucide-react";
 import { buttonClass, type ButtonVariant, FormMessage, inputClass } from "@/components/ui";
 import { Panel, PanelBody } from "@/components/settings-ui";
 import { toast } from "@/components/toast";
-import { diffHunks, lineDiff } from "@/lib/line-diff";
+import { DiffView } from "@/components/diff-view";
 import { integrationAction, type IntegrationState } from "./actions";
 
 const INITIAL: IntegrationState = { error: null, draft: null, saved: false };
@@ -67,7 +67,6 @@ export function IntegratePanel({ activeCount }: { activeCount: number }) {
 
 function Review({ current, proposed, changes }: { current: string; proposed: string; changes: string[] }) {
   const [text, setText] = useState(proposed);
-  const hunks = useMemo(() => diffHunks(lineDiff(current, text)), [current, text]);
   return (
     <div className="space-y-4">
       {changes.length > 0 && (
@@ -82,32 +81,7 @@ function Review({ current, proposed, changes }: { current: string; proposed: str
       )}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Antes y después</p>
-        <div className="mt-1.5 max-h-96 overflow-auto rounded-lg font-mono text-[12px] leading-relaxed ring-1 ring-inset ring-slate-200">
-          {hunks.length === 0 && <p className="p-3 font-sans text-sm text-slate-600">Sin cambios en el texto.</p>}
-          {hunks.map((h, i) => (
-            <div key={i}>
-              {h.skippedBefore > 0 && (
-                <p className="bg-slate-50 px-3 py-1 font-sans text-[11px] text-slate-500">
-                  {h.skippedBefore} {h.skippedBefore === 1 ? "línea igual" : "líneas iguales"}
-                </p>
-              )}
-              {h.lines.map((l, j) => (
-                <p
-                  key={j}
-                  className={`whitespace-pre-wrap break-words px-3 ${
-                    l.kind === "added" ? "bg-emerald-50 text-emerald-900" : l.kind === "removed" ? "bg-rose-50 text-rose-900 line-through decoration-rose-300" : "text-slate-600"
-                  }`}
-                >
-                  <span aria-hidden className="mr-2 select-none text-slate-400">
-                    {l.kind === "added" ? "+" : l.kind === "removed" ? "−" : " "}
-                  </span>
-                  <span className="sr-only">{l.kind === "added" ? "Agregado: " : l.kind === "removed" ? "Quitado: " : ""}</span>
-                  {l.text || " "}
-                </p>
-              ))}
-            </div>
-          ))}
-        </div>
+        <DiffView current={current} proposed={text} className="mt-1.5" />
       </div>
       {/* Aunque <details> esté cerrado, el textarea se envía con el formulario. */}
       <details>

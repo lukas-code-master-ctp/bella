@@ -126,15 +126,28 @@ const tidy = (quote: string) =>
     .replace(/\.\.\.$/, "")
     .replace(/\s+/g, " ");
 
-/** Posición de la cita en el texto (tolera espacios distintos y comillas o "…" alrededor). */
-export function locate(text: string, quote: string): number {
+/**
+ * Dónde está la cita en el texto, como [inicio, fin) del original (tolera espacios distintos y
+ * comillas o "…" alrededor). Con `prefix`, si la cita completa no está, basta su comienzo.
+ */
+export function span(text: string, quote: string, { prefix = false } = {}): [number, number] | null {
   const q = tidy(quote);
-  if (!q) return -1;
+  if (!q) return null;
   const { out, map } = normalized(text);
   let i = out.indexOf(q);
+  let length = q.length;
   // Si la IA cambió algo hacia el final, basta el comienzo.
-  if (i < 0 && q.length > 60) i = out.indexOf(q.slice(0, 60));
-  return i < 0 ? -1 : map[i];
+  if (i < 0 && prefix && q.length > 60) {
+    length = 60;
+    i = out.indexOf(q.slice(0, length));
+  }
+  if (i < 0) return null;
+  return [map[i], map[i + length - 1] + 1];
+}
+
+/** Posición de la cita en el texto, o -1. */
+export function locate(text: string, quote: string): number {
+  return span(text, quote, { prefix: true })?.[0] ?? -1;
 }
 
 function sourceAt(segments: Segment[], index: number): CitationSource {
