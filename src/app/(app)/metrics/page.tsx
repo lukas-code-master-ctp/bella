@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChartNoAxesColumn, Clock, Timer, Megaphone, Sparkles, TriangleAlert, Trophy, UserRound } from "lucide-react";
+import { ChartNoAxesColumn, Clock, Timer, Megaphone, Phone, Sparkles, TriangleAlert, Trophy, UserRound } from "lucide-react";
 import type { Channel } from "@prisma/client";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -8,6 +8,7 @@ import { campaignSpend } from "@/lib/channels/ads";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { hasUnseenInsight, markInsightSeen } from "@/lib/ai/weekly-insights";
 import { countActiveCampaignAlerts } from "@/lib/domain/campaign-alerts";
+import { getCallSettings } from "@/lib/domain/calls";
 import { LEAD_ORIGINS, ORIGIN_LABEL, type LeadOrigin } from "@/lib/domain/attribution";
 import { listFunnels } from "@/lib/domain/funnels";
 import { adReturns, formatDuration, getMetrics, type AdReturns, type Metrics, type ResponseStats, type Row } from "@/lib/domain/metrics";
@@ -54,12 +55,13 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   // El gasto es de la empresa entera y de Meta: se cruza solo cuando el admin mira a todo el
   // equipo, todos los canales y los orígenes que pueden incluir anuncios de Meta.
   const withSpend = isAdmin && !assigneeId && !channel && (!origin || origin === "meta");
-  const [m, executives, newInsight, spends, campaignAlerts] = await Promise.all([
+  const [m, executives, newInsight, spends, campaignAlerts, calls] = await Promise.all([
     getMetrics({ from, to: now, assigneeId, funnelId, channel, origin }),
     isAdmin ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
     isAdmin && hasUnseenInsight(user.id),
     withSpend ? campaignSpend(toLocalInput(from).slice(0, 10), toLocalInput(now).slice(0, 10)) : null,
     isAdmin ? countActiveCampaignAlerts() : 0,
+    getCallSettings(),
   ]);
   const ads = spends ? adReturns(m.byCampaign, spends) : null;
   // Entrar a Métricas apaga el "Nuevo" del menú; el botón del resumen lo sigue mostrando en esta visita.
@@ -82,6 +84,12 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
             <Timer aria-hidden />
             {isAdmin ? "SLA de ejecutivos" : "Mis SLA"}
           </Link>
+          {calls.enabled && (
+            <Link href="/metrics/calls" className={buttonClass("secondary")}>
+              <Phone aria-hidden />
+              {isAdmin ? "Llamadas" : "Mis llamadas"}
+            </Link>
+          )}
           {isAdmin && (
             <Link href="/metrics/campaigns" className={buttonClass("secondary")}>
               <TriangleAlert aria-hidden />
