@@ -86,6 +86,14 @@ export function describeMetaError(code: number | undefined, fallback: string): s
       return "Demasiados mensajes seguidos a este cliente; espera un momento.";
     case 138006:
       return "El cliente todavía no autoriza que lo llamen por WhatsApp (o su permiso venció).";
+    case 138018:
+      return "Falta suscribir el campo de webhook «calls» en la app de Meta (developers.facebook.com → tu app → WhatsApp → Configuración → Campos del webhook). Después vuelve a guardar.";
+    case 138015:
+      return "El número todavía no puede escribir a 2.000 personas al día; Meta lo sube solo a medida que el número envía mensajes con buena calidad.";
+    case 138013:
+      return "Meta todavía no ofrece las llamadas de empresa para el país de este número.";
+    case 138014:
+      return "Meta pausó las llamadas de este número por baja calidad; vuelve a intentarlo en unos días.";
     case 190:
       return "El token de WhatsApp venció o no es válido (Configuración → Credenciales).";
     case 131031:
