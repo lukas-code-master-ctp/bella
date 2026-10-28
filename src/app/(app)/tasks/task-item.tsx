@@ -116,7 +116,12 @@ export function TaskItem({
             )}
           </dl>
           {executives && !isDone && (
-            <form action={setTaskAssigneeAction.bind(null, task.id)} className="flex items-center gap-2 text-xs">
+            // `key`: React reinicia el formulario tras la acción; al cambiar de responsable se vuelve a montar con el valor guardado.
+            <form
+              key={task.assigneeId ?? ""}
+              action={setTaskAssigneeAction.bind(null, task.id)}
+              className="flex items-center gap-2 text-xs"
+            >
               <label htmlFor={`responsable-${task.id}`} className="text-slate-500">
                 Responsable
               </label>
