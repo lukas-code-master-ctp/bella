@@ -4,6 +4,7 @@ import { getAssistantSettings } from "../settings";
 import { audioFormat, type AudioFile } from "../media";
 import { CALL_INSTRUCTIONS, openRouterTranscriber, type Transcriber } from "../ai/transcribe";
 import { summarizeCall, type CallSummary } from "../ai/call-summary";
+import { refreshLeadInsights } from "../ai/insights";
 import type { ProviderClients } from "../ai/providers";
 import { getCallSettings } from "./calls";
 import { formatChileDateTime } from "./follow-ups";
@@ -32,6 +33,8 @@ export type RecordingDeps = {
   transcribe?: Transcriber;
   summarize?: typeof summarizeCall;
   clients?: ProviderClients;
+  /** Pruebas: no recalcular el resumen del lead. */
+  skipInsights?: boolean;
 };
 
 /** La llamada tiene que ser de quien la atendió y la empresa tiene que grabar llamadas. */
@@ -124,6 +127,8 @@ export async function analyzeCall(callId: string, deps: RecordingDeps = {}, now 
         analysisError: null,
       },
     });
+    // El resumen y el puntaje del lead ahora consideran lo que se habló en la llamada.
+    if (!deps.skipInsights) await refreshLeadInsights(call.leadId, { force: true, clients: deps.clients });
   } catch (err) {
     console.error(`[llamadas] análisis de ${call.id}:`, err);
     await db.call.update({

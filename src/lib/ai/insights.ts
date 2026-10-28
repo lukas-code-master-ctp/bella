@@ -14,6 +14,7 @@ import { defaultAnthropic, openRouterClient, type ProviderClients } from "./prov
 
 const MAX_MESSAGES = 40;
 const MAX_CHARS_PER_MESSAGE = 600;
+const MAX_CALLS = 5;
 
 const Insights = z.object({
   resumen: z.string().min(1),
@@ -73,26 +74,35 @@ export async function refreshLeadInsights(
         stage: true,
         contact: { include: { tags: { include: { tag: true } } } },
         messages: { include: TEAM_AUTHOR, orderBy: { createdAt: "desc" }, take: MAX_MESSAGES },
+        // Llamadas resumidas: lo que se habló por teléfono también cuenta para el resumen y el puntaje.
+        calls: { where: { summary: { not: null } }, include: { answeredBy: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: MAX_CALLS },
       },
     });
     const latest = lead.messages[0];
-    if (!latest) return false;
-    if (!force && lead.insightsAt && latest.createdAt <= lead.insightsAt) return false;
+    if (!latest && !lead.calls.length) return false;
+    if (!force && lead.insightsAt && latest && latest.createdAt <= lead.insightsAt) return false;
 
     const [settings, config] = await Promise.all([getAssistantSettings(), getAiConfig()]);
     const tags = lead.contact.tags.map((ct) => `${ct.tag.category}: ${ct.tag.name}`);
-    const conversation = [...lead.messages]
-      .reverse()
-      .map((m) => {
-        const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : teamAuthor(m);
-        const media = !m.mediaUrl
-          ? ""
-          : fileKind(m.mediaType) === "audio"
-            ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"}`
-            : `[archivo${m.mediaName ? ` ${m.mediaName}` : ""}]`;
-        const text = `${media} ${m.body}`.trim();
-        return `${who}: ${text.slice(0, MAX_CHARS_PER_MESSAGE)}`;
-      })
+    const messages = lead.messages.map((m) => {
+      const who = m.author === "CONTACT" ? "Cliente" : m.author === "AI" ? "Asistente IA" : teamAuthor(m);
+      const media = !m.mediaUrl
+        ? ""
+        : fileKind(m.mediaType) === "audio"
+          ? `[nota de voz] ${m.transcript ?? "(sin transcripción)"}`
+          : `[archivo${m.mediaName ? ` ${m.mediaName}` : ""}]`;
+      const text = `${media} ${m.body}`.trim();
+      return { at: m.createdAt, line: `${who}: ${text.slice(0, MAX_CHARS_PER_MESSAGE)}` };
+    });
+    const calls = lead.calls.map((c) => ({
+      at: c.answeredAt ?? c.createdAt,
+      line:
+        `[Llamada de WhatsApp${c.answeredBy ? ` con ${c.answeredBy.name}` : ""}] ${c.summary}` +
+        (c.nextStep ? ` Próximo paso: ${c.nextStep}` : ""),
+    }));
+    const conversation = [...messages, ...calls]
+      .sort((a, b) => a.at.getTime() - b.at.getTime())
+      .map((x) => x.line)
       .join("\n");
     const input = [
       `Etapa del funnel: ${lead.stage.name}`,
@@ -134,7 +144,7 @@ export async function refreshLeadInsights(
         aiSummary: insights.summary,
         score: insights.score,
         scoreReason: insights.reason || null,
-        insightsAt: latest.createdAt,
+        insightsAt: latest?.createdAt ?? new Date(),
       },
     });
     return true;

@@ -50,6 +50,7 @@ const summary: typeof summarizeCall = async () => ({
 });
 
 const deps: RecordingDeps = {
+  skipInsights: true,
   fetchAudio: async () => ({ bytes: new Uint8Array([1, 2, 3]), mimeType: "audio/webm", fileName: "llamada.webm" }),
   transcribe: async () => "Ejecutivo: Hola Ana\nCliente: Hola, quiero ver la parcela",
   summarize: summary,

@@ -114,6 +114,32 @@ describe("parseInsights y niveles", () => {
     expect(parseInsights('{"resumen": "Ok", "puntaje": "alto"}')).toBeNull();
   });
 
+  it("considera las llamadas resumidas, en orden con los mensajes", async () => {
+    await setSetting<AiConfig>("ai", { provider: "openrouter", model: "grande", effort: "high", summaryModel: "chico" });
+    const lead = await leadWithChat();
+    const luis = await db.user.create({ data: { name: "Luis", email: "luis@test.cl", passwordHash: "x", role: "EXECUTIVE" } });
+    await db.call.create({
+      data: {
+        leadId: lead.id,
+        externalId: "wacid.1",
+        phoneNumberId: "1",
+        status: "ENDED",
+        answeredById: luis.id,
+        answeredAt: new Date(Date.now() + 60_000),
+        summary: "Quiere visitar el lote 12 el sábado; presupuesto de 40 millones.",
+        nextStep: "Confirmar la visita",
+      },
+    });
+    const { clients, requests } = fakeOpenRouter([json("Visitará el lote 12 el sábado.", 80)]);
+
+    expect(await refreshLeadInsights(lead.id, { clients, force: true })).toBe(true);
+    const input = requests[0].messages[1].content;
+    expect(input).toMatch(
+      /Asistente IA: Desde \$25\.000\.000.*\n\[Llamada de WhatsApp con Luis\] Quiere visitar el lote 12 el sábado; presupuesto de 40 millones\. Próximo paso: Confirmar la visita/,
+    );
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).score).toBe(80);
+  });
+
   it("clasifica bajo, medio y alto", () => {
     expect([scoreLevel(39), scoreLevel(40), scoreLevel(69), scoreLevel(70)]).toEqual(["bajo", "medio", "medio", "alto"]);
   });
