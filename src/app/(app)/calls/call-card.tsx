@@ -82,7 +82,7 @@ export function CallCard({ call }: { call: ChatCall }) {
               {open.map((t) => (
                 <li key={t.index} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-slate-800" title={t.title}>
+                    <p className="line-clamp-2 font-medium text-slate-800" title={t.title}>
                       {t.title}
                     </p>
                     <p className="text-xs text-slate-600">vence {t.due}</p>
