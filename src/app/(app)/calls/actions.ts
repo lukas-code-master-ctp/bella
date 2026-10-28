@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
@@ -13,7 +14,15 @@ import {
   startCall,
   type CallOption,
 } from "@/lib/domain/calls";
+import {
+  analyzeCall,
+  createProposedTask,
+  dismissProposedTask,
+  retryCallAnalysis,
+  saveCallRecording,
+} from "@/lib/domain/call-recordings";
 import { DomainError } from "@/lib/domain/leads";
+import { currentCompanyId, withCompany } from "@/lib/tenant";
 
 /** El lead es de esta empresa y quien tiene la sesión lo puede ver (un ejecutivo, solo los suyos). */
 async function leadAccessible(leadId: string) {
@@ -78,6 +87,61 @@ export async function startCallAction(leadId: string, sdp: string): Promise<{ ca
     return { callId: await startCall(leadId, user.id, sdp) };
   } catch (e) {
     if (e instanceof DomainError) return { error: e.message };
+    throw e;
+  }
+}
+
+// --- Grabaciones --------------------------------------------------------------------------
+
+/** Transcribe y resume después de responder: tarda más de lo que conviene esperar en el navegador. */
+async function analyzeLater(callId: string) {
+  const companyId = await currentCompanyId();
+  after(() => withCompany(companyId, () => analyzeCall(callId)));
+}
+
+/** El navegador subió la grabación al cortar: se guarda y se manda a transcribir. */
+export async function saveCallRecordingAction(callId: string, url: string): Promise<string | null> {
+  const user = await requireUser();
+  try {
+    if (await saveCallRecording(callId, user.id, url)) await analyzeLater(callId);
+    return null;
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+}
+
+/** La llamada de este lead, si quien tiene la sesión puede ver el lead. */
+async function accessibleCall(callId: string) {
+  const call = await db.call.findUnique({ where: { id: callId }, select: { id: true, leadId: true } });
+  if (!call || !(await leadAccessible(call.leadId))) throw new DomainError("No tienes acceso a esta llamada.");
+  return call;
+}
+
+export async function retryCallAnalysisAction(callId: string): Promise<string | null> {
+  await requireUser();
+  try {
+    const call = await accessibleCall(callId);
+    if (await retryCallAnalysis(call.id)) await analyzeLater(call.id);
+    revalidatePath(`/leads/${call.leadId}`);
+    return null;
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
+    throw e;
+  }
+}
+
+/** Crea (o descarta) una de las tareas que la IA propuso de lo acordado en la llamada. */
+export async function proposedTaskAction(callId: string, index: number, create: boolean): Promise<string | null> {
+  const user = await requireUser();
+  try {
+    const call = await accessibleCall(callId);
+    if (create) await createProposedTask(call.id, index, user.id);
+    else await dismissProposedTask(call.id, index);
+    revalidatePath(`/leads/${call.leadId}`);
+    return null;
+  } catch (e) {
+    if (e instanceof DomainError) return e.message;
     throw e;
   }
 }

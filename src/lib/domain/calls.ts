@@ -18,10 +18,13 @@ import { funnelForNumber, whatsappPhoneIds } from "./whatsapp-numbers";
  * Beliapp se la pasa a Meta. Meta da entre 30 y 60 segundos para contestar.
  */
 
-/** Recibir llamadas: apagado por defecto. Al prenderlo se activa el botón de llamar en cada número. */
-export type CallSettings = { enabled: boolean };
+/**
+ * Recibir llamadas: apagado por defecto. Al prenderlo se activa el botón de llamar en cada número.
+ * `record`: grabar las llamadas atendidas para transcribirlas y resumirlas (ver call-recordings.ts).
+ */
+export type CallSettings = { enabled: boolean; record: boolean };
 
-export const DEFAULT_CALLS: CallSettings = { enabled: false };
+export const DEFAULT_CALLS: CallSettings = { enabled: false, record: false };
 
 /** Una llamada que sigue sonando después de esto ya la cortó WhatsApp por falta de respuesta. */
 export const RING_TIMEOUT_MS = 60_000;
@@ -36,6 +39,11 @@ export async function getCallSettings(): Promise<CallSettings> {
  * se guarda y se explica el motivo.
  */
 export async function saveCallSettings(s: CallSettings, api: CallingApi = callingApi) {
+  // Solo cambia la grabación: no hay nada que decirle a Meta.
+  if ((await getCallSettings()).enabled === s.enabled) {
+    await setSetting("calls", s);
+    return;
+  }
   const numbers = await whatsappPhoneIds();
   if (s.enabled && !numbers.length) throw new DomainError("Primero conecta un número de WhatsApp.");
   for (const id of numbers) {
@@ -139,7 +147,7 @@ async function callEnded(c: WaCall) {
           type: "CALL_ENDED",
           actor: "SYSTEM",
           userId: call.answeredById,
-          data: { direction: call.direction, duration: Number.isFinite(duration) ? Math.round(duration) : null, userName: call.answeredBy?.name ?? null },
+          data: { callId: call.id, direction: call.direction, duration: Number.isFinite(duration) ? Math.round(duration) : null, userName: call.answeredBy?.name ?? null },
         },
       });
       return;

@@ -92,7 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       className="group/shell min-h-dvh lg:grid lg:grid-cols-[248px_minmax(0,1fr)] lg:data-[compact=true]:grid-cols-[72px_minmax(0,1fr)]"
     >
       <PushClaim />
-      {calls.enabled && <IncomingCall />}
+      {calls.enabled && <IncomingCall record={calls.record} />}
       <a
         href="#contenido"
         className="sr-only z-50 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-700 shadow-lg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
