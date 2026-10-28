@@ -5,7 +5,7 @@ import { canAccessLead, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { parseLocalDateTime } from "@/lib/dates";
 import { DomainError } from "@/lib/domain/leads";
-import { createTask, deleteTask, setTaskDone } from "@/lib/domain/tasks";
+import { createTask, deleteTask, setTaskAssignee, setTaskDone } from "@/lib/domain/tasks";
 
 function done(leadId: string) {
   revalidatePath("/tasks");
@@ -53,5 +53,14 @@ export async function setTaskDoneAction(taskId: string, isDone: boolean) {
 export async function deleteTaskAction(taskId: string) {
   const { task, by } = await authorizeTask(taskId);
   await deleteTask(taskId, by);
+  done(task.leadId);
+}
+
+/** Solo el admin cambia el responsable de una tarea (vacío = sin asignar). */
+export async function setTaskAssigneeAction(taskId: string, form: FormData) {
+  const user = await requireUser();
+  if (user.role !== "ADMIN") throw new Error("Solo un administrador puede cambiar el responsable.");
+  const task = await db.task.findUniqueOrThrow({ where: { id: taskId } });
+  await setTaskAssignee(taskId, String(form.get("assigneeId") ?? "") || null, { actor: "USER", userId: user.id });
   done(task.leadId);
 }

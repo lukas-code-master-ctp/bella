@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { formatDue, parseLocalDateTime, startOfLocalDay, toLocalInput } from "@/lib/dates";
 import { createLead, DomainError, moveStage, setAssignee } from "@/lib/domain/leads";
-import { bucketOf, countUrgentTasks, createTask, findDueTasks, listTasks, listTasksBetween, sendTaskReminders, setTaskDone } from "@/lib/domain/tasks";
+import { bucketOf, countUrgentTasks, createTask, findDueTasks, listTasks, listTasksBetween, sendTaskReminders, setTaskAssignee, setTaskDone } from "@/lib/domain/tasks";
 import { executeTool } from "@/lib/ai/tools";
 import { executive, seedFunnel } from "./factories";
 
@@ -137,6 +137,42 @@ describe("herramienta create_task de la IA", () => {
     expect(toLocalInput(task.dueAt).replace("T", " ")).toBe(due);
   });
 
+  it("sin ejecutivo, la tarea queda sin asignar si no hay regla \"La IA deja una tarea\"", async () => {
+    await seedFunnel();
+    await executive("Ana");
+    const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    const outcome = await executeTool(lead.id, "create_task", { title: "Enviar material", due: "2099-01-01 10:00", notes: "" });
+    expect(outcome).toMatchObject({ content: expect.stringContaining("aún no tiene ejecutivo") });
+    expect(await db.task.findFirstOrThrow({ where: { leadId: lead.id } })).toMatchObject({ assigneeId: null });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).assigneeId).toBeNull();
+  });
+
+  it("con la regla \"La IA deja una tarea\", asigna el lead y la tarea a un ejecutivo de la regla", async () => {
+    await seedFunnel();
+    await executive("Ana");
+    const beto = await executive("Beto");
+    await db.assignmentRule.create({ data: { name: "Tareas IA", trigger: "AI_TASK", executives: { connect: [{ id: beto.id }] } } });
+    const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+
+    const outcome = await executeTool(lead.id, "create_task", { title: "Enviar material", due: "2099-01-01 10:00", notes: "" });
+    expect(outcome).toEqual({ content: 'Tarea creada para Beto: "Enviar material".' });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).assigneeId).toBe(beto.id);
+    expect(await db.task.findFirstOrThrow({ where: { leadId: lead.id } })).toMatchObject({ assigneeId: beto.id });
+  });
+
+  it("la regla \"La IA deja una tarea\" no cambia al ejecutivo que el lead ya tiene", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const beto = await executive("Beto");
+    await db.assignmentRule.create({ data: { name: "Tareas IA", trigger: "AI_TASK", executives: { connect: [{ id: beto.id }] } } });
+    const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    await setAssignee(lead.id, ana.id, { actor: "SYSTEM" });
+
+    await executeTool(lead.id, "create_task", { title: "Llamar", due: "2099-01-01 10:00", notes: "" });
+    expect((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).assigneeId).toBe(ana.id);
+    expect(await db.task.findFirstOrThrow({ where: { leadId: lead.id } })).toMatchObject({ assigneeId: ana.id });
+  });
+
   it("rechaza fechas inválidas o pasadas sin crear nada", async () => {
     await seedFunnel();
     const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
@@ -185,5 +221,26 @@ describe("aviso de tareas por vencer", () => {
     expect(await sendTaskReminders(now)).toEqual({ reminded: 1 });
     const [n] = await db.notification.findMany({ where: { userId: admin.id } });
     expect(n.body).toContain("Tarea vencida: «Recién vencida»");
+  });
+});
+
+describe("cambiar el responsable de una tarea", () => {
+  it("reasigna, deja registro y rechaza ejecutivos inactivos", async () => {
+    await seedFunnel();
+    const ana = await executive("Ana");
+    const lead = await createLead({ name: "Cliente", channel: "SIMULATOR" });
+    const task = await createTask(lead.id, { title: "Llamar", dueAt: new Date(Date.now() + 3 * HOUR) }, { actor: "AI" });
+    expect(task.assigneeId).toBeNull();
+
+    await setTaskAssignee(task.id, ana.id, { actor: "USER" });
+    expect(await db.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({ assigneeId: ana.id });
+    const event = await db.leadEvent.findFirstOrThrow({ where: { leadId: lead.id, type: "TASK_ASSIGNED" } });
+    expect(event.data).toMatchObject({ title: "Llamar", assigneeName: "Ana" });
+
+    await setTaskAssignee(task.id, null, { actor: "USER" });
+    expect(await db.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({ assigneeId: null });
+
+    await db.user.update({ where: { id: ana.id }, data: { active: false } });
+    await expect(setTaskAssignee(task.id, ana.id, { actor: "USER" })).rejects.toBeInstanceOf(DomainError);
   });
 });

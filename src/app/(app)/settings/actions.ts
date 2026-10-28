@@ -27,7 +27,7 @@ import { createFunnel, deleteFunnel, primaryFunnelId, updateFunnel } from "@/lib
 import { DomainError } from "@/lib/domain/leads";
 import { createUser, deleteUser, resendInvitation, updateUser } from "@/lib/domain/users";
 import { completeWhatsAppSignup } from "@/lib/domain/whatsapp-signup";
-import { TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
+import { AI_TASK_TARGET, TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { syncInventory, type InventorySettings } from "@/lib/inventory";
 import { getSetting, setSetting, type AssistantSettings } from "@/lib/settings";
@@ -204,10 +204,11 @@ export async function deleteTagAction(id: string) {
 /** Crea una regla o, si el formulario trae `id`, la edita. */
 export async function saveRuleAction(form: FormData) {
   await requireAdmin();
-  // El disparador se deduce del destino elegido: una etapa, una etiqueta o un botón de plantilla.
+  // El disparador se deduce del destino elegido: una etapa, una etiqueta, un botón de plantilla o una tarea de la IA.
   const target = str(form, "target");
   let trigger: RuleTrigger;
   if (target === TEMPLATE_REPLY_TARGET) trigger = "TEMPLATE_REPLY";
+  else if (target === AI_TASK_TARGET) trigger = "AI_TASK";
   else if ((await db.stage.count({ where: { id: target } })) > 0) trigger = "STAGE_ENTERED";
   else if ((await db.tag.count({ where: { id: target } })) > 0) trigger = "TAG_ADDED";
   else return;

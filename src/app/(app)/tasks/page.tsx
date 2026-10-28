@@ -44,6 +44,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           now={now}
           lead={{ id: t.lead.id, name: t.lead.contact.name }}
           assigneeName={showAssignee ? (t.assignee?.name ?? null) : undefined}
+          executives={isAdmin ? executives.map((e) => ({ id: e.id, name: e.name })) : undefined}
         />
       ))}
     </ul>

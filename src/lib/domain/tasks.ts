@@ -53,6 +53,27 @@ export async function createTaskTx(tx: Tx, leadId: string, input: TaskInput, by:
   return task;
 }
 
+/** Cambia el responsable de una tarea (null = sin asignar). */
+export async function setTaskAssignee(taskId: string, assigneeId: string | null, by: ActorRef) {
+  return db.$transaction(async (tx) => {
+    const task = await tx.task.findUniqueOrThrow({ where: { id: taskId } });
+    if (task.assigneeId === assigneeId) return task;
+    const assignee = assigneeId ? await tx.user.findUnique({ where: { id: assigneeId } }) : null;
+    if (assigneeId && !assignee?.active) throw new DomainError("El ejecutivo indicado no existe o está inactivo.");
+    const updated = await tx.task.update({ where: { id: taskId }, data: { assigneeId } });
+    await tx.leadEvent.create({
+      data: {
+        leadId: task.leadId,
+        type: "TASK_ASSIGNED",
+        actor: by.actor,
+        userId: by.userId ?? null,
+        data: { taskId, title: task.title, assigneeName: assignee?.name ?? null },
+      },
+    });
+    return updated;
+  });
+}
+
 /** Marca una tarea como cumplida o la vuelve a dejar pendiente. */
 export async function setTaskDone(taskId: string, done: boolean, by: ActorRef) {
   return db.$transaction(async (tx) => {

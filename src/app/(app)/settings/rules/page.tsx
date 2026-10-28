@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, PauseCircle, Pencil, Plus, Save, Shuffle, Trash2, UserRoundCog } from "lucide-react";
-import { LEAD_TAKERS, TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
+import { AI_TASK_TARGET, LEAD_TAKERS, TEMPLATE_REPLY_TARGET } from "@/lib/domain/assignment";
 import { stageOptions } from "@/lib/domain/funnels";
 import { db } from "@/lib/db";
 import { Avatar, Badge, Card, EmptyState, Field, inputClass, PageHeader } from "@/components/ui";
@@ -21,14 +21,20 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
     db.user.findMany({ where: LEAD_TAKERS, orderBy: { name: "asc" } }),
   ]);
   const editing = rules.find((r) => r.id === editar) ?? null;
-  const target = editing ? (editing.trigger === "TEMPLATE_REPLY" ? TEMPLATE_REPLY_TARGET : (editing.stageId ?? editing.tagId ?? "")) : undefined;
+  const target = editing
+    ? editing.trigger === "TEMPLATE_REPLY"
+      ? TEMPLATE_REPLY_TARGET
+      : editing.trigger === "AI_TASK"
+        ? AI_TASK_TARGET
+        : (editing.stageId ?? editing.tagId ?? "")
+    : undefined;
   const chosen = new Set(editing?.executives.map((e) => e.id));
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Asignación automática"
-        description="Cuando un lead entra a una etapa, recibe una etiqueta o responde tocando un botón de una plantilla de WhatsApp, se aplica la primera regla activa que coincida (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla aplica, se asigna al ejecutivo con menos leads abiertos."
+        description="Cuando un lead entra a una etapa, recibe una etiqueta, responde tocando un botón de una plantilla de WhatsApp o la IA le deja una tarea, se aplica la primera regla activa que coincida (mayor prioridad primero). Si un lead entra a una etapa de atención humana sin ejecutivo y ninguna regla aplica, se asigna al ejecutivo con menos leads abiertos."
       />
 
       {executives.length === 0 && (
@@ -78,9 +84,11 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
                     ? `Entra a "${r.stage?.name}"`
                     : r.trigger === "TAG_ADDED"
                       ? `Recibe "${r.tag?.category}: ${r.tag?.name}"`
-                      : r.buttonText
-                        ? `Toca el botón "${r.buttonText}"`
-                        : "Toca un botón de plantilla"}
+                      : r.trigger === "AI_TASK"
+                        ? "La IA deja una tarea"
+                        : r.buttonText
+                          ? `Toca el botón "${r.buttonText}"`
+                          : "Toca un botón de plantilla"}
                 </span>
                 <ArrowRight aria-hidden className="size-4 text-slate-400" />
                 <span className="rounded-lg bg-brand-50 px-2.5 py-1 font-medium text-brand-800">
@@ -146,6 +154,9 @@ export default async function RulesPage({ searchParams }: { searchParams: Promis
                   </optgroup>
                   <optgroup label="Responde a una plantilla de WhatsApp">
                     <option value={TEMPLATE_REPLY_TARGET}>Toca un botón de la plantilla</option>
+                  </optgroup>
+                  <optgroup label="Tareas">
+                    <option value={AI_TASK_TARGET}>La IA deja una tarea</option>
                   </optgroup>
                 </select>
               </Field>

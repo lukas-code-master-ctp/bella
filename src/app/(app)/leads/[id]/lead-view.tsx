@@ -68,6 +68,7 @@ const EVENT_LABEL: Record<string, string> = {
   FOLLOW_UP_CANCELED: "Seguimientos cancelados",
   TASK_CREATED: "Tarea creada:",
   TASK_DONE: "Tarea cumplida:",
+  TASK_ASSIGNED: "Tarea reasignada:",
   TASK_REOPENED: "Tarea pendiente otra vez:",
   TASK_DELETED: "Tarea eliminada:",
   SLA_LATE: "Pasó la meta de respuesta",
@@ -134,6 +135,8 @@ function describe(data: Record<string, unknown>) {
   if (data.from && data.to) return `${data.from} → ${data.to}`;
   if (data.tag) return String(data.tag);
   if (data.name || data.email) return [data.name, data.email].filter(Boolean).join(" · ");
+  // Tarea reasignada: trae título y responsable, pero no vencimiento (la creada sí lo trae).
+  if (data.title && "assigneeName" in data && !data.dueAt) return `${data.title} → ${data.assigneeName ?? "sin asignar"}`;
   if (data.title) return String(data.title);
   if (data.assigneeName) return String(data.assigneeName);
   if (typeof data.amount === "number") return `$${data.amount.toLocaleString("es-CL")}`;
@@ -588,6 +591,7 @@ export async function LeadView({
                           task={t}
                           now={now}
                           assigneeName={t.assigneeId !== lead.assigneeId ? (t.assignee?.name ?? null) : undefined}
+                          executives={user.role === "ADMIN" ? executives.map((e) => ({ id: e.id, name: e.name })) : undefined}
                         />
                       ))}
                     </ul>
