@@ -4,7 +4,8 @@ import type { Task } from "@prisma/client";
 import { formatDue, formatLocal } from "@/lib/dates";
 import { bucketOf } from "@/lib/domain/tasks";
 import { SubmitButton } from "@/components/submit-button";
-import { deleteTaskAction, setTaskDoneAction } from "./actions";
+import { AutoSubmitSelect } from "@/components/auto-submit-select";
+import { deleteTaskAction, setTaskAssigneeAction, setTaskDoneAction } from "./actions";
 
 const DUE_TONE = {
   overdue: "text-rose-700 font-semibold",
@@ -16,17 +17,20 @@ const DUE_TONE = {
  * Una tarea como tarjeta compacta: título, lead, vencimiento, responsable y si la creó la IA.
  * Al hacer clic se despliega con la descripción completa y el botón de eliminar; abrir otra contrae la anterior.
  * `lead` muestra a qué lead pertenece (en "Mis tareas"); en la ficha del lead se omite.
+ * `executives` (solo al admin) agrega un selector para cambiar el responsable.
  */
 export function TaskItem({
   task,
   now,
   lead,
   assigneeName,
+  executives,
 }: {
   task: Task;
   now: Date;
   lead?: { id: string; name: string };
   assigneeName?: string | null;
+  executives?: { id: string; name: string }[];
 }) {
   const isDone = task.completedAt !== null;
   const bucket = bucketOf(task.dueAt, now);
@@ -111,6 +115,26 @@ export function TaskItem({
               </>
             )}
           </dl>
+          {executives && !isDone && (
+            <form action={setTaskAssigneeAction.bind(null, task.id)} className="flex items-center gap-2 text-xs">
+              <label htmlFor={`responsable-${task.id}`} className="text-slate-500">
+                Responsable
+              </label>
+              <AutoSubmitSelect
+                id={`responsable-${task.id}`}
+                name="assigneeId"
+                defaultValue={task.assigneeId ?? ""}
+                className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800"
+              >
+                <option value="">Sin asignar</option>
+                {executives.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </AutoSubmitSelect>
+            </form>
+          )}
           <div className="flex items-center gap-2">
             {lead && (
               <Link href={`/leads/${lead.id}`} className="text-xs font-medium text-brand-700 hover:underline">

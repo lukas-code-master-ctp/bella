@@ -7,12 +7,15 @@ import { moveOpenTasksTx } from "./tasks";
 export type AssignmentTrigger =
   | { type: "STAGE_ENTERED"; stageId: string }
   | { type: "TAG_ADDED"; tagId: string }
-  | { type: "TEMPLATE_REPLY"; buttonText: string };
+  | { type: "TEMPLATE_REPLY"; buttonText: string }
+  | { type: "AI_TASK" };
 
 type Tx = Prisma.TransactionClient;
 
 /** Valor del selector de Configuración → Asignación para "Responde a un botón de plantilla". */
 export const TEMPLATE_REPLY_TARGET = "template-reply";
+/** Valor del selector de Configuración → Asignación para "La IA deja una tarea". */
+export const AI_TASK_TARGET = "ai-task";
 type RuleWithExecutives = AssignmentRule & { executives: User[] };
 
 /** Elige el siguiente ejecutivo después del último asignado (orden estable por id). */
@@ -71,6 +74,8 @@ function ruleMatches(rule: AssignmentRule, trigger: AssignmentTrigger) {
       return rule.tagId === trigger.tagId;
     case "TEMPLATE_REPLY":
       return !rule.buttonText?.trim() || sameButtonText(rule.buttonText, trigger.buttonText);
+    case "AI_TASK":
+      return true;
   }
 }
 

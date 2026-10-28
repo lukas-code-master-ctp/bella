@@ -49,6 +49,8 @@ enum RuleTrigger {
   TAG_ADDED
   /// El cliente respondió tocando un botón de una plantilla de WhatsApp.
   TEMPLATE_REPLY
+  /// La IA dejó una tarea en el lead (normalmente uno que aún no tiene ejecutivo).
+  AI_TASK
 }
 
 /// Tipo de un campo del cliente: define cómo se valida y se muestra el valor.

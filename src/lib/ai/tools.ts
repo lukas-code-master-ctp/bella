@@ -8,7 +8,8 @@ import { addTagTx, awaitingAmountStageIds, DomainError, handoffToHumanTx, moveSt
 import { autoBlockCriteria, getAiOperation } from "../domain/ai-operation";
 import { blockContact } from "../domain/contacts";
 import { sendMediaFiles } from "../domain/files";
-import { createTask } from "../domain/tasks";
+import { createTaskTx } from "../domain/tasks";
+import { applyAssignment } from "../domain/assignment";
 import { deliverPendingConversions } from "../domain/conversions";
 import { deliverPendingWebhooks } from "../domain/webhooks";
 import { deliverPendingPush } from "../push";
@@ -274,7 +275,13 @@ export async function executeTool(
         return { isError: true, content: "Esa fecha ya pasó: revisa la fecha y hora actual del estado del CRM." };
       }
       try {
-        const task = await createTask(leadId, { title: str("title"), dueAt, notes: str("notes") }, { actor: "AI" });
+        // Si el lead no tiene ejecutivo, una regla "La IA deja una tarea" puede asignarle uno (y la tarea pasa a él).
+        const task = await db.$transaction(async (tx) => {
+          const created = await createTaskTx(tx, leadId, { title: str("title"), dueAt, notes: str("notes") }, { actor: "AI" });
+          await applyAssignment(tx, leadId, { type: "AI_TASK" });
+          return created;
+        });
+        await deliverPendingPush();
         const lead = await db.lead.findUniqueOrThrow({ where: { id: leadId }, include: { assignee: true } });
         return {
           content: lead.assignee
