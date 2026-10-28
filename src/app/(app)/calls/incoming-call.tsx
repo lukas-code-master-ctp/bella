@@ -2,17 +2,110 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { uploadPresigned } from "@vercel/blob/client";
 import { Mic, MicOff, Phone, PhoneOff } from "lucide-react";
 import type { RingingCall } from "@/lib/domain/calls";
 import { Avatar, Button } from "@/components/ui";
 import { toast } from "@/components/toast";
-import { answerCallAction, hangUpCallAction, myCallsAction, rejectCallAction, startCallAction } from "./actions";
+import {
+  answerCallAction,
+  hangUpCallAction,
+  myCallsAction,
+  rejectCallAction,
+  saveCallRecordingAction,
+  startCallAction,
+} from "./actions";
 
 /** Cada cuánto se pregunta por llamadas con la pestaña a la vista; el push avisa antes si llega. */
 const POLL_MS = 4000;
 
 /** `outgoing`: la hizo esta persona; `answered` marca que ya se puso la respuesta de audio del cliente. */
-type Active = { call: RingingCall; pc: RTCPeerConnection; stream: MediaStream; since: number | null; outgoing?: boolean; answered?: boolean };
+type Active = {
+  call: RingingCall;
+  pc: RTCPeerConnection;
+  stream: MediaStream;
+  since: number | null;
+  outgoing?: boolean;
+  answered?: boolean;
+  /** Solo si la empresa graba llamadas. */
+  recorder?: Recorder | null;
+};
+
+type Recorder = { addRemote(stream: MediaStream): void; start(): void; stop(): Promise<Blob | null> };
+
+/**
+ * Graba la llamada en el navegador: mezcla el micrófono y la voz del cliente en una sola pista
+ * (Opus a 32 kbps, ~15 MB por hora). Null si el navegador no sabe grabar.
+ */
+function createRecorder(mic: MediaStream): Recorder | null {
+  if (typeof MediaRecorder === "undefined") return null;
+  let ctx: AudioContext;
+  try {
+    ctx = new AudioContext();
+  } catch {
+    return null;
+  }
+  const mix = ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(mic).connect(mix);
+  const mimeType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+  let rec: MediaRecorder;
+  try {
+    rec = new MediaRecorder(mix.stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32_000 });
+  } catch {
+    ctx.close().catch(() => {});
+    return null;
+  }
+  const chunks: Blob[] = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  let remote = false;
+  return {
+    addRemote(stream) {
+      if (remote) return;
+      remote = true;
+      ctx.createMediaStreamSource(stream).connect(mix);
+    },
+    start() {
+      if (rec.state !== "inactive") return;
+      ctx.resume().catch(() => {});
+      rec.start(5000);
+    },
+    stop() {
+      return new Promise((resolve) => {
+        const close = () => ctx.close().catch(() => {});
+        if (rec.state === "inactive") {
+          close();
+          return resolve(null);
+        }
+        rec.onstop = () => {
+          close();
+          resolve(chunks.length ? new Blob(chunks, { type: rec.mimeType || mimeType || "audio/webm" }) : null);
+        };
+        rec.stop();
+      });
+    },
+  };
+}
+
+const extension = (type: string) => (type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm");
+
+/** Sube la grabación directo a Vercel Blob y avisa a Beliapp para que la transcriba y resuma. */
+async function saveRecording(callId: string, recorder: Recorder) {
+  const blob = await recorder.stop();
+  if (!blob) return;
+  try {
+    const type = blob.type.split(";")[0] || "audio/webm";
+    const uploaded = await uploadPresigned(`calls/${callId}/llamada.${extension(type)}`, blob, {
+      access: "public",
+      handleUploadUrl: `/calls/${callId}/upload`,
+      contentType: type,
+    });
+    const error = await saveCallRecordingAction(callId, uploaded.url);
+    if (error) toast(error, "error");
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo guardar la grabación de la llamada.", "error");
+  }
+}
 
 /** Evento para llamar a un lead desde cualquier parte de la app (el botón del chat). */
 export const START_CALL_EVENT = "beliapp:call";
@@ -74,7 +167,7 @@ const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2,
  * Llamadas de WhatsApp en el navegador: muestra la que está sonando (a esta persona), la contesta
  * con el micrófono por WebRTC y deja los controles mientras dura. Va una vez en el layout.
  */
-export function IncomingCall() {
+export function IncomingCall({ record = false }: { record?: boolean }) {
   const [ringing, setRinging] = useState<RingingCall[]>([]);
   const [active, setActive] = useState<Active | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -88,9 +181,15 @@ export function IncomingCall() {
   const finish = useCallback((message?: string) => {
     const a = activeRef.current;
     if (a) {
+      // Solo se guarda si la llamada alcanzó a conectarse; si no, la grabación se descarta.
+      if (a.recorder) {
+        if (a.since) saveRecording(a.call.id, a.recorder);
+        else a.recorder.stop();
+      }
       a.pc.close();
       a.stream.getTracks().forEach((t) => t.stop());
     }
+    activeRef.current = null;
     setActive(null);
     setMuted(false);
     if (message) toast(message);
@@ -110,7 +209,10 @@ export function IncomingCall() {
           await a.pc.setRemoteDescription({ type: "answer", sdp: res.currentAnswer });
         }
         if (res.currentStatus === "ANSWERED") {
-          setActive({ ...a, since: Date.now() });
+          a.recorder?.start();
+          const next = { ...a, since: Date.now() };
+          activeRef.current = next;
+          setActive(next);
           setNow(Date.now());
         } else if (TERMINAL.includes(res.currentStatus)) {
           finish(res.currentStatus === "REJECTED" ? "El cliente rechazó la llamada." : "El cliente no contestó.");
@@ -175,9 +277,12 @@ export function IncomingCall() {
     }
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
     for (const track of stream.getTracks()) pc.addTrack(track, stream);
+    const recorder = record ? createRecorder(stream) : null;
     pc.ontrack = (e) => {
+      const remote = e.streams[0] ?? new MediaStream([e.track]);
+      recorder?.addRemote(remote);
       if (audio.current) {
-        audio.current.srcObject = e.streams[0] ?? new MediaStream([e.track]);
+        audio.current.srcObject = remote;
         audio.current.play().catch(() => {});
       }
     };
@@ -188,7 +293,7 @@ export function IncomingCall() {
         finish("Se cortó la llamada.");
       }
     };
-    return { stream, pc };
+    return { stream, pc, recorder };
   }
 
   async function dial(d: StartCallDetail) {
@@ -196,21 +301,30 @@ export function IncomingCall() {
     setConnecting(true);
     const media = await openAudio();
     if (!media) return setConnecting(false);
-    const { stream, pc } = media;
+    const { stream, pc, recorder } = media;
     try {
       await pc.setLocalDescription(await pc.createOffer());
       await iceGathered(pc);
       const res = await startCallAction(d.leadId, pc.localDescription?.sdp ?? "");
       if ("error" in res) {
+        recorder?.stop();
         pc.close();
         stream.getTracks().forEach((t) => t.stop());
         toast(res.error, "error");
         return;
       }
-      const next: Active = { call: { id: res.callId, leadId: d.leadId, name: d.name, phone: d.phone, sdpOffer: "", createdAt: "" }, pc, stream, since: null, outgoing: true };
+      const next: Active = {
+        call: { id: res.callId, leadId: d.leadId, name: d.name, phone: d.phone, sdpOffer: "", createdAt: "" },
+        pc,
+        stream,
+        since: null,
+        outgoing: true,
+        recorder,
+      };
       activeRef.current = next;
       setActive(next);
     } catch {
+      recorder?.stop();
       pc.close();
       stream.getTracks().forEach((t) => t.stop());
       toast("No se pudo iniciar la llamada.", "error");
@@ -231,12 +345,12 @@ export function IncomingCall() {
     setConnecting(true);
     const media = await openAudio();
     if (!media) return setConnecting(false);
-    const { stream, pc } = media;
+    const { stream, pc, recorder } = media;
     try {
       await pc.setRemoteDescription({ type: "offer", sdp: c.sdpOffer });
       await pc.setLocalDescription(await pc.createAnswer());
       await iceGathered(pc);
-      const next: Active = { call: c, pc, stream, since: null };
+      const next: Active = { call: c, pc, stream, since: null, recorder };
       setActive(next);
       activeRef.current = next;
       const error = await answerCallAction(c.id, pc.localDescription?.sdp ?? "");
@@ -244,10 +358,14 @@ export function IncomingCall() {
         finish();
         toast(error, "error");
       } else {
-        setActive({ ...next, since: Date.now() });
+        recorder?.start();
+        const connected = { ...next, since: Date.now() };
+        activeRef.current = connected;
+        setActive(connected);
         setNow(Date.now());
       }
     } catch {
+      recorder?.stop();
       pc.close();
       stream.getTracks().forEach((t) => t.stop());
       setActive(null);
@@ -299,7 +417,7 @@ export function IncomingCall() {
               <p className="truncate text-xs text-slate-600">
                 {active
                   ? active.since
-                    ? `En llamada · ${clock(Math.max(0, Math.round((now - active.since) / 1000)))}`
+                    ? `En llamada · ${clock(Math.max(0, Math.round((now - active.since) / 1000)))}${active.recorder ? " · grabando" : ""}`
                     : active.outgoing
                       ? "Llamando por WhatsApp…"
                       : "Conectando…"

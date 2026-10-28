@@ -13,6 +13,7 @@
     { "path": "/api/cron/campaign-alerts", "schedule": "0 12,20 * * *" },
     { "path": "/api/cron/broadcasts", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/ad-names", "schedule": "20 * * * *" },
-    { "path": "/api/cron/sla", "schedule": "*/5 * * * *" }
+    { "path": "/api/cron/sla", "schedule": "*/5 * * * *" },
+    { "path": "/api/cron/call-analysis", "schedule": "*/15 * * * *" }
   ]
 }

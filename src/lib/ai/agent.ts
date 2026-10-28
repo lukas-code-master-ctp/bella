@@ -12,6 +12,7 @@ import {
   type FollowUpSettings,
 } from "../domain/follow-ups";
 import { aiBlocked, autoBlockCriteria, getAiOperation, previousTicketLines, replyOutOfHours } from "../domain/ai-operation";
+import { callLines } from "../domain/call-recordings";
 import { deliverOutbound } from "../domain/channels";
 import { fieldsForCrmState } from "../domain/fields";
 import { filesForPrompt, type FileForPrompt } from "../domain/files";
@@ -153,11 +154,12 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
       },
     },
   });
-  const [stages, catalog, fields, previous] = await Promise.all([
+  const [stages, catalog, fields, previous, calls] = await Promise.all([
     funnelStages(db, lead.stage.funnelId),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     fieldsForCrmState(lead.contactId),
     previousTickets ? previousTicketLines(leadId, lead.contactId) : [],
+    callLines(leadId),
   ]);
   const byCategory = new Map<string, string[]>();
   for (const t of catalog) byCategory.set(t.category, [...(byCategory.get(t.category) ?? []), t.name]);
@@ -195,6 +197,7 @@ async function buildCrmState(leadId: string, now = new Date(), { previousTickets
         : "ninguna"
     }`,
     ...(agenda ? [agenda] : []),
+    ...calls,
     ...previous,
     "</crm_state>",
   ].join("\n");

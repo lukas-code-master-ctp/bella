@@ -1287,6 +1287,18 @@ model Call {
   durationSec   Int?
   /// Motivo cuando Meta no pudo conectar la llamada.
   error         String?
+  /// Grabación (las dos voces) que sube el navegador de quien atendió, si la empresa graba llamadas.
+  recordingUrl   String?
+  /// PROCESSING mientras se transcribe y resume; DONE o FAILED al terminar.
+  analysisStatus String?
+  analysisError  String?
+  /// Transcripción de la grabación, con quién habla en cada parte.
+  transcript     String?
+  /// Resumen corto de la IA: qué quería el cliente y qué se acordó.
+  summary        String?
+  nextStep       String?
+  /// Tareas que la IA propone de lo acordado: [{ title, dueAt, taskId?, dismissed? }]. El ejecutivo las crea con un clic.
+  proposedTasks  Json?
   createdAt     DateTime  @default(now())
 
   lead       Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)

@@ -99,16 +99,16 @@ beforeEach(async () => {
 
 describe("Llamadas de WhatsApp: configuración", () => {
   it("vienen apagadas y al activarlas prende el botón de llamar en Meta", async () => {
-    expect(await getCallSettings()).toEqual({ enabled: false });
+    expect(await getCallSettings()).toEqual({ enabled: false, record: false });
     const { api, log } = fakeApi();
-    await saveCallSettings({ enabled: true }, api);
+    await saveCallSettings({ enabled: true, record: false }, api);
     expect(log).toEqual([`settings ${PHONE_ID} true`]);
     expect((await getCallSettings()).enabled).toBe(true);
   });
 
   it("si Meta no las activa, no se guardan y se explica el motivo", async () => {
     const { api } = fakeApi({ setCalling: "El número necesita un límite de 2.000." });
-    await expect(saveCallSettings({ enabled: true }, api)).rejects.toThrow(/Meta no activó las llamadas: El número necesita/);
+    await expect(saveCallSettings({ enabled: true, record: false }, api)).rejects.toThrow(/Meta no activó las llamadas: El número necesita/);
     expect((await getCallSettings()).enabled).toBe(false);
   });
 });

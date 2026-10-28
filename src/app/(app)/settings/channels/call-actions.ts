@@ -8,7 +8,7 @@ import { DomainError } from "@/lib/domain/leads";
 export async function saveCallsAction(_prev: string | null, form: FormData): Promise<string | null> {
   await requireAdmin();
   try {
-    await saveCallSettings({ enabled: form.get("enabled") === "on" });
+    await saveCallSettings({ enabled: form.get("enabled") === "on", record: form.get("record") === "on" });
   } catch (e) {
     if (e instanceof DomainError) return e.message;
     throw e;

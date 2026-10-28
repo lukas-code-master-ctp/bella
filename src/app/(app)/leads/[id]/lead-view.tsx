@@ -1,7 +1,7 @@
 import { previewKind } from "@/lib/media";
 import { Fragment } from "react";
 import Link from "next/link";
-import type { LeadSource } from "@prisma/client";
+import type { Call, LeadSource } from "@prisma/client";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Ban, BellOff, Bot, BotOff, CircleX, ExternalLink, Sparkles, Target, Trophy } from "lucide-react";
 import { canAccessLead, requireUser } from "@/lib/auth";
@@ -39,6 +39,8 @@ import { lostStageIdsInUse } from "@/lib/domain/auto-close";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { getCallSettings } from "@/lib/domain/calls";
 import { CallButton } from "../../calls/call-button";
+import type { ChatCall } from "../../calls/call-card";
+import type { ProposedTask } from "@/lib/domain/call-recordings";
 
 const EVENT_LABEL: Record<string, string> = {
   CREATED: "Lead creado",
@@ -117,6 +119,25 @@ function eventText(type: string, data: Record<string, unknown>) {
 
 const ACTOR_LABEL = { AI: "IA", USER: "", SYSTEM: "Sistema" } as const;
 
+/** Lo que la tarjeta de una llamada grabada muestra en el chat. */
+function chatCall(c: Call): ChatCall {
+  return {
+    id: c.id,
+    recordingUrl: c.recordingUrl ?? "",
+    status: c.analysisStatus,
+    error: c.analysisError,
+    summary: c.summary,
+    nextStep: c.nextStep,
+    transcript: c.transcript,
+    tasks: ((c.proposedTasks as ProposedTask[] | null) ?? []).map((t) => ({
+      title: t.title,
+      due: formatLocal(new Date(t.dueAt)),
+      created: Boolean(t.taskId),
+      dismissed: Boolean(t.dismissed),
+    })),
+  };
+}
+
 /** Detalle de una llamada: "3:12 · contestó Ana", "rechazada por Ana". */
 function callDetail(data: Record<string, unknown>) {
   const parts: string[] = [];
@@ -180,7 +201,7 @@ export async function LeadView({
   });
   if (!lead || !canAccessLead(user, lead)) notFound();
 
-  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages, quickReplies, , calls] = await Promise.all([
+  const [stages, tags, executives, fields, followUps, waNumber, awaitingStages, quickReplies, , calls, recorded] = await Promise.all([
     stageOptions(),
     db.tag.findMany({ orderBy: [{ category: "asc" }, { name: "asc" }] }),
     user.role === "ADMIN" ? db.user.findMany({ where: { active: true }, orderBy: { name: "asc" } }) : [],
@@ -196,7 +217,9 @@ export async function LeadView({
     listQuickReplies(user.id),
     markLeadNotificationsRead(user.id, lead.id),
     getCallSettings(),
+    db.call.findMany({ where: { leadId: lead.id, recordingUrl: { not: null } } }),
   ]);
+  const recordings = new Map(recorded.map((c) => [c.id, chatCall(c)]));
   const ownTagIds = new Set(lead.contact.tags.map((t) => t.tagId));
   const isOpen = lead.status === "OPEN";
   const awaitingAmount = isOpen && awaitingStages.includes(lead.stageId);
@@ -351,6 +374,7 @@ export async function LeadView({
               reason: e.reason,
               time: time(e.createdAt),
               tone: CHAT_EVENTS[e.type],
+              call: recordings.get(String((e.data as { callId?: unknown } | null)?.callId ?? "")),
             }))}
         />
       </Card>

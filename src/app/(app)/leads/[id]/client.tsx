@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
+import { Fragment, useActionState, useCallback, useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Activity, Ban, BellRing, Bot, Check, CheckCheck, CircleAlert, Clock, Download, ExternalLink, FileText, Flag, FlaskConical, MessageCircle, Mic, PencilLine, Play, RefreshCw, Send, Sparkles, Target } from "lucide-react";
@@ -15,6 +15,7 @@ import { FileButton } from "./file-sender";
 import { ClosedWindowComposer } from "./template-sender";
 import { autoGrow, useQuickReplyMenu, type QuickReplyOption } from "./quick-replies";
 import { hasAiMention, useAiDraft } from "./ai-draft";
+import { CallCard, type ChatCall } from "../../calls/call-card";
 
 export type ChatMessage = {
   id: string;
@@ -46,6 +47,8 @@ export type ChatEvent = {
   reason: string | null;
   time: string;
   tone: "neutral" | "success" | "danger";
+  /** Llamada grabada: se muestra su tarjeta bajo la nota. */
+  call?: ChatCall;
 };
 
 /** Anuncio de Meta por el que el cliente escribió; se muestra arriba del primer mensaje. */
@@ -134,7 +137,10 @@ export function LeadChat({
         {ad && shown.length > 0 && <AdCard ad={ad} />}
         {timeline(shown, events).map((item) =>
           "text" in item ? (
-            <EventNote key={item.id} event={item} />
+            <Fragment key={item.id}>
+              <EventNote event={item} />
+              {item.call && <CallCard call={item.call} />}
+            </Fragment>
           ) : (
             <Bubble
               key={item.id}
